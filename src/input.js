@@ -21,5 +21,8 @@ export function createInput(canvas) {
     keys,
     consumeJump() { const v = jumpQueued; jumpQueued = false; return v; },
     consumeAttack() { const v = attackQueued; attackQueued = false; return v; },
+    // Edge-trigger queues exposed so the touch layer can drive the same input.
+    queueJump() { jumpQueued = true; },
+    queueAttack() { attackQueued = true; },
   };
 }

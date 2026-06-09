@@ -169,6 +169,15 @@ export const AUDIO = {
   tensionIntervalNear: 0.35,
 };
 
+// On-screen touch controls (phones/tablets). The joystick maps to WASD so all
+// movement logic is reused; deadZone avoids drift, sprintMag is the deflection
+// fraction at which sprint engages. Design choices for a comfortable thumb feel.
+export const TOUCH = {
+  joyRadius: 60,    // px — max knob travel from the stick centre
+  deadZone: 0.22,   // fraction of radius below which input is ignored
+  sprintMag: 0.92,  // deflection fraction (0..1) that triggers sprint
+};
+
 export const MINIMAP = {
   size: 150,            // px on screen
   worldToMap: null,     // computed from ARENA.radius at runtime

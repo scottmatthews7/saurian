@@ -4,6 +4,7 @@ import { createTrex, createHerd } from "./ai.js";
 import { createEggs } from "./eggs.js";
 import { createPickups } from "./pickups.js";
 import { createInput } from "./input.js";
+import { createTouchControls } from "./touch.js";
 import { createHUD } from "./hud.js";
 import { createAudio } from "./audio.js";
 import { createFx } from "./fx.js";
@@ -36,6 +37,7 @@ export async function startGame() {
   const world = buildWorld(scene);
 
   const input = createInput(canvas);
+  const touch = createTouchControls(input);  // mounts only on touch devices
   const hud = createHUD();
   const audio = createAudio();
   const fx = createFx(scene);
@@ -175,6 +177,9 @@ export async function startGame() {
   };
   window.addEventListener("keydown", startGameLoop, { once: true });
   canvas.addEventListener("pointerdown", startGameLoop, { once: true });
+  // Touch devices: the joystick/buttons sit above the canvas, so also start on
+  // the first touch anywhere on the page.
+  if (touch.mounted) window.addEventListener("pointerdown", startGameLoop, { once: true });
 
   scene.onBeforeRenderObservable.add(() => {
     const dt = Math.min(0.05, engine.getDeltaTime() / 1000);
@@ -334,6 +339,14 @@ export async function startGame() {
     hud.setScore(0, 1);
     hud.hideBanner();
   };
+
+  // On touch devices, tapping anywhere once the run is over restarts it (no
+  // keyboard for R). The flag stops the same tap from also restarting twice.
+  if (touch.mounted) {
+    window.addEventListener("pointerdown", () => {
+      if (started && game.over) resetGame();
+    });
+  }
 
   window.addEventListener("keydown", (e) => {
     const k = e.key.toLowerCase();
