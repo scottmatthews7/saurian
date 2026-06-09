@@ -111,7 +111,7 @@ export function buildWorld(scene) {
   const waterCenter = { x: WATER.centerX, z: WATER.centerZ, radius: WATER.radius };
 
   const obstacles = scatterFoliage(scene, shadow, heightAt);
-  const atmosphere = buildAtmosphere(scene);
+  const atmosphere = buildAtmosphere(scene, heightAt);
 
   // --- Day/night cycle -----------------------------------------------------
   let t = 0.25; // start mid-morning
@@ -207,7 +207,7 @@ function makeGroundTexture(scene) {
 
 // Visual set dressing that lives above the playfield: a circling pterosaur
 // flock, drifting clouds, and floating pollen. None of it collides.
-function buildAtmosphere(scene) {
+function buildAtmosphere(scene, heightAt) {
   const B = window.BABYLON;
 
   // ---- Pterosaur flock (stylised: a body + two flapping wings) ----------
@@ -245,6 +245,29 @@ function buildAtmosphere(scene) {
   diveMat.diffuseColor = new B.Color3(0.5, 0.1, 0.1);
   diveMat.emissiveColor = new B.Color3(0.5, 0.05, 0.05);
   diveMat.specularColor = B.Color3.Black();
+
+  // Ground shadow decal under a diving pterosaur — a dodge telegraph that
+  // tracks the bird's ground projection and shrinks as it descends.
+  const diveShadow = B.MeshBuilder.CreateDisc("diveShadow", { radius: 1, tessellation: 24 }, scene);
+  diveShadow.rotation.x = Math.PI / 2;
+  diveShadow.isPickable = false;
+  const dsMat = new B.StandardMaterial("diveShadowMat", scene);
+  dsMat.diffuseColor = B.Color3.Black();
+  dsMat.specularColor = B.Color3.Black();
+  dsMat.disableLighting = true;
+  dsMat.alpha = 0.35;
+  diveShadow.material = dsMat;
+  diveShadow.setEnabled(false);
+  // Position the decal under a bird, sizing it by altitude (lower = smaller +
+  // darker, so it tightens onto the impact point as the swoop closes).
+  function placeDiveShadow(b) {
+    const gy = heightAt ? heightAt(b.root.position.x, b.root.position.z) : 0;
+    const alt = Math.max(1, b.root.position.y - gy);
+    const s = 1.2 + alt * 0.12;
+    diveShadow.scaling.setAll(s);
+    dsMat.alpha = Math.max(0.12, 0.5 - alt * 0.012);
+    diveShadow.position.set(b.root.position.x, gy + 0.06, b.root.position.z);
+  }
 
   // ---- Dive-attack FSM ---------------------------------------------------
   // idle -> (timer) -> telegraph -> dive -> climb -> idle. One bird at a time.
@@ -309,6 +332,7 @@ function buildAtmosphere(scene) {
   let tt = 0;
   function endDive(b) {
     if (b) { b.diving = false; b.body.material = birdMat; b.root.rotation.x = 0; }
+    diveShadow.setEnabled(false);
     dive.state = "idle";
     dive.bird = null;
     dive.timer = randInterval();
@@ -371,6 +395,8 @@ function buildAtmosphere(scene) {
         // hover and lock onto the player's current spot, pulsing the glow
         dive.t -= dt;
         diveMat.emissiveColor.r = 0.4 + 0.4 * Math.sin(tt * 20);
+        diveShadow.setEnabled(true);
+        placeDiveShadow(b);
         const dx = pp.x - b.root.position.x, dz = pp.z - b.root.position.z;
         b.root.rotation.y = Math.atan2(dx, dz);
         if (dive.t <= 0) {
@@ -392,6 +418,7 @@ function buildAtmosphere(scene) {
         b.root.position.z += (dz / d) * step;
         b.root.rotation.y = Math.atan2(dx, dz);
         b.root.rotation.x = -0.7;   // nose-down dive pitch
+        placeDiveShadow(b);
         // contact check against the live player (target may have moved)
         if (!dive.hitDone) {
           const pd = Math.hypot(pp.x - b.root.position.x, pp.z - b.root.position.z);
@@ -407,6 +434,7 @@ function buildAtmosphere(scene) {
       }
 
       if (dive.state === "climb") {
+        if (diveShadow.isEnabled()) diveShadow.setEnabled(false);
         const targetY = b.height;
         b.root.position.y += D.climbSpeed * dt;
         b.root.rotation.x = 0.4;    // nose-up climb
