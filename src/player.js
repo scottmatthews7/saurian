@@ -37,6 +37,7 @@ export async function createPlayer(scene, shadow, input) {
     carrying: 0,         // eggs carried (set by game each frame, drives carrySlow)
     dead: false,
     onAttack: null,      // fired when a bite starts (set by game for SFX)
+    onHurt: null,        // fired whenever damage actually lands (any source)
     pos: collider.position,
   };
 
@@ -152,6 +153,7 @@ export async function createPlayer(scene, shadow, input) {
     state.health = Math.max(0, state.health - amount);
     state.invuln = PLAYER.invulnAfterHit;
     dino.flash(0.25, new B.Color3(0.9, 0.05, 0.05));
+    if (state.onHurt) state.onHurt();
     if (state.health <= 0) {
       state.dead = true;
       dino.play("Death", { loop: false });

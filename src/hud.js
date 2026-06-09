@@ -13,6 +13,7 @@ export function createHUD() {
   const trexBar = el("trexFill");
   const staminaBar = el("staminaFill");
   const vignette = el("vignette");
+  const hitFlashEl = el("hitFlash");
   const muteBtn = el("muteBtn");
 
   return {
@@ -24,6 +25,13 @@ export function createHUD() {
         const t = JUICE.lowHealthThreshold;
         vignette.style.opacity = frac < t ? `${Math.min(1, (t - frac) / t)}` : "0";
       }
+    },
+    // Re-triggerable full-screen red flash on taking a hit.
+    hitFlash() {
+      if (!hitFlashEl) return;
+      hitFlashEl.classList.remove("fire");
+      void hitFlashEl.offsetWidth; // reflow so the animation restarts
+      hitFlashEl.classList.add("fire");
     },
     onMuteClick(fn) { if (muteBtn) muteBtn.addEventListener("click", fn); },
     setMuteLabel(muted) { if (muteBtn) muteBtn.textContent = muted ? "🔇 Muted" : "🔊 Sound"; },

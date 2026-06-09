@@ -81,6 +81,8 @@ export async function startGame() {
   eggs.onDrop = (pos) => fx.pickupBurst(pos, new B2.Color4(1, 0.5, 0.3, 1));
   pickups.onHeal = (pos) => { audio.heal(); fx.pickupBurst(pos, new B2.Color4(0.3, 1, 0.4, 1)); };
   player.onAttack = () => audio.bite();
+  // Universal hurt feedback fires for any damage source (bite or charge hit).
+  player.onHurt = () => { audio.hurt(); fx.addShake(JUICE.camShakeOnHit); hud.hitFlash(); };
   herd.forEach((h) => {
     h.onCharge = () => { audio.bite(); fx.addShake(JUICE.chargeShake); };
     h.onDown = (pos) => {
@@ -94,8 +96,8 @@ export async function startGame() {
   const predators = [];
   const wirePredator = (p) => {
     p.onBite = () => {
-      audio.hurt();
-      fx.addShake(JUICE.camShakeOnHit);
+      // hurt audio/shake/flash come from player.onHurt; here a bite also
+      // fumbles a carried egg back into the valley.
       const pp = player.dino.root.position;
       eggs.dropCarried(pp, world.heightAt(pp.x, pp.z));
     };
