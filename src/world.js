@@ -110,7 +110,7 @@ export function buildWorld(scene) {
   const inWater = (x, z) => Math.hypot(x - WATER.centerX, z - WATER.centerZ) < WATER.radius - 1;
   const waterCenter = { x: WATER.centerX, z: WATER.centerZ, radius: WATER.radius };
 
-  scatterFoliage(scene, shadow, heightAt);
+  const obstacles = scatterFoliage(scene, shadow, heightAt);
   const atmosphere = buildAtmosphere(scene);
 
   // --- Day/night cycle -----------------------------------------------------
@@ -141,6 +141,7 @@ export function buildWorld(scene) {
 
   return {
     ground, shadow, heightAt, update, inWater, waterCenter, waterSurfaceY: waterY,
+    obstacles,
     updateThreats: (dt, player, onScreech, onHit) =>
       atmosphere.updateThreats(dt, player, onScreech, onHit),
   };
@@ -429,6 +430,8 @@ function scatterFoliage(scene, shadow, heightAt) {
   const B = window.BABYLON;
   const rng = mulberry32(1337);
   const rand = (a, b) => a + rng() * (b - a);
+  // Solid obstacle footprints (centre + repulsion radius) the AI steers around.
+  const obstacles = [];
   const inPond = (x, z) => Math.hypot(x - WATER.centerX, z - WATER.centerZ) < WATER.radius + 2;
   const inArena = (x, z) => Math.sqrt(x * x + z * z) < ARENA.radius - 4 && !inPond(x, z);
 
@@ -466,6 +469,7 @@ function scatterFoliage(scene, shadow, heightAt) {
     const t = trunk.createInstance("trunk" + i);
     t.position.set(x, y + 2 * s, z); t.scaling.setAll(s); t.checkCollisions = true;
     shadow.addShadowCaster(t);
+    obstacles.push({ x, z, r: 1.1 * s });
     const src = leafSources[i % leafSources.length];
     const l = src.createInstance("leaves" + i);
     l.position.set(x, y + 5.0 * s, z); l.scaling.setAll(s * rand(0.9, 1.3));
@@ -495,6 +499,7 @@ function scatterFoliage(scene, shadow, heightAt) {
     r.scaling.set(s, s * rand(0.6, 1), s * rand(0.8, 1.2));
     r.rotation.set(rand(0, 1), rand(0, 6), rand(0, 1));
     r.checkCollisions = s > 1.2;
+    if (s > 1.2) obstacles.push({ x, z, r: s });
     shadow.addShadowCaster(r);
   }
 
@@ -514,6 +519,8 @@ function scatterFoliage(scene, shadow, heightAt) {
     g.scaling.set(s, s, s);
     g.isPickable = false;
   }
+
+  return obstacles;
 }
 
 // small deterministic PRNG

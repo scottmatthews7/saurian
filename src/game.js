@@ -1,6 +1,6 @@
 import { buildWorld } from "./world.js";
 import { createPlayer, createFollowCamera } from "./player.js";
-import { createTrex, createHerd } from "./ai.js";
+import { createTrex, createHerd, setObstacles } from "./ai.js";
 import { createEggs } from "./eggs.js";
 import { createPickups } from "./pickups.js";
 import { createInput } from "./input.js";
@@ -35,6 +35,7 @@ export async function startGame() {
 
   setLoad("Building the valley…");
   const world = buildWorld(scene);
+  setObstacles(world.obstacles);  // AI steers around trees, big rocks, the pond
 
   const input = createInput(canvas);
   const touch = createTouchControls(input);  // mounts only on touch devices

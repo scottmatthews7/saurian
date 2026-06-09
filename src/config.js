@@ -63,6 +63,14 @@ export const HERBIVORE = {
   turnLerp: 0.08,
 };
 
+// AI obstacle avoidance: dinos steer away from tree/big-rock footprints (and
+// the pond) within this extra clearance so they no longer clip through them.
+// A steering nudge, not hard collision — keeps the cheap direct-move AI.
+export const AI_AVOID = {
+  clearance: 2.5,        // extra units added to each obstacle's radius
+  strength: 2.6,         // how hard the outward push bends the heading
+};
+
 // A cornered Triceratops turns and charges the player instead of fleeing.
 // Design choice to add danger variety; not asset-derived.
 export const TRICERATOPS = {

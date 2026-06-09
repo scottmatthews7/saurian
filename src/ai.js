@@ -1,18 +1,28 @@
-import { TREX, HERBIVORE, TRICERATOPS, ARENA, JUICE, WATER } from "./config.js";
+import { TREX, HERBIVORE, TRICERATOPS, ARENA, JUICE, WATER, AI_AVOID } from "./config.js";
 import { loadDino } from "./dino.js";
 
-// Steer a move (unit dir dx,dz) away from the pond when an agent is near or
-// heading into it. Adds an outward + tangential push so dinos skirt the water
-// rather than wading. Returns a possibly-modified normalised direction.
-function avoidWater(pos, dx, dz) {
-  const ox = pos.x - WATER.centerX, oz = pos.z - WATER.centerZ;
-  const d = Math.hypot(ox, oz);
-  const margin = WATER.radius + 4;
-  if (d >= margin || d < 0.001) return { dx, dz };
-  const nx = ox / d, nz = oz / d;          // outward normal
-  const w = (margin - d) / margin;          // 0 at margin .. 1 at centre
-  let mx = dx + nx * w * 2.2;               // push outward
-  let mz = dz + nz * w * 2.2;
+// Solid obstacle footprints ({x, z, r}) the AI steers around. Injected from the
+// world build; the pond is appended so one routine handles every avoidance.
+let OBSTACLES = [];
+export function setObstacles(list) {
+  OBSTACLES = [...list, { x: WATER.centerX, z: WATER.centerZ, r: WATER.radius + 1 }];
+}
+
+// Steer a move (unit dir dx,dz) away from nearby obstacle footprints. Adds an
+// outward push from each footprint within its clearance band, then renormalises.
+// A steering nudge, not hard collision — keeps the cheap direct-move AI cheap.
+function avoidObstacles(pos, dx, dz) {
+  let mx = dx, mz = dz;
+  for (let i = 0; i < OBSTACLES.length; i++) {
+    const o = OBSTACLES[i];
+    const ox = pos.x - o.x, oz = pos.z - o.z;
+    const d = Math.hypot(ox, oz);
+    const margin = o.r + AI_AVOID.clearance;
+    if (d >= margin || d < 0.001) continue;
+    const w = (margin - d) / margin;        // 0 at margin .. 1 at centre
+    mx += (ox / d) * w * AI_AVOID.strength;
+    mz += (oz / d) * w * AI_AVOID.strength;
+  }
   const m = Math.hypot(mx, mz) || 1;
   return { dx: mx / m, dz: mz / m };
 }
@@ -101,7 +111,7 @@ export async function createTrex(scene, shadow, groundFn) {
 
     const dx0 = goal.x - pos.x, dz0 = goal.z - pos.z;
     const dist = Math.hypot(dx0, dz0) || 1;
-    const dir = avoidWater(pos, dx0 / dist, dz0 / dist);
+    const dir = avoidObstacles(pos, dx0 / dist, dz0 / dist);
     const targetYaw = Math.atan2(dir.dx, dir.dz);
     state.facing = lerpAngle(state.facing, targetYaw, TREX.turnLerp);
     dino.setYaw(state.facing);
@@ -240,7 +250,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
 
     const dx0 = goal.x - pos.x, dz0 = goal.z - pos.z;
     const dist = Math.hypot(dx0, dz0) || 1;
-    const dir = avoidWater(pos, dx0 / dist, dz0 / dist);
+    const dir = avoidObstacles(pos, dx0 / dist, dz0 / dist);
     const targetYaw = Math.atan2(dir.dx, dir.dz);
     state.facing = lerpAngle(state.facing, targetYaw, HERBIVORE.turnLerp);
     dino.setYaw(state.facing);
