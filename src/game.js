@@ -184,7 +184,9 @@ export async function startGame() {
 
   scene.onBeforeRenderObservable.add(() => {
     const dt = Math.min(0.05, engine.getDeltaTime() / 1000);
-    world.update(dt);
+    // Freeze the day/night clock until a run is live so the title screen stays
+    // bright; atmosphere + water still animate inside world.update either way.
+    world.update(dt, started && !game.paused && !game.over);
     const shake = fx.updateShake(dt);
     camRig.update(shake, dt);
 

@@ -133,7 +133,12 @@ export const CAMERA = {
 };
 
 export const DAYNIGHT = {
-  cycleSeconds: 120,     // full day length
+  // Full day length. Long enough that a typical 60-120s run sees only a gentle
+  // afternoon shift, not a plunge into darkness mid-game (the cycle is ambient
+  // mood, not a gameplay mechanic). Raised from 120 after the arena was reading
+  // too dark mid-run.
+  cycleSeconds: 240,
+  minDayLight: 0.35,     // floor on the day factor so the arena never goes truly dark while playing
 };
 
 // Atmosphere: stylised non-gameplay set dressing. A pterosaur flock circles

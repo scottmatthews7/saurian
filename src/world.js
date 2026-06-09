@@ -22,11 +22,14 @@ export function buildWorld(scene) {
   scene.fogDensity = ARENA.fogDensity;
   scene.fogColor = new B.Color3(0.62, 0.74, 0.84);
 
-  // Gradient skydome
+  // Gradient skydome: a vertical zenith->horizon gradient painted into a
+  // texture (reads far better than a flat fill), tinted by the day/night cycle
+  // through the material's emissive colour which multiplies the texture.
   const sky = B.MeshBuilder.CreateSphere("sky", { diameter: ARENA.groundSize * 4, sideOrientation: B.Mesh.BACKSIDE }, scene);
   const skyMat = new B.StandardMaterial("skyMat", scene);
   skyMat.backFaceCulling = false;
   skyMat.disableLighting = true;
+  skyMat.emissiveTexture = makeSkyGradient(scene);
   skyMat.emissiveColor = new B.Color3(0.55, 0.72, 0.9);
   sky.material = skyMat;
   sky.infiniteDistance = true;
@@ -116,17 +119,22 @@ export function buildWorld(scene) {
   // --- Day/night cycle -----------------------------------------------------
   let t = 0.25; // start mid-morning
   let t_water = 0;
-  const update = (dt) => {
+  // The day/night clock only advances once a run is live, so the world stays
+  // bright while the player reads the title screen (previously it could drift
+  // into night before they even started). Atmosphere + water still animate.
+  const update = (dt, advanceDayClock = true) => {
     atmosphere.update(dt);
     // subtle water shimmer
     t_water += dt;
     waterMat.emissiveColor.b = 0.16 + 0.05 * Math.sin(t_water * 1.5);
     water.position.y = waterY + Math.sin(t_water * 0.8) * 0.03;
-    t = (t + dt / DAYNIGHT.cycleSeconds) % 1;
+    if (advanceDayClock) t = (t + dt / DAYNIGHT.cycleSeconds) % 1;
     const ang = t * Math.PI * 2;
     const sx = Math.cos(ang), sy = Math.sin(ang);
     sun.direction = new B.Vector3(-sx, -Math.max(0.15, sy), -0.4).normalize();
-    const day = Math.max(0, sy);          // 0 night .. 1 noon
+    // Floor the day factor so the arena stays readable even at the cycle's dim
+    // end — the day/night swing is mood, not a darkness-survival mechanic.
+    const day = Math.max(DAYNIGHT.minDayLight, sy * 0.5 + 0.5);  // 0.35 dim .. 1 noon
     sun.intensity = 0.2 + day * 1.5;
     const sunsetTint = Math.max(0, 1 - Math.abs(sy) * 3);
     sun.diffuse = new B.Color3(1.0, 0.96 - sunsetTint * 0.3, 0.86 - sunsetTint * 0.5);
@@ -173,6 +181,29 @@ function buildReeds(scene, shadow, heightAt) {
     inst.isPickable = false;
     shadow.addShadowCaster(inst);
   }
+}
+
+// Vertical sky gradient painted into a texture. Values are relative multipliers
+// (centred near white) so the day/night emissive tint still drives the actual
+// colour: the horizon stays bright/warm, the zenith darkens and cools, giving
+// real depth instead of a flat dome. V=1 is the zenith, V=0 the lower sky.
+function makeSkyGradient(scene) {
+  const B = window.BABYLON;
+  const W = 8, H = 256;
+  const dt = new B.DynamicTexture("skyGrad", { width: W, height: H }, scene, false);
+  const ctx = dt.getContext();
+  // canvas y=0 is the top of the texture = zenith
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0.0, "rgb(200,212,245)");   // zenith: deeper, cooler
+  g.addColorStop(0.45, "rgb(228,236,252)");  // mid sky
+  g.addColorStop(0.8, "rgb(255,252,246)");   // near horizon: bright, warm
+  g.addColorStop(1.0, "rgb(255,250,238)");   // horizon band
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  dt.update();
+  dt.wrapU = B.Texture.CLAMP_ADDRESSMODE;
+  dt.wrapV = B.Texture.CLAMP_ADDRESSMODE;
+  return dt;
 }
 
 // Procedural mottled grass texture so the ground reads as a living field
