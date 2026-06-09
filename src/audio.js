@@ -131,6 +131,20 @@ export function createAudio() {
       if (!ctx || muted) return;
       tone(110, 0.08, "sine", 0.12, 60);
     },
+    // Splash: a bright noise burst sweeping down through a lowpass, plus a
+    // little watery blip. Played when the raptor enters the pond.
+    splash() {
+      if (!ctx || muted) return;
+      const n = noise(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+      f.type = "lowpass";
+      f.frequency.setValueAtTime(3500, now());
+      f.frequency.exponentialRampToValueAtTime(400, now() + 0.35);
+      g.gain.setValueAtTime(0.45, now());
+      g.gain.exponentialRampToValueAtTime(0.0001, now() + 0.4);
+      n.connect(f); f.connect(g); g.connect(master);
+      n.start(); n.stop(now() + 0.4);
+      tone(520, 0.18, "sine", 0.18, 240);
+    },
     // Player hurt: dissonant low buzz.
     hurt() {
       if (!ctx || muted) return;

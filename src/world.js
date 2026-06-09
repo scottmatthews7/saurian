@@ -1,4 +1,13 @@
-import { ARENA, DAYNIGHT, ATMOSPHERE } from "./config.js";
+import { ARENA, DAYNIGHT, ATMOSPHERE, WATER } from "./config.js";
+
+// Smooth basin profile for the pond: 1 at the centre, easing to 0 at the rim.
+// Carved into the terrain heightmap so the pool sits in a real depression.
+function basinFactor(x, z) {
+  const d = Math.hypot(x - WATER.centerX, z - WATER.centerZ);
+  if (d >= WATER.radius) return 0;
+  const t = 1 - d / WATER.radius;
+  return t * t * (3 - 2 * t); // smoothstep
+}
 
 // Builds terrain, sky, lighting, fog, foliage and the day/night cycle.
 // Returns handles the rest of the game needs (ground mesh for collisions,
@@ -55,6 +64,7 @@ export function buildWorld(scene) {
     // flatten the central play area, raise distant rim into hills
     const rim = Math.max(0, d - ARENA.radius) * 0.12;
     h = h * Math.min(1, d / ARENA.radius * 1.2) + rim;
+    h -= basinFactor(x, z) * WATER.depth; // carve the pond basin
     positions[i + 1] = h;
   }
   ground.updateVerticesData(B.VertexBuffer.PositionKind, positions);
@@ -73,16 +83,45 @@ export function buildWorld(scene) {
     let h = Math.sin(x * 0.06) * Math.cos(z * 0.05) * 1.6
           + Math.sin(x * 0.13 + z * 0.07) * 0.7;
     const rim = Math.max(0, d - ARENA.radius) * 0.12;
-    return h * Math.min(1, d / ARENA.radius * 1.2) + rim;
+    return h * Math.min(1, d / ARENA.radius * 1.2) + rim - basinFactor(x, z) * WATER.depth;
   };
+
+  // --- Water pond ----------------------------------------------------------
+  // A translucent surface disc sitting in the carved basin. The surface height
+  // is the rim ground (basin edge) plus a small level, so it reads as a pool.
+  const rimGroundY = heightAt(WATER.centerX + WATER.radius, WATER.centerZ);
+  const waterY = rimGroundY + WATER.level;
+  const water = B.MeshBuilder.CreateDisc("water", { radius: WATER.radius, tessellation: 48 }, scene);
+  water.rotation.x = Math.PI / 2;
+  water.position.set(WATER.centerX, waterY, WATER.centerZ);
+  water.isPickable = false;
+  const waterMat = new B.StandardMaterial("waterMat", scene);
+  waterMat.diffuseColor = new B.Color3(0.1, 0.32, 0.42);
+  waterMat.emissiveColor = new B.Color3(0.04, 0.12, 0.18);
+  waterMat.specularColor = new B.Color3(0.6, 0.8, 0.9);
+  waterMat.specularPower = 64;
+  waterMat.alpha = 0.72;
+  water.material = waterMat;
+
+  // A faint ring of reeds around the shoreline for readability.
+  buildReeds(scene, shadow, heightAt);
+
+  // Water helpers consumed by the player controller and AI avoidance.
+  const inWater = (x, z) => Math.hypot(x - WATER.centerX, z - WATER.centerZ) < WATER.radius - 1;
+  const waterCenter = { x: WATER.centerX, z: WATER.centerZ, radius: WATER.radius };
 
   scatterFoliage(scene, shadow, heightAt);
   const atmosphere = buildAtmosphere(scene);
 
   // --- Day/night cycle -----------------------------------------------------
   let t = 0.25; // start mid-morning
+  let t_water = 0;
   const update = (dt) => {
     atmosphere.update(dt);
+    // subtle water shimmer
+    t_water += dt;
+    waterMat.emissiveColor.b = 0.16 + 0.05 * Math.sin(t_water * 1.5);
+    water.position.y = waterY + Math.sin(t_water * 0.8) * 0.03;
     t = (t + dt / DAYNIGHT.cycleSeconds) % 1;
     const ang = t * Math.PI * 2;
     const sx = Math.cos(ang), sy = Math.sin(ang);
@@ -100,7 +139,35 @@ export function buildWorld(scene) {
     scene.clearColor.set(skyR, skyG, skyB, 1);
   };
 
-  return { ground, shadow, heightAt, update };
+  return { ground, shadow, heightAt, update, inWater, waterCenter, waterSurfaceY: waterY };
+}
+
+// A sparse ring of reeds around the pond shoreline so the water edge reads
+// clearly and the pool feels inhabited. Pure set dressing.
+function buildReeds(scene, shadow, heightAt) {
+  const B = window.BABYLON;
+  const reedSrc = B.MeshBuilder.CreateCylinder("reedSrc",
+    { height: 2.2, diameterTop: 0.04, diameterBottom: 0.18, tessellation: 4 }, scene);
+  const reedMat = new B.StandardMaterial("reedMat", scene);
+  reedMat.diffuseColor = new B.Color3(0.36, 0.46, 0.18);
+  reedMat.specularColor = B.Color3.Black();
+  reedSrc.material = reedMat;
+  reedSrc.isVisible = false;
+  const rng = mulberry32(909);
+  const count = 70;
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2 + rng() * 0.3;
+    const r = WATER.radius - 0.5 + rng() * 1.6;
+    const x = WATER.centerX + Math.cos(a) * r;
+    const z = WATER.centerZ + Math.sin(a) * r;
+    const s = 0.6 + rng() * 0.8;
+    const inst = reedSrc.createInstance("reed" + i);
+    inst.position.set(x, heightAt(x, z) + 1.0 * s, z);
+    inst.scaling.setAll(s);
+    inst.rotation.set((rng() - 0.5) * 0.3, rng() * 6, (rng() - 0.5) * 0.3);
+    inst.isPickable = false;
+    shadow.addShadowCaster(inst);
+  }
 }
 
 // Procedural mottled grass texture so the ground reads as a living field
@@ -239,7 +306,8 @@ function scatterFoliage(scene, shadow, heightAt) {
   const B = window.BABYLON;
   const rng = mulberry32(1337);
   const rand = (a, b) => a + rng() * (b - a);
-  const inArena = (x, z) => Math.sqrt(x * x + z * z) < ARENA.radius - 4;
+  const inPond = (x, z) => Math.hypot(x - WATER.centerX, z - WATER.centerZ) < WATER.radius + 2;
+  const inArena = (x, z) => Math.sqrt(x * x + z * z) < ARENA.radius - 4 && !inPond(x, z);
 
   // --- Trees (stylised: trunk + foliage cones), instanced -----------------
   const trunk = B.MeshBuilder.CreateCylinder("trunkSrc", { height: 4, diameterTop: 0.5, diameterBottom: 0.9, tessellation: 6 }, scene);

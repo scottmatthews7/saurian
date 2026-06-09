@@ -1,5 +1,21 @@
-import { TREX, HERBIVORE, TRICERATOPS, ARENA, JUICE } from "./config.js";
+import { TREX, HERBIVORE, TRICERATOPS, ARENA, JUICE, WATER } from "./config.js";
 import { loadDino } from "./dino.js";
+
+// Steer a move (unit dir dx,dz) away from the pond when an agent is near or
+// heading into it. Adds an outward + tangential push so dinos skirt the water
+// rather than wading. Returns a possibly-modified normalised direction.
+function avoidWater(pos, dx, dz) {
+  const ox = pos.x - WATER.centerX, oz = pos.z - WATER.centerZ;
+  const d = Math.hypot(ox, oz);
+  const margin = WATER.radius + 4;
+  if (d >= margin || d < 0.001) return { dx, dz };
+  const nx = ox / d, nz = oz / d;          // outward normal
+  const w = (margin - d) / margin;          // 0 at margin .. 1 at centre
+  let mx = dx + nx * w * 2.2;               // push outward
+  let mz = dz + nz * w * 2.2;
+  const m = Math.hypot(mx, mz) || 1;
+  return { dx: mx / m, dz: mz / m };
+}
 
 // AI agents: one apex T-Rex predator with a patrol/chase/attack FSM, and a
 // herd of herbivores that wander and flee from threats (player + trex).
@@ -83,15 +99,16 @@ export async function createTrex(scene, shadow, groundFn) {
       if (Math.hypot(goal.x - pos.x, goal.z - pos.z) < 4) state.target = randPointInArena();
     }
 
-    const dx = goal.x - pos.x, dz = goal.z - pos.z;
-    const dist = Math.hypot(dx, dz) || 1;
-    const targetYaw = Math.atan2(dx / dist, dz / dist);
+    const dx0 = goal.x - pos.x, dz0 = goal.z - pos.z;
+    const dist = Math.hypot(dx0, dz0) || 1;
+    const dir = avoidWater(pos, dx0 / dist, dz0 / dist);
+    const targetYaw = Math.atan2(dir.dx, dir.dz);
     state.facing = lerpAngle(state.facing, targetYaw, TREX.turnLerp);
     dino.setYaw(state.facing);
 
     if (speed > 0) {
-      pos.x += (dx / dist) * speed * dt;
-      pos.z += (dz / dist) * speed * dt;
+      pos.x += dir.dx * speed * dt;
+      pos.z += dir.dz * speed * dt;
       dino.play("Run", { speed: state.mode === "chase" ? (enraged ? 1.5 : 1.2) : 0.85 });
     } else if (state.attackTimer > TREX.attackCooldown - 0.5) {
       // attacking
@@ -221,14 +238,15 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
       if (Math.hypot(goal.x - pos.x, goal.z - pos.z) < 3) state.target = randPointInArena();
     }
 
-    const dx = goal.x - pos.x, dz = goal.z - pos.z;
-    const dist = Math.hypot(dx, dz) || 1;
-    const targetYaw = Math.atan2(dx / dist, dz / dist);
+    const dx0 = goal.x - pos.x, dz0 = goal.z - pos.z;
+    const dist = Math.hypot(dx0, dz0) || 1;
+    const dir = avoidWater(pos, dx0 / dist, dz0 / dist);
+    const targetYaw = Math.atan2(dir.dx, dir.dz);
     state.facing = lerpAngle(state.facing, targetYaw, HERBIVORE.turnLerp);
     dino.setYaw(state.facing);
 
-    pos.x += (dx / dist) * speed * dt;
-    pos.z += (dz / dist) * speed * dt;
+    pos.x += dir.dx * speed * dt;
+    pos.z += dir.dz * speed * dt;
     pos.y = groundFn(pos.x, pos.z);
     clampArena(pos);
 

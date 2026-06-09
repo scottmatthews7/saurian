@@ -1,4 +1,4 @@
-import { ARENA, MINIMAP } from "./config.js";
+import { ARENA, MINIMAP, WATER } from "./config.js";
 
 // Top-down radar drawn on a 2D canvas overlay. Shows the arena disc, the
 // player (with facing wedge), the T-Rex, the herd, eggs, and the nest.
@@ -36,6 +36,15 @@ export function createMinimap() {
       ctx.lineWidth = 2;
       ctx.strokeStyle = "rgba(255,255,255,0.25)";
       ctx.stroke();
+
+      // water pond
+      {
+        const [wx, wy] = toMap(WATER.centerX, WATER.centerZ);
+        ctx.beginPath();
+        ctx.arc(wx, wy, WATER.radius * scale, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(40,110,150,0.6)";
+        ctx.fill();
+      }
 
       // nest ring at centre
       ctx.beginPath();

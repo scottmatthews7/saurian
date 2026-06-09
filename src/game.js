@@ -44,6 +44,7 @@ export async function startGame() {
   setLoad("Hatching the raptor…");
   const player = await createPlayer(scene, world.shadow, input);
   player.setGroundFn(world.heightAt);
+  player.setWaterFn(world.inWater);
   player.warpTo(0, world.heightAt(0, 0), 0);
 
   const camRig = createFollowCamera(scene, player);
@@ -88,6 +89,11 @@ export async function startGame() {
     hud.popup(`+${PICKUPS.meatHeal} HP`, "heal");
   };
   player.onAttack = () => audio.bite();
+  // Splash + spray when the raptor wades into the pond.
+  player.onSplash = (pos) => {
+    audio.splash();
+    fx.pickupBurst(pos, new B2.Color4(0.45, 0.7, 0.95, 1));
+  };
   // Universal hurt feedback fires for any damage source (bite or charge hit).
   player.onHurt = () => { audio.hurt(); fx.addShake(JUICE.camShakeOnHit); hud.hitFlash(); };
   herd.forEach((h) => {

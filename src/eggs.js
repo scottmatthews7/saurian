@@ -1,4 +1,6 @@
-import { EGGS, ARENA } from "./config.js";
+import { EGGS, ARENA, WATER } from "./config.js";
+
+const inPond = (x, z) => Math.hypot(x - WATER.centerX, z - WATER.centerZ) < WATER.radius + 2;
 
 // Glowing collectible eggs scattered in the arena, plus the home nest.
 // Player walks over an egg to carry it; returning to the nest banks it.
@@ -41,11 +43,14 @@ export function createEggs(scene, shadow, groundFn) {
   // Used at creation and on a soft restart so each run scatters anew.
   const rollEgg = (e) => {
     const golden = Math.random() < EGGS.goldenChance;
-    const r = golden
-      ? ARENA.radius - 20 + Math.random() * 12
-      : 20 + Math.random() * (ARENA.radius - 26);
-    const a = Math.random() * Math.PI * 2;
-    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    let x, z;
+    do {
+      const r = golden
+        ? ARENA.radius - 20 + Math.random() * 12
+        : 20 + Math.random() * (ARENA.radius - 26);
+      const a = Math.random() * Math.PI * 2;
+      x = Math.cos(a) * r; z = Math.sin(a) * r;
+    } while (inPond(x, z));
     e.golden = golden;
     e.counts = golden ? EGGS.goldenCounts : 1;
     e.value = golden ? EGGS.goldenValueMul : 1;

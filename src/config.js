@@ -99,6 +99,19 @@ export const PICKUPS = {
   meatLifetime: 22,      // sec before it despawns
 };
 
+// A shallow water pond carved into the valley. Wading through it slows the
+// raptor and ticks gentle damage — a terrain hazard to route around (or risk
+// crossing as a shortcut). The T-Rex and herd avoid it. Design choice.
+export const WATER = {
+  centerX: -34,         // pond centre (world units), off to one side of the nest
+  centerZ: 28,
+  radius: 17,           // surface radius
+  depth: 1.6,           // how far below local ground the basin sinks
+  slowFactor: 0.45,     // player speed multiplier while wading
+  damagePerSec: 4,      // health drained per second submerged
+  level: 0.2,           // water surface height above the pond-rim ground
+};
+
 export const CAMERA = {
   distance: 14,
   height: 7,

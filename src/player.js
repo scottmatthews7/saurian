@@ -1,4 +1,4 @@
-import { PLAYER, CAMERA, ARENA } from "./config.js";
+import { PLAYER, CAMERA, ARENA, WATER } from "./config.js";
 import { loadDino } from "./dino.js";
 
 // Third-person raptor controller: WASD relative to camera, Shift to sprint,
@@ -36,8 +36,10 @@ export async function createPlayer(scene, shadow, input) {
     exhausted: false,    // true until stamina recovers past the sprint floor
     carrying: 0,         // eggs carried (set by game each frame, drives carrySlow)
     dead: false,
+    wading: false,       // true while standing in the pond
     onAttack: null,      // fired when a bite starts (set by game for SFX)
     onHurt: null,        // fired whenever damage actually lands (any source)
+    onSplash: null,      // fired on the frame we enter the water
     pos: collider.position,
   };
 
@@ -79,9 +81,25 @@ export async function createPlayer(scene, shadow, input) {
     }
     const sprint = canSprint;
 
+    // wading through the pond: slow the raptor and tick gentle damage. A splash
+    // event fires on entry so the game can play SFX + a particle burst.
+    const wading = inWater(collider.position.x, collider.position.z);
+    if (wading && !state.wading && state.onSplash) state.onSplash(collider.position.clone());
+    state.wading = wading;
+    if (wading) {
+      // bypasses i-frames intentionally: a slow continuous environmental drain.
+      state.health = Math.max(0, state.health - WATER.damagePerSec * dt);
+      if (state.health <= 0 && !state.dead) {
+        state.dead = true;
+        if (state.onHurt) state.onHurt();
+        dino.play("Death", { loop: false });
+      }
+    }
+
     // carrying eggs slows you down — a risk/reward weight on the return trip.
     const carryMul = 1 / (1 + state.carrying * PLAYER.carrySlow);
-    const speed = (sprint ? PLAYER.runSpeed : PLAYER.walkSpeed) * carryMul;
+    const waterMul = wading ? WATER.slowFactor : 1;
+    const speed = (sprint ? PLAYER.runSpeed : PLAYER.walkSpeed) * carryMul * waterMul;
     state.moving = moving;
     state.sprinting = sprint;
 
@@ -170,6 +188,10 @@ export async function createPlayer(scene, shadow, input) {
   let groundFloor = () => 0;
   state.setGroundFn = (fn) => { groundFloor = (p) => fn(p.x, p.z); };
 
+  // water test (matches world.inWater; injected at game wiring)
+  let inWater = () => false;
+  state.setWaterFn = (fn) => { inWater = fn; };
+
   // Place both collider and visual at a world position (avoids first-frame pop).
   state.warpTo = (x, y, z) => {
     collider.position.set(x, y, z);
@@ -188,6 +210,7 @@ export async function createPlayer(scene, shadow, input) {
     state.stamina = PLAYER.staminaMax;
     state.exhausted = false;
     state.carrying = 0;
+    state.wading = false;
     state.dead = false;
     state.warpTo(x, y, z);
     dino.setYaw(0);
