@@ -1,56 +1,84 @@
 # Progress
 
 ## Done (session 1)
-- **Engine chosen:** Babylon.js 8.x, vendored in `lib/` (no build step). See `DECISIONS.md`.
-- **Assets:** 6 CC0 Quaternius animated dino glbs in `assets/models/`
-  (raptor, trex, triceratops, stegosaurus, apatosaurus, parasaur). All share clip set
-  Idle/Walk/Run/Jump/Attack/Death (matched by substring).
-- **World** (`src/world.js`): procedural rolling terrain w/ flattened play area + hill rim,
-  hemispheric + directional light, soft shadows (2048, blur ESM), exp2 fog, gradient skydome,
-  full day/night cycle (sun arc, sky/fog/intensity tint), scattered instanced trees + rocks
-  (with collisions) + grass tufts.
-- **Player** (`src/player.js`): third-person raptor. WASD camera-relative, Shift sprint,
-  Space jump (gravity), click/J bite. `moveWithCollisions` ellipsoid, arena clamp, smoothed
-  yaw, follow ArcRotateCamera with smoothing. Health + i-frames + death.
-- **AI** (`src/ai.js`): T-Rex predator FSM (patrol -> chase -> attack) with sight/lose-interest
-  ranges, contact bite damage, difficulty speed ramp, takeable damage + death. Herd of 9
-  herbivores (4 species) that wander and flee nearest threat (player or trex).
-- **Eggs** (`src/eggs.js`): 8 glowing bobbing collectible eggs w/ point lights, central nest
-  torus. Walk over to carry, return to nest to bank. Win at 6 banked.
-- **Game loop** (`src/game.js`): orchestration, fixed-ish dt, ACES tonemap + bloom + FXAA
-  pipeline, start/win/lose banners, R to restart, HUD wiring, difficulty waves every 30s.
-- **HUD** (`src/hud.js` + `index.html`): health bar, T-Rex health bar, egg counter, carry hint,
-  objective pill, full-screen banners, styled loading screen.
-- **Config** (`src/config.js`): all tunables centralised, no scattered magic numbers.
+- **Engine:** Babylon.js 8.x vendored in `lib/` (no build step). See `DECISIONS.md`.
+- **Assets:** 6 CC0 Quaternius animated dino glbs in `assets/models/`.
+- **World** (`src/world.js`): procedural rolling terrain + hill rim, hemi+directional
+  light, soft shadows, exp2 fog, gradient skydome, day/night cycle, instanced trees/
+  rocks/grass (collisions on big ones).
+- **Player/AI/Eggs/Game/HUD/Config** scaffolded and wired (see git history).
 
-## Verified
-- Serves via `python3 -m http.server` (tested on :8124). `index.html` + glbs return 200.
-- Loads clean in Chrome: 459 meshes, 66 animation groups (11 dinos x 6 clips), ~95 FPS,
-  console clean except a harmless favicon 404. Fixed one bug (clobbered camera observable).
-- NOTE: live screenshots were unreliable this session — several *other* Claude instances
-  share the same Chrome and kept navigating my tabs to their ports (8011/8211). The eval-based
-  checks above ran against the correct page (8124) before contention.
+## Done (session 2)
+- **CRITICAL FIX — player movement was broken.** Player root is a `TransformNode`,
+  which has no `moveWithCollisions`/`ellipsoid`, so the session-1 controller silently
+  failed: the raptor never moved. Now drives an invisible collider box and copies its
+  position onto the visual root each frame (`player.warpTo` avoids first-frame pop).
+- **Facing confirmed.** Empirical probe: raptor travels +Z exactly matching its yaw
+  (`forwardDotTravel = 1.0`). `FACING_OFFSET` per-species map added in `config.js`
+  (all 0 — correct); flip any entry to `Math.PI` if a model ever runs backwards.
+- **Audio** (`src/audio.js`): zero-asset procedural WebAudio — roar, bite, pickup,
+  bank, footstep, hurt, win, lose, evolving ambient drone, and a proximity **tension
+  heartbeat** that speeds up as the chasing T-Rex closes. Mute via button + M key.
+  Unlocked on first gesture (autoplay policy).
+- **Juice** (`src/fx.js`): footstep dust particles, egg pickup/bank/drop bursts,
+  camera shake on hits, low-health red vignette (HUD), emissive hit-flash on any
+  struck dino (`dino.flash` in `dino.js`).
+- **Minimap** (`src/minimap.js`): top-down radar canvas — player facing wedge, T-Rex
+  (red when chasing), herd (blue when fleeing), eggs, nest ring.
+- **Compass + timer** on the objective pill: view-relative arrow to the nearest egg
+  (or nest when carrying) + elapsed run time.
+- **Balance pass:** sprint **stamina** (drain/regen + exhaustion lockout, HUD bar);
+  **carry-slow** (eggs weigh you down); **drop-egg-on-hit** (a T-Rex bite fumbles an
+  egg back into the valley); **Triceratops charge-back** (cornered trike charges the
+  player for contact damage on a cooldown).
+- **Carried-egg visuals:** eggs hover/bob over the raptor's back while carried.
+- **Pause** (P, gates the sim + banner). **Best clear time** saved to localStorage,
+  shown on the win banner.
+- All tunables centralised in `config.js` (FACING_OFFSET, JUICE, AUDIO, MINIMAP,
+  TRICERATOPS, stamina/carry under PLAYER) — no scattered magic numbers.
 
-## Next (session 2)
-- **Visual verification:** grab a clean gameplay screenshot (use an isolated browser context
-  or run when peers are idle) and confirm dinos render at sane scale/orientation. Quaternius
-  models sometimes face -Z; if the raptor runs backwards, flip `dino.root` 180° in `dino.js`
-  or negate yaw.
-- **Tune scale/ground contact:** confirm each species sits on the terrain (feet not floating/
-  sunk). `heightAt` is duplicated in `world.js` (closure) — fine, but verify it matches the
-  mesh deform exactly. Player ground-snap uses `heightAt`, good.
-- **Juice:** footstep dust, egg pickup pop + sound, bite hit flash on T-Rex (hitFlash field
-  exists but isn't rendered yet — tint material emissive when >0), camera shake on damage,
-  low-health vignette.
-- **Audio:** ambient loop + roar/bite/pickup SFX (CC0). Add a mute toggle.
-- **Minimap / compass** pointing to nearest egg and the nest.
-- **Balance pass:** play a full round, tune speeds/health/egg count/win target.
-- **Stretch:** multiple T-Rexes on later waves; herbivore charge-back (triceratops);
-  stamina for sprint; pause menu.
+## Verified (session 2)
+- All 12 src modules pass `node --check`.
+- Three independent in-browser smokes on my own tabs (port 8124): **0 console errors**,
+  ~95-103 FPS foreground (30-49 when backgrounded/throttled), 460 meshes.
+  - Movement + facing: raptor moves ~6.5 u/s along +Z, dot=1.0.
+  - Carry visual enables on pickup (egg disabled); pause banner toggles on P.
+  - Egg pickup/drop/bank loop **unit-tested headless in Node** (stubbed Babylon):
+    pickup→carry, drop restores a collectible egg, bank marks+clears+callbacks,
+    `remaining()` correct, empty drop returns false.
+
+## Known environment issue (unchanged from s1, now worse)
+- The machine's Chrome is shared by several parallel Claude instances ("dinob" on
+  ports 8000/8333/8411). They navigate ANY tab I open — even isolated browser
+  contexts — within 1-2 seconds. **Live cinematic screenshots are not obtainable.**
+  Worked around it with atomic init-script probes + single-eval captures (data is
+  grabbed before hijack) and curl integrity checks (`curl :8124` confirms MY files
+  are served). The deterministic Node test + scene-inspection smokes are the source
+  of truth, not screenshots.
+
+## Next (session 3)
+- **Beauty screenshot** when peers are idle (or use a private Chrome profile / a
+  different port the others don't probe). Confirm each species' scale/ground contact
+  visually; tune `heights` in `ai.js` and the player `PLAYER.height` if any float/sink.
+- **Herbivore collisions:** AI dinos currently walk through trees/rocks (they set
+  position directly, no `moveWithCollisions`). Fine for arcade feel; upgrade if desired.
+- **Multiple T-Rexes on later waves** (stretch from s1) — spawn a 2nd predator at a
+  high wave for escalating pressure.
+- **More biomes / egg types** (e.g. a rare high-value egg), score multiplier for fast
+  banking, combo for back-to-back deliveries.
+- **Mobile/touch controls** if targeting phones (currently keyboard + mouse only).
+- Consider a proper title screen with a START button (the parallel "dinob" build has
+  one; ours starts on first input — both fine).
 
 ## Run it
 ```
 cd /Users/scottmatthews/personal_repos/dino-arena-a
 python3 -m http.server 8124
 # open http://localhost:8124/
+# Controls: WASD move · Shift sprint · Space jump · Click/J bite · M mute · P pause · R restart
 ```
+
+## Debug harness
+Append `?probe`/`?smoke` to the URL — the init scripts used this session auto-start
+and auto-move so a single `evaluate_script` can read `window.__probeResult` before any
+peer hijacks the tab. Re-paste from git history of this file's prior version if needed.
