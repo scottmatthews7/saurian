@@ -186,7 +186,7 @@ export async function startGame() {
     const dt = Math.min(0.05, engine.getDeltaTime() / 1000);
     world.update(dt);
     const shake = fx.updateShake(dt);
-    camRig.update(shake);
+    camRig.update(shake, dt);
 
     if (!started || game.paused) return;
 

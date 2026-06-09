@@ -125,6 +125,11 @@ export const CAMERA = {
   height: 7,
   lerp: 0.12,
   fov: 0.9,
+  // Auto-follow: while moving (and not just after a manual drag) the camera
+  // eases to sit behind the raptor's heading so you always see where you run —
+  // important in a chase. Gentler than the position lerp so it never fights you.
+  autoFollowLerp: 0.035,    // per-frame easing of the orbit angle toward behind-heading
+  manualHoldSeconds: 1.6,   // suspend auto-follow this long after a manual camera drag
 };
 
 export const DAYNIGHT = {

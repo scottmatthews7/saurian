@@ -236,17 +236,38 @@ export function createFollowCamera(scene, target) {
   cam.lowerBetaLimit = 0.35;
   cam.upperBetaLimit = 1.45;
   cam.wheelPrecision = 12;
-  cam.attachControl(scene.getEngine().getRenderingCanvas(), true);
+  const canvas = scene.getEngine().getRenderingCanvas();
+  cam.attachControl(canvas, true);
 
   const smoothTarget = new B.Vector3(0, 2, 0);
 
+  // Suspend auto-follow briefly after a manual camera interaction (drag / wheel)
+  // so deliberate look-around isn't fought by the auto-orient.
+  let manualHold = 0;
+  let dragging = false;
+  canvas.addEventListener("pointerdown", (e) => { if (e.button !== 0) dragging = true; });
+  window.addEventListener("pointerup", () => { dragging = false; });
+  canvas.addEventListener("pointermove", () => { if (dragging) manualHold = CAMERA.manualHoldSeconds; });
+  canvas.addEventListener("wheel", () => { manualHold = CAMERA.manualHoldSeconds; }, { passive: true });
+
   return {
     cam,
-    update(shake) {
+    update(shake, dt) {
       const p = target.dino.root.position;
       smoothTarget.x += (p.x - smoothTarget.x) * CAMERA.lerp;
       smoothTarget.y += (p.y + 3 - smoothTarget.y) * CAMERA.lerp;
       smoothTarget.z += (p.z - smoothTarget.z) * CAMERA.lerp;
+
+      // Auto-follow: ease the orbit angle to sit behind the raptor's heading
+      // while it's moving, unless the player is steering the camera by hand.
+      manualHold = Math.max(0, manualHold - (dt || 0));
+      if (manualHold <= 0 && target.moving && !dragging) {
+        // ArcRotateCamera alpha at which the camera looks along +heading and so
+        // sits behind a raptor facing `target.facing` (atan2(x,z) convention).
+        const desiredAlpha = -target.facing - Math.PI / 2;
+        cam.alpha = lerpAngle(cam.alpha, desiredAlpha, CAMERA.autoFollowLerp);
+      }
+
       if (shake) {
         cam.target.set(smoothTarget.x + shake.x, smoothTarget.y + shake.y, smoothTarget.z + shake.z);
       } else {
