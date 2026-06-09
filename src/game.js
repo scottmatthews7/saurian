@@ -251,24 +251,22 @@ export async function startGame() {
         tensionTimer = 0;
       }
 
-      // player bite damages any predator or herbivore in range during the
-      // bite window (felled herbivores drop meat that heals the raptor)
-      if (player.attacking > 0.3) {
-        const biteDmg = PLAYER.attackDamage * dt * 3; // sustained over the bite window
-        for (const p of predators) {
-          if (p.dead) continue;
-          const tp = p.dino.root.position;
+      // player bite: one clean, frame-rate-independent hit per target per swing.
+      // `lastBiteId` on each target gates it so a single chomp lands exactly
+      // PLAYER.attackDamage once, no matter the frame rate. Felled herbivores
+      // drop meat that heals the raptor.
+      if (player.attacking > 0) {
+        const tryBite = (t) => {
+          if (t.dead || t.lastBiteId === player.biteId) return;
+          const tp = t.dino.root.position;
           if (Math.hypot(pPos.x - tp.x, pPos.z - tp.z) < PLAYER.attackRange) {
-            p.takeDamage(biteDmg);
+            t.lastBiteId = player.biteId;
+            t.takeDamage(PLAYER.attackDamage);
+            if (!player.biteConnected) { player.biteConnected = true; fx.addShake(JUICE.biteConnectShake); }
           }
-        }
-        for (const h of herd) {
-          if (h.dead) continue;
-          const tp = h.dino.root.position;
-          if (Math.hypot(pPos.x - tp.x, pPos.z - tp.z) < PLAYER.attackRange) {
-            h.takeDamage(biteDmg);
-          }
-        }
+        };
+        for (const p of predators) tryBite(p);
+        for (const h of herd) tryBite(h);
       }
 
       // expire the combo display once the chain window lapses

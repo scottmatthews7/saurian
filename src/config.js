@@ -181,6 +181,7 @@ export const JUICE = {
   pickupPopSeconds: 0.4,    // egg pickup burst lifetime
   lowHealthThreshold: 0.35, // fraction below which the red vignette appears
   chargeShake: 0.3,         // camera shake when a triceratops charges
+  biteConnectShake: 0.22,   // small kick when the raptor's bite lands (tactile confirmation; < a hit-taken)
 };
 
 export const AUDIO = {

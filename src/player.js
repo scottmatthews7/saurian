@@ -30,6 +30,8 @@ export async function createPlayer(scene, shadow, input) {
     attackTimer: 0,
     invuln: 0,
     attacking: 0,        // remaining attack-anim lock
+    biteId: 0,           // increments each swing; lets the game land one hit per target per bite
+    biteConnected: false,// true once a swing has dealt damage (drives the bite "chomp" SFX/feel)
     moving: false,
     sprinting: false,
     stamina: PLAYER.staminaMax,
@@ -161,6 +163,8 @@ export async function createPlayer(scene, shadow, input) {
     if (input.consumeAttack() && state.attackTimer <= 0 && state.grounded) {
       state.attackTimer = PLAYER.attackCooldown;
       state.attacking = ATTACK_LOCK;
+      state.biteId++;            // a fresh swing: every target becomes hittable once
+      state.biteConnected = false;
       dino.play("Attack", { loop: false, speed: 1.4 });
       if (state.onAttack) state.onAttack();
     }
@@ -207,6 +211,8 @@ export async function createPlayer(scene, shadow, input) {
     state.attackTimer = 0;
     state.invuln = 0;
     state.attacking = 0;
+    state.biteId = 0;
+    state.biteConnected = false;
     state.stamina = PLAYER.staminaMax;
     state.exhausted = false;
     state.carrying = 0;

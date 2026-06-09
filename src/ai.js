@@ -55,6 +55,7 @@ export async function createTrex(scene, shadow, groundFn) {
     speedBonus: 0,
     enraged: false,    // true once wounded past the enrage threshold
     enrageGlow: 0,     // re-flash timer for the sustained angry glow
+    lastBiteId: -1,    // last player swing id that hit this target (one hit per swing)
     onBite: null,    // (set by game) called when the trex lands a bite on the player
     onRoar: null,    // called when entering chase
   };
@@ -147,6 +148,7 @@ export async function createTrex(scene, shadow, groundFn) {
     state.speedBonus = 0;
     state.enraged = false;
     state.enrageGlow = 0;
+    state.lastBiteId = -1;
     state.dead = false;
     dino.play("Idle");
   };
@@ -180,6 +182,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     chargeHitDone: false,
     dead: false,
     health: 60,
+    lastBiteId: -1,     // last player swing id that hit this target (one hit per swing)
     onCharge: null,     // (set by game) called when a charge starts
     onDown: null,       // (position) called when killed by the player
   };
@@ -284,6 +287,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     state.charging = 0;
     state.chargeCd = 0;
     state.chargeHitDone = false;
+    state.lastBiteId = -1;
     state.target = randPointInArena();
     dino.play("Idle");
   };
