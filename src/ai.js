@@ -1,4 +1,4 @@
-import { TREX, HERBIVORE, ARENA, JUICE } from "./config.js";
+import { TREX, HERBIVORE, TRICERATOPS, ARENA, JUICE } from "./config.js";
 import { loadDino } from "./dino.js";
 
 // AI agents: one apex T-Rex predator with a patrol/chase/attack FSM, and a
@@ -116,14 +116,24 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     facing: rand(0, 6),
     target: randPointInArena(),
     fleeing: false,
+    charging: 0,        // remaining charge-commit time (triceratops only)
+    chargeCd: 0,
+    chargeHitDone: false,
     dead: false,
     health: 60,
+    onCharge: null,     // (set by game) called when a charge starts
   };
 
+  const canCharge = kind === "triceratops";
+
   state.update = function (dt, player, trex) {
+    dino.updateFlash(dt);
     if (state.dead) return;
     const pos = dino.root.position;
-    const threats = [player.dino.root.position];
+    const pp = player.dino.root.position;
+    state.chargeCd = Math.max(0, state.chargeCd - dt);
+
+    const threats = [pp];
     if (trex && !trex.dead) threats.push(trex.dino.root.position);
 
     // nearest threat
@@ -133,6 +143,40 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
       if (d < nd) { nd = d; nearest = t; }
     }
     state.fleeing = nd < HERBIVORE.fleeRange;
+
+    const distP = Math.hypot(pp.x - pos.x, pp.z - pos.z);
+
+    // --- charge handling (triceratops) ---
+    if (state.charging > 0) {
+      state.charging -= dt;
+      // barrel toward the player's current position
+      const cdx = pp.x - pos.x, cdz = pp.z - pos.z;
+      const cd = Math.hypot(cdx, cdz) || 1;
+      const yaw = Math.atan2(cdx / cd, cdz / cd);
+      state.facing = lerpAngle(state.facing, yaw, 0.25);
+      dino.setYaw(state.facing);
+      pos.x += (cdx / cd) * TRICERATOPS.chargeSpeed * dt;
+      pos.z += (cdz / cd) * TRICERATOPS.chargeSpeed * dt;
+      pos.y = groundFn(pos.x, pos.z);
+      clampArena(pos);
+      if (!state.chargeHitDone && cd < TRICERATOPS.chargeHitRange && !player.dead) {
+        state.chargeHitDone = true;
+        player.takeDamage(TRICERATOPS.chargeDamage);
+      }
+      dino.play("Run", { speed: 1.5 });
+      return;
+    }
+
+    // trigger a charge: cornered (player close) and off cooldown
+    if (canCharge && !player.dead && state.chargeCd <= 0 &&
+        distP < TRICERATOPS.chargeTriggerRange && nearest === pp) {
+      state.charging = TRICERATOPS.chargeDuration;
+      state.chargeCd = TRICERATOPS.chargeCooldown;
+      state.chargeHitDone = false;
+      dino.flash(0.2, new window.BABYLON.Color3(0.8, 0.5, 0.1));
+      if (state.onCharge) state.onCharge();
+      return;
+    }
 
     let goal, speed;
     if (state.fleeing && nearest) {

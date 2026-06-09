@@ -9,6 +9,17 @@ import { createFx } from "./fx.js";
 import { createMinimap } from "./minimap.js";
 import { PLAYER, TREX, EGGS, JUICE } from "./config.js";
 
+// Nearest uncollected egg to a position, or null if none remain.
+function nearestEgg(eggs, pos) {
+  let best = null, bd = Infinity;
+  for (const e of eggs.eggs) {
+    if (e.collected || e.banked) continue;
+    const d = Math.hypot(e.mesh.position.x - pos.x, e.mesh.position.z - pos.z);
+    if (d < bd) { bd = d; best = e.mesh.position; }
+  }
+  return best;
+}
+
 export async function startGame() {
   const B = window.BABYLON;
   const canvas = document.getElementById("renderCanvas");
@@ -59,6 +70,7 @@ export async function startGame() {
     eggs.dropCarried(pp, world.heightAt(pp.x, pp.z));
   };
   trex.onRoar = () => audio.roar();
+  herd.forEach((h) => { h.onCharge = () => { audio.bite(); fx.addShake(JUICE.chargeShake); }; });
 
   // mute toggle (button + M key)
   hud.onMuteClick(() => hud.setMuteLabel(audio.toggleMute()));
@@ -155,9 +167,23 @@ export async function startGame() {
         game.over = true;
         audio.lose();
         hud.showBanner("DEVOURED", `You lasted ${game.elapsed.toFixed(0)}s and banked ${eggs.banked} eggs. Press R to retry.`, "lose");
-      } else if (trex.dead) {
-        // killing the trex isn't the goal but it removes the threat — reward note
-        hud.setObjective(`T-Rex down! Bank ${EGGS.targetToWin} eggs to win.`);
+      }
+
+      // compass + timer guide on the objective pill
+      const pp = player.dino.root.position;
+      let tx, tz, label;
+      if (eggs.carrying > 0) {
+        tx = 0; tz = 0; label = `Carrying ${eggs.carrying} — bank at the nest`;
+      } else {
+        const t = nearestEgg(eggs, pp);
+        if (t) { tx = t.x; tz = t.z; label = `Nearest egg · ${eggs.banked}/${EGGS.targetToWin} banked`; }
+      }
+      if (label) {
+        const camFwd = camRig.cam.getForwardRay().direction;
+        const camBearing = Math.atan2(camFwd.x, camFwd.z);
+        const worldBearing = Math.atan2(tx - pp.x, tz - pp.z);
+        const heading = worldBearing - camBearing;   // 0 = straight ahead (up)
+        hud.setGuide(`${label} · ${game.elapsed.toFixed(0)}s`, heading);
       }
     }
 

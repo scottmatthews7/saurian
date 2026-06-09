@@ -37,6 +37,13 @@ export function createHUD() {
         (remaining > 0 ? `${remaining} eggs out there` : "All eggs found");
     },
     setObjective(text) { objective.textContent = text; },
+    // Objective pill with a compass arrow rotated toward a screen-space heading
+    // (radians, 0 = up). Used to guide the player to the nearest egg / nest.
+    setGuide(text, headingRad) {
+      const arrow = headingRad == null ? "" :
+        `<span style="display:inline-block;transform:rotate(${headingRad}rad);margin-right:8px">⬆</span>`;
+      objective.innerHTML = `${arrow}${text}`;
+    },
     showBanner(title, sub, cls) {
       banner.innerHTML = `<div class="bannerTitle ${cls}">${title}</div><div class="bannerSub">${sub}</div>`;
       banner.style.display = "flex";

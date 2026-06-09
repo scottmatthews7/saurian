@@ -55,6 +55,17 @@ export const HERBIVORE = {
   turnLerp: 0.08,
 };
 
+// A cornered Triceratops turns and charges the player instead of fleeing.
+// Design choice to add danger variety; not asset-derived.
+export const TRICERATOPS = {
+  chargeTriggerRange: 9,  // player this close while fleeing -> may charge
+  chargeSpeed: 14,
+  chargeDamage: 16,
+  chargeCooldown: 4.0,    // sec between charges
+  chargeHitRange: 4.0,    // contact range to land the charge hit
+  chargeDuration: 1.6,    // how long a charge commitment lasts
+};
+
 export const EGGS = {
   count: 8,
   targetToWin: 6,
@@ -96,6 +107,7 @@ export const JUICE = {
   dustInterval: 0.16,       // sec between footstep dust puffs while running
   pickupPopSeconds: 0.4,    // egg pickup burst lifetime
   lowHealthThreshold: 0.35, // fraction below which the red vignette appears
+  chargeShake: 0.3,         // camera shake when a triceratops charges
 };
 
 export const AUDIO = {
