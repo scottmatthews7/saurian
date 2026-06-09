@@ -7,7 +7,7 @@ import { createHUD } from "./hud.js";
 import { createAudio } from "./audio.js";
 import { createFx } from "./fx.js";
 import { createMinimap } from "./minimap.js";
-import { PLAYER, TREX, EGGS, JUICE } from "./config.js";
+import { PLAYER, TREX, EGGS, JUICE, AUDIO } from "./config.js";
 
 // Nearest uncollected egg to a position, or null if none remain.
 function nearestEgg(eggs, pos) {
@@ -96,15 +96,19 @@ export async function startGame() {
   const game = {
     over: false,
     won: false,
+    paused: false,
     elapsed: 0,
     wave: 0,
   };
+  const BEST_TIME_KEY = "dinoArenaBestTime";
+  const readBest = () => { const v = +localStorage.getItem(BEST_TIME_KEY); return v > 0 ? v : null; };
   // Footstep cadence reuses the dust interval so puffs and thuds stay in sync.
   const STEP_INTERVAL = JUICE.dustInterval;
   let stepTimer = 0;
+  let tensionTimer = 0;
 
   hud.setObjective(`Bank ${EGGS.targetToWin} eggs at your nest. Don't get eaten.`);
-  hud.showBanner("DINO ARENA", "WASD move · Shift sprint · Space jump · Click/J bite · M mute · Reach the nest to bank eggs", "start");
+  hud.showBanner("DINO ARENA", "WASD move · Shift sprint · Space jump · Click/J bite · M mute · P pause · Reach the nest to bank eggs", "start");
   let started = false;
   const startGameLoop = () => {
     if (started) return;
@@ -122,7 +126,7 @@ export async function startGame() {
     const shake = fx.updateShake(dt);
     camRig.update(shake);
 
-    if (!started) return;
+    if (!started || game.paused) return;
 
     if (!game.over) {
       game.elapsed += dt;
@@ -144,6 +148,21 @@ export async function startGame() {
         if (stepTimer <= 0) { stepTimer = STEP_INTERVAL; audio.step(); }
       }
 
+      // T-Rex tension heartbeat: faster + louder the closer it is while chasing
+      if (!trex.dead && trex.mode === "chase") {
+        const tp = trex.dino.root.position;
+        const distT = Math.hypot(pPos.x - tp.x, pPos.z - tp.z);
+        const closeness = Math.max(0, 1 - distT / TREX.sightRange); // 0 far .. 1 on top
+        tensionTimer -= dt;
+        if (tensionTimer <= 0) {
+          tensionTimer = AUDIO.tensionIntervalFar -
+            closeness * (AUDIO.tensionIntervalFar - AUDIO.tensionIntervalNear);
+          audio.tension(closeness);
+        }
+      } else {
+        tensionTimer = 0;
+      }
+
       // player bite can damage the trex if close + facing
       if (player.attacking > 0.3 && !trex.dead) {
         const pp = player.dino.root.position, tp = trex.dino.root.position;
@@ -162,7 +181,12 @@ export async function startGame() {
       if (eggs.banked >= EGGS.targetToWin) {
         game.over = true; game.won = true;
         audio.win();
-        hud.showBanner("YOU SURVIVED", `Banked ${eggs.banked} eggs in ${game.elapsed.toFixed(0)}s. Press R to play again.`, "win");
+        const t = game.elapsed;
+        const prev = readBest();
+        const isBest = prev == null || t < prev;
+        if (isBest) localStorage.setItem(BEST_TIME_KEY, t.toFixed(1));
+        const bestLine = isBest ? "New best time! " : `Best: ${prev.toFixed(0)}s. `;
+        hud.showBanner("YOU SURVIVED", `${bestLine}Banked ${eggs.banked} eggs in ${t.toFixed(0)}s. Press R to play again.`, "win");
       } else if (player.dead) {
         game.over = true;
         audio.lose();
@@ -192,7 +216,13 @@ export async function startGame() {
   });
 
   window.addEventListener("keydown", (e) => {
-    if (e.key.toLowerCase() === "r" && game.over) location.reload();
+    const k = e.key.toLowerCase();
+    if (k === "r" && game.over) location.reload();
+    if (k === "p" && started && !game.over) {
+      game.paused = !game.paused;
+      if (game.paused) hud.showBanner("PAUSED", "Press P to resume.", "start");
+      else hud.hideBanner();
+    }
   });
 
   engine.runRenderLoop(() => scene.render());

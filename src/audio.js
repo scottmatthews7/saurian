@@ -126,6 +126,21 @@ export function createAudio() {
       if (!ctx || muted) return;
       tone(140, 0.3, "sawtooth", 0.4, 80);
     },
+    // A single heartbeat-like tension pulse; intensity (0..1) raises pitch+gain.
+    tension(intensity) {
+      if (!ctx || muted) return;
+      const i = Math.max(0, Math.min(1, intensity));
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.setValueAtTime(50 + i * 30, now());
+      const peak = 0.12 + i * 0.25;
+      g.gain.setValueAtTime(0.0001, now());
+      g.gain.exponentialRampToValueAtTime(peak, now() + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.0001, now() + 0.22);
+      o.connect(g); g.connect(master);
+      o.start(); o.stop(now() + 0.25);
+    },
     win() {
       if (!ctx || muted) return;
       [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.5, "triangle", 0.35), i * 140));

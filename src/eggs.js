@@ -20,6 +20,17 @@ export function createEggs(scene, shadow, groundFn) {
   eggMat.emissiveColor = new B.Color3(0.5, 0.45, 0.2).scale(EGGS.glowIntensity);
   eggMat.specularColor = new B.Color3(0.6, 0.6, 0.5);
 
+  // Carried-egg visuals: a small pool of glowing eggs that hover above the
+  // raptor's back while carrying, so the load is visible, not just a HUD count.
+  const carriedVisuals = [];
+  for (let i = 0; i < EGGS.count; i++) {
+    const cv = B.MeshBuilder.CreateSphere("carry" + i, { diameterX: 0.6, diameterY: 0.85, diameterZ: 0.6 }, scene);
+    cv.material = eggMat;
+    cv.isPickable = false;
+    cv.setEnabled(false);
+    carriedVisuals.push(cv);
+  }
+
   const eggs = [];
   for (let i = 0; i < EGGS.count; i++) {
     const r = 20 + Math.random() * (ARENA.radius - 26);
@@ -77,6 +88,24 @@ export function createEggs(scene, shadow, groundFn) {
           state.carried = [];
           if (state.onBank) state.onBank(n);
         }
+      }
+
+      // position the carried-egg visuals hovering over the raptor's back
+      const n = state.carried.length;
+      const yaw = player.facing || 0;
+      const backX = -Math.sin(yaw), backZ = -Math.cos(yaw); // behind the dino
+      for (let k = 0; k < carriedVisuals.length; k++) {
+        const cv = carriedVisuals[k];
+        if (k >= n) { if (cv.isEnabled()) cv.setEnabled(false); continue; }
+        if (!cv.isEnabled()) cv.setEnabled(true);
+        const tier = Math.floor(k / 2);
+        const side = (k % 2 === 0 ? -0.35 : 0.35);
+        cv.position.set(
+          pp.x + backX * (0.4 + tier * 0.45) + Math.cos(yaw) * side,
+          pp.y + 1.6 + tier * 0.5 + Math.sin(state.bobT * 4 + k) * 0.08,
+          pp.z + backZ * (0.4 + tier * 0.45) - Math.sin(yaw) * side,
+        );
+        cv.rotation.y += dt * 1.5;
       }
     },
     // Drop one carried egg back into the world near a position (on a hit).

@@ -114,6 +114,9 @@ export const AUDIO = {
   masterVolume: 0.6,
   musicVolume: 0.25,
   startMuted: false,
+  // Tension heartbeat interval (sec) interpolates from far to point-blank.
+  tensionIntervalFar: 1.1,
+  tensionIntervalNear: 0.35,
 };
 
 export const MINIMAP = {
