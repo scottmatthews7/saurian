@@ -1,4 +1,5 @@
 // DOM-based HUD overlay: health bar, egg counter, objective, messages.
+import { JUICE } from "./config.js";
 
 export function createHUD() {
   const el = (id) => document.getElementById(id);
@@ -8,9 +9,21 @@ export function createHUD() {
   const objective = el("objective");
   const banner = el("banner");
   const trexBar = el("trexFill");
+  const vignette = el("vignette");
+  const muteBtn = el("muteBtn");
 
   return {
-    setHealth(v, max) { healthFill.style.width = `${Math.max(0, (v / max) * 100)}%`; },
+    setHealth(v, max) {
+      const frac = Math.max(0, v / max);
+      healthFill.style.width = `${frac * 100}%`;
+      // Red vignette intensifies as health drops below the threshold.
+      if (vignette) {
+        const t = JUICE.lowHealthThreshold;
+        vignette.style.opacity = frac < t ? `${Math.min(1, (t - frac) / t)}` : "0";
+      }
+    },
+    onMuteClick(fn) { if (muteBtn) muteBtn.addEventListener("click", fn); },
+    setMuteLabel(muted) { if (muteBtn) muteBtn.textContent = muted ? "🔇 Muted" : "🔊 Sound"; },
     setTrex(v, max) { trexBar.style.width = `${Math.max(0, (v / max) * 100)}%`; },
     setEggs(banked, target, carrying, remaining) {
       eggCount.textContent = `${banked} / ${target}`;

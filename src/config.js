@@ -65,3 +65,38 @@ export const CAMERA = {
 export const DAYNIGHT = {
   cycleSeconds: 120,     // full day length
 };
+
+// Per-species facing correction (radians) applied on top of the gameplay yaw.
+// Quaternius glb dinos import facing +Z in Babylon's left-handed scene, which
+// matches our atan2(dx, dz) -> rotation.y convention, so the default is 0.
+// If a species visibly runs backwards in the ?probe harness, set its entry to
+// Math.PI here — no code change needed. Verified via window.__probeResult.
+export const FACING_OFFSET = {
+  raptor: 0,
+  trex: 0,
+  triceratops: 0,
+  stegosaurus: 0,
+  apatosaurus: 0,
+  parasaur: 0,
+};
+
+// Juice / feedback tunables — all deliberate arcade-feel choices.
+export const JUICE = {
+  camShakeOnHit: 0.5,       // shake magnitude when player is hit
+  camShakeDecay: 4.0,       // per-second decay of shake
+  hitFlashSeconds: 0.18,    // emissive flash duration on a struck dino
+  dustInterval: 0.16,       // sec between footstep dust puffs while running
+  pickupPopSeconds: 0.4,    // egg pickup burst lifetime
+  lowHealthThreshold: 0.35, // fraction below which the red vignette appears
+};
+
+export const AUDIO = {
+  masterVolume: 0.6,
+  musicVolume: 0.25,
+  startMuted: false,
+};
+
+export const MINIMAP = {
+  size: 150,            // px on screen
+  worldToMap: null,     // computed from ARENA.radius at runtime
+};

@@ -45,6 +45,8 @@ export function createEggs(scene, shadow, groundFn) {
     carrying: 0,
     banked: 0,
     bobT: 0,
+    onPickup: null,   // (position) -> void, set by game for SFX/FX
+    onBank: null,     // (count) -> void
     update(dt, player) {
       state.bobT += dt;
       const pp = player.dino.root.position;
@@ -61,6 +63,7 @@ export function createEggs(scene, shadow, groundFn) {
             e.mesh.setEnabled(false);
             e.light.setEnabled(false);
             state.carrying++;
+            if (state.onPickup) state.onPickup(e.mesh.position.clone());
           }
         }
       }
@@ -68,8 +71,10 @@ export function createEggs(scene, shadow, groundFn) {
       if (state.carrying > 0) {
         const dn = Math.hypot(pp.x, pp.z);
         if (dn < 5) {
-          state.banked += state.carrying;
+          const n = state.carrying;
+          state.banked += n;
           state.carrying = 0;
+          if (state.onBank) state.onBank(n);
         }
       }
     },

@@ -22,7 +22,10 @@ export async function createPlayer(scene, shadow, input) {
     attackTimer: 0,
     invuln: 0,
     attacking: 0,        // remaining attack-anim lock
+    moving: false,
+    sprinting: false,
     dead: false,
+    onAttack: null,      // fired when a bite starts (set by game for SFX)
     pos: collider.position,
   };
 
@@ -34,6 +37,7 @@ export async function createPlayer(scene, shadow, input) {
   }
 
   state.update = function (dt) {
+    dino.updateFlash(dt);
     if (state.dead) return;
     state.attackTimer = Math.max(0, state.attackTimer - dt);
     state.invuln = Math.max(0, state.invuln - dt);
@@ -51,13 +55,15 @@ export async function createPlayer(scene, shadow, input) {
     const moving = move.lengthSquared() > 0.001 && state.attacking <= 0;
     const sprint = input.keys.has("shift");
     const speed = sprint ? PLAYER.runSpeed : PLAYER.walkSpeed;
+    state.moving = moving;
+    state.sprinting = moving && sprint;
 
     if (moving) {
       move.normalize();
       const targetYaw = Math.atan2(move.x, move.z);
       state.facing = lerpAngle(state.facing, targetYaw, PLAYER.turnLerp);
     }
-    dino.root.rotation.y = state.facing;
+    dino.setYaw(state.facing);
 
     // gravity + jump
     state.velY += PLAYER.gravity * dt;
@@ -101,6 +107,7 @@ export async function createPlayer(scene, shadow, input) {
       state.attackTimer = PLAYER.attackCooldown;
       state.attacking = 0.45;
       dino.play("Attack", { loop: false, speed: 1.4 });
+      if (state.onAttack) state.onAttack();
     }
   };
 
@@ -108,6 +115,7 @@ export async function createPlayer(scene, shadow, input) {
     if (state.invuln > 0 || state.dead) return;
     state.health = Math.max(0, state.health - amount);
     state.invuln = PLAYER.invulnAfterHit;
+    dino.flash(0.25, new B.Color3(0.9, 0.05, 0.05));
     if (state.health <= 0) {
       state.dead = true;
       dino.play("Death", { loop: false });
@@ -137,12 +145,16 @@ export function createFollowCamera(scene, target) {
 
   return {
     cam,
-    update() {
+    update(shake) {
       const p = target.dino.root.position;
       smoothTarget.x += (p.x - smoothTarget.x) * CAMERA.lerp;
       smoothTarget.y += (p.y + 3 - smoothTarget.y) * CAMERA.lerp;
       smoothTarget.z += (p.z - smoothTarget.z) * CAMERA.lerp;
-      cam.target.copyFrom(smoothTarget);
+      if (shake) {
+        cam.target.set(smoothTarget.x + shake.x, smoothTarget.y + shake.y, smoothTarget.z + shake.z);
+      } else {
+        cam.target.copyFrom(smoothTarget);
+      }
     },
   };
 }

@@ -1,4 +1,4 @@
-import { TREX, HERBIVORE, ARENA } from "./config.js";
+import { TREX, HERBIVORE, ARENA, JUICE } from "./config.js";
 import { loadDino } from "./dino.js";
 
 // AI agents: one apex T-Rex predator with a patrol/chase/attack FSM, and a
@@ -25,12 +25,14 @@ export async function createTrex(scene, shadow, groundFn) {
     target: randPointInArena(),
     mode: "patrol",
     attackTimer: 0,
-    hitFlash: 0,
     dead: false,
     speedBonus: 0,
+    onBite: null,    // (set by game) called when the trex lands a bite on the player
+    onRoar: null,    // called when entering chase
   };
 
   state.update = function (dt, player) {
+    dino.updateFlash(dt);
     if (state.dead) return;
     state.attackTimer = Math.max(0, state.attackTimer - dt);
     const B = window.BABYLON;
@@ -39,8 +41,10 @@ export async function createTrex(scene, shadow, groundFn) {
     const distP = Math.hypot(pp.x - pos.x, pp.z - pos.z);
 
     // FSM
+    const wasChasing = state.mode === "chase";
     if (!player.dead && distP < TREX.sightRange) state.mode = "chase";
     else if (state.mode === "chase" && distP > TREX.loseInterestRange) state.mode = "patrol";
+    if (!wasChasing && state.mode === "chase" && state.onRoar) state.onRoar();
 
     let goal, speed;
     if (state.mode === "chase") {
@@ -51,7 +55,9 @@ export async function createTrex(scene, shadow, groundFn) {
         if (state.attackTimer <= 0) {
           state.attackTimer = TREX.attackCooldown;
           dino.play("Attack", { loop: false, speed: 1.2 });
-          if (distP < TREX.attackRange) player.takeDamage(TREX.attackDamage);
+          const before = player.health;
+          player.takeDamage(TREX.attackDamage);
+          if (player.health < before && state.onBite) state.onBite();
         }
       }
     } else {
@@ -64,7 +70,7 @@ export async function createTrex(scene, shadow, groundFn) {
     const dist = Math.hypot(dx, dz) || 1;
     const targetYaw = Math.atan2(dx / dist, dz / dist);
     state.facing = lerpAngle(state.facing, targetYaw, TREX.turnLerp);
-    dino.root.rotation.y = state.facing;
+    dino.setYaw(state.facing);
 
     if (speed > 0) {
       pos.x += (dx / dist) * speed * dt;
@@ -82,7 +88,7 @@ export async function createTrex(scene, shadow, groundFn) {
   state.takeDamage = function (amount) {
     if (state.dead) return;
     state.health = Math.max(0, state.health - amount);
-    state.hitFlash = 0.2;
+    dino.flash(JUICE.hitFlashSeconds, new window.BABYLON.Color3(1.0, 0.25, 0.15));
     if (state.health <= 0) { state.dead = true; dino.play("Death", { loop: false }); }
   };
 
@@ -142,7 +148,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     const dist = Math.hypot(dx, dz) || 1;
     const targetYaw = Math.atan2(dx / dist, dz / dist);
     state.facing = lerpAngle(state.facing, targetYaw, HERBIVORE.turnLerp);
-    dino.root.rotation.y = state.facing;
+    dino.setYaw(state.facing);
 
     pos.x += (dx / dist) * speed * dt;
     pos.z += (dz / dist) * speed * dt;
