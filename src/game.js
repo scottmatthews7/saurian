@@ -143,7 +143,13 @@ export async function startGame() {
   let tensionTimer = 0;
 
   hud.setObjective(`Bank ${EGGS.targetToWin} eggs at your nest. Don't get eaten.`);
-  hud.showBanner("DINO ARENA", "WASD move · Shift sprint · Space jump · Click/J bite · M mute · P pause · Reach the nest to bank eggs", "start");
+  {
+    const bt = readBest(), bs = readBestScore();
+    const bestLine = (bt || bs)
+      ? `Best: ${bt ? bt.toFixed(0) + "s" : "—"}${bs ? " · " + bs.toLocaleString() + " pts" : ""}`
+      : "";
+    hud.showTitle(EGGS.targetToWin, bestLine);
+  }
   let started = false;
   const startGameLoop = () => {
     if (started) return;

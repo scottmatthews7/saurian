@@ -54,6 +54,28 @@ export function createHUD() {
       banner.innerHTML = `<div class="bannerTitle ${cls}">${title}</div><div class="bannerSub">${sub}</div>`;
       banner.style.display = "flex";
     },
+    // Rich title screen: animated title, objective, a controls grid, best stats,
+    // and a pulsing prompt. Shown before the first input starts the run.
+    showTitle(target, bestLine) {
+      const ctrl = (k, label) => `<div class="ctrlRow"><span class="key">${k}</span><span>${label}</span></div>`;
+      banner.innerHTML = `
+        <div class="titleCard">
+          <div class="bannerTitle start titleBig">DINO ARENA</div>
+          <div class="titleTag">SURVIVAL</div>
+          <div class="titleObjective">Collect <b>${target}</b> glowing eggs and bank them at your nest.<br/>A roaming T-Rex wants you dead. Run, bite, survive.</div>
+          <div class="controls">
+            ${ctrl("WASD", "Move")}
+            ${ctrl("SHIFT", "Sprint")}
+            ${ctrl("SPACE", "Jump")}
+            ${ctrl("CLICK / J", "Bite")}
+            ${ctrl("P", "Pause")}
+            ${ctrl("M", "Mute")}
+          </div>
+          ${bestLine ? `<div class="titleBest">${bestLine}</div>` : ""}
+          <div class="titlePrompt">Press any key or click to begin</div>
+        </div>`;
+      banner.style.display = "flex";
+    },
     hideBanner() { banner.style.display = "none"; },
   };
 }
