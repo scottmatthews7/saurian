@@ -332,8 +332,10 @@ export async function startGame() {
         const bestScore = prevScore == null || score.points > prevScore;
         if (bestScore) localStorage.setItem(BEST_SCORE_KEY, String(score.points));
         const bestLine = isBest ? "New best time! " : `Best: ${prev.toFixed(0)}s. `;
+        // Acknowledge a brave finish: winning once dusk has fallen earns a flourish.
+        const duskWin = world.getDusk() >= DUSK.duskThreshold ? "🌆 You held out into dusk! " : "";
         hud.showBanner("YOU SURVIVED",
-          `${bestLine}Score ${score.points.toLocaleString()}${bestScore ? " (best!)" : ""} · ${t.toFixed(0)}s · ${eggs.banked} eggs. Press R to play again.`,
+          `${duskWin}${bestLine}Score ${score.points.toLocaleString()}${bestScore ? " (best!)" : ""} · ${t.toFixed(0)}s · ${eggs.banked} eggs. Press R to play again.`,
           "win");
       } else if (player.dead) {
         game.over = true;
@@ -407,7 +409,7 @@ export async function startGame() {
   window.addEventListener("resize", () => engine.resize());
 
   // Debug handle for in-browser smoke tests (harmless to leave exposed).
-  window.__game = { engine, scene, game, score, player, predators, herd, eggs, pickups, resetGame };
+  window.__game = { engine, scene, game, score, player, predators, herd, eggs, pickups, world, hud, resetGame };
 
   return { engine, scene };
 }

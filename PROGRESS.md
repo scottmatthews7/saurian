@@ -181,13 +181,61 @@
   single-shot evals on the isolated `dino-arena-a` context, guarded by a
   `location.href` check.
 
-## Next (session 6)
+## Done (session 6) — day/night gameplay arc
+- **Predators bolder at dusk** (`config.DUSK`, `world.js`, `ai.js`, `game.js`,
+  `hud.js`, `index.html`): the headline ask. Each run now has a *run-scoped dusk
+  arc* — full daylight for `startSeconds` (25s), then a smoothstep ramp to
+  deepest dusk by `fullDuskSeconds` (150s). This is **separate from the slow
+  ambient `DAYNIGHT` cycle** so a single 60-120s session actually feels it.
+  - `world.getDusk()` exposes the 0..1 dusk factor; `world.resetDusk()` on soft
+    restart. The arc dims the arena toward `minLight` (0.45 — floored, so it's an
+    evening look, never blindness) and **warms the sun/sky/fog toward amber**.
+  - As dusk deepens the **T-Rex grows bolder**: `+trexSightBonus` sight range,
+    `+trexLoseBonus` lose-interest range, `+trexSpeedBonus` chase speed (all
+    blended by the dusk factor in `ai.js`; module-level `setDusk()` pushed each
+    frame from `game.js`). The **herd gets jumpier** (`+herbFleeBonus` flee range).
+  - **Readability:** a HUD "Daylight → Dusk" bar (depletes as dusk falls) with a
+    ☀️/🌆 icon + label that flip at `duskThreshold` (0.5); a screen-edge amber
+    `#duskTint` vignette; and a one-shot **"DUSK FALLS — predators grow bolder"**
+    popup + roar at the threshold so a fresh player reads the escalation.
+- **Dusk payoff — late banks pay double** (`DUSK.bankBonus`, `game.js` onBank):
+  banking eggs scales from 1x (day) to **2x** at deepest dusk, with a 🌆 tag on
+  the score popup. Makes dusk *risk/reward* (exciting), not pure punishment.
+- **Title screen previews the arc** ("predators grow bolder — but late banks pay
+  double") so the plan is clear before the first input. Win banner adds a
+  "🌆 You held out into dusk!" flourish when you win after dusk has fallen.
+- **Debug handle widened:** `window.__game` now also exposes `world` + `hud`
+  (was missing) — far easier in-browser probing for future sessions.
+
+## Verified (session 6)
+- All 14 src modules pass `node --check`.
+- **Headless logic test** `tools/dusk_test.mjs` (`node tools/dusk_test.mjs`,
+  no Babylon): dusk arc (full day at start, deepest at fullDuskSeconds,
+  monotonic, smoothstep midpoint = 0.5), predator boldness (sight/lose/speed/
+  flee all increase with dusk, none in full day, sight always < lose-interest),
+  the light floor, and the bank bonus (1x day → 2x dusk). **All pass.**
+- Live in-browser (port 8124, manual-`render()` fast-forward, **0 console
+  errors**, 639 meshes):
+  - Dusk arc confirmed over a simulated run: daylight bar 100→~14%, sun 1.7→0.48
+    (floored, not black), tint 0→0.86, icon ☀️→🌆 at the midpoint, sky warms.
+  - HUD `setDusk(0.7)` → bar 30% remaining, 🌆 icon, tint 0.7 (correct).
+  - Bank-bonus formula at dusk 0.7 × combo 2 = 340 pts (100·2·1.7) ✓.
+  - Title screen renders the dusk-arc line; run starts on input, banner hides.
+- **Env note (worse than ever):** the parallel `dinob` instance now spawns NEW
+  tabs (reusing its own isolated contexts) pointed at my `:8124` URLs and steals
+  the selection within ~1s, so multi-step probes get hijacked mid-flight.
+  Worked around it with single-shot evals guarded by a `location.href` check and
+  the `window.__game` handle; closed my own `dinoa-dusk` context tab. Left the
+  peer's `dinob-*` context tabs alone.
+
+## Next (session 7)
 - More biome variety (second pond / rocky mesa / tar pit); ambient grazing anims.
-- A day/night *gameplay* effect now that the cycle is readable (predators bolder
-  toward dusk) — the lighting groundwork is in.
-- Egg variety beyond golden (e.g. a "cursed" egg that draws the T-Rex).
-- Consider a roar that also briefly buffs the raptor (e.g. a short speed burst)
-  for more offensive use; tune `roarCooldown`/`roarStagger` after live play.
+- Egg variety beyond golden (e.g. a "cursed" egg that draws the T-Rex —
+  especially nasty at dusk).
+- Tune the dusk numbers after live play: `fullDuskSeconds` (150) vs typical run
+  length, `trexSpeedBonus` (does the chase stay escapable at dusk?), `bankBonus`.
+- Consider dusk also speeding the ROAR cooldown (a defensive payoff to match the
+  offensive bank bonus), and a moonrise/torch-lit-nest readability aid.
 
 ## Run it
 ```
