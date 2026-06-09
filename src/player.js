@@ -176,6 +176,24 @@ export async function createPlayer(scene, shadow, input) {
     dino.root.position.set(x, y, z);
   };
 
+  // Soft restart: restore all combat/movement state and re-centre.
+  state.reset = (x, y, z) => {
+    state.health = state.maxHealthValue;
+    state.velY = 0;
+    state.grounded = true;
+    state.facing = 0;
+    state.attackTimer = 0;
+    state.invuln = 0;
+    state.attacking = 0;
+    state.stamina = PLAYER.staminaMax;
+    state.exhausted = false;
+    state.carrying = 0;
+    state.dead = false;
+    state.warpTo(x, y, z);
+    dino.setYaw(0);
+    dino.play("Idle");
+  };
+
   return state;
 }
 

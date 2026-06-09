@@ -37,34 +37,40 @@ export function createEggs(scene, shadow, groundFn) {
     carriedVisuals.push(cv);
   }
 
-  const eggs = [];
-  for (let i = 0; i < EGGS.count; i++) {
-    // Golden eggs spawn farther out (riskier to reach).
+  // Roll a fresh spawn for an egg slot: golden-ness, position, material, light.
+  // Used at creation and on a soft restart so each run scatters anew.
+  const rollEgg = (e) => {
     const golden = Math.random() < EGGS.goldenChance;
     const r = golden
       ? ARENA.radius - 20 + Math.random() * 12
       : 20 + Math.random() * (ARENA.radius - 26);
     const a = Math.random() * Math.PI * 2;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
-    const dia = golden ? 1.25 : 1;
-    const mesh = B.MeshBuilder.CreateSphere("egg" + i, { diameterX: dia, diameterY: dia * 1.4, diameterZ: dia }, scene);
-    mesh.material = golden ? goldMat : eggMat;
-    const baseY = groundFn(x, z) + 0.9;
-    mesh.position.set(x, baseY, z);
+    e.golden = golden;
+    e.counts = golden ? EGGS.goldenCounts : 1;
+    e.value = golden ? EGGS.goldenValueMul : 1;
+    e.collected = false;
+    e.banked = false;
+    e.baseY = groundFn(x, z) + 0.9;
+    e.mesh.material = golden ? goldMat : eggMat;
+    e.mesh.scaling.setAll(golden ? 1.25 : 1);
+    e.mesh.position.set(x, e.baseY, z);
+    e.mesh.setEnabled(true);
+    e.light.diffuse = golden ? new B.Color3(1, 0.8, 0.3) : new B.Color3(1, 0.9, 0.5);
+    e.light.intensity = golden ? 1.0 : 0.6;
+    e.light.range = golden ? 14 : 10;
+    e.light.position.copyFrom(e.mesh.position);
+    e.light.setEnabled(true);
+  };
+
+  const eggs = [];
+  for (let i = 0; i < EGGS.count; i++) {
+    const mesh = B.MeshBuilder.CreateSphere("egg" + i, { diameterX: 1, diameterY: 1.4, diameterZ: 1 }, scene);
     shadow.addShadowCaster(mesh);
-
-    // glow light
-    const light = new B.PointLight("eggLight" + i, mesh.position.clone(), scene);
-    light.diffuse = golden ? new B.Color3(1, 0.8, 0.3) : new B.Color3(1, 0.9, 0.5);
-    light.intensity = golden ? 1.0 : 0.6;
-    light.range = golden ? 14 : 10;
-
-    eggs.push({
-      mesh, light, baseY, golden,
-      counts: golden ? EGGS.goldenCounts : 1,
-      value: golden ? EGGS.goldenValueMul : 1,
-      collected: false, banked: false,
-    });
+    const light = new B.PointLight("eggLight" + i, B.Vector3.Zero(), scene);
+    const e = { mesh, light, baseY: 0, golden: false, counts: 1, value: 1, collected: false, banked: false };
+    rollEgg(e);
+    eggs.push(e);
   }
 
   const state = {
@@ -150,6 +156,13 @@ export function createEggs(scene, shadow, groundFn) {
       return true;
     },
     remaining() { return eggs.filter((e) => !e.collected && !e.banked).length; },
+    // Soft restart: re-roll every egg and clear carried/banked state.
+    reset() {
+      state.carried = [];
+      state.banked = 0;
+      eggs.forEach(rollEgg);
+      carriedVisuals.forEach((cv) => cv.setEnabled(false));
+    },
   };
   return state;
 }

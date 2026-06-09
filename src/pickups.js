@@ -40,6 +40,9 @@ export function createPickups(scene, shadow, groundFn) {
       slot.mesh.setEnabled(true);
       return true;
     },
+    reset() {
+      for (const it of items) { it.active = false; it.mesh.setEnabled(false); }
+    },
     update(dt, player) {
       state.bobT += dt;
       const pp = player.dino.root.position;

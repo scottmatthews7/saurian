@@ -109,6 +109,21 @@ export async function createTrex(scene, shadow, groundFn) {
     if (state.health <= 0) { state.dead = true; dino.play("Death", { loop: false }); }
   };
 
+  // Soft restart: revive at a fresh spot, full health, back on patrol.
+  state.reset = function () {
+    const p = randPointInArena();
+    dino.root.position.set(p.x, groundFn(p.x, p.z), p.z);
+    state.health = TREX.maxHealth;
+    state.mode = "patrol";
+    state.target = randPointInArena();
+    state.attackTimer = 0;
+    state.speedBonus = 0;
+    state.enraged = false;
+    state.enrageGlow = 0;
+    state.dead = false;
+    dino.play("Idle");
+  };
+
   return state;
 }
 
@@ -229,6 +244,20 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
       dino.play("Death", { loop: false });
       if (state.onDown) state.onDown(dino.root.position.clone());
     }
+  };
+
+  // Soft restart: revive, full health, fresh wander target.
+  state.reset = function () {
+    const p = randPointInArena();
+    dino.root.position.set(p.x, groundFn(p.x, p.z), p.z);
+    state.health = 60;
+    state.dead = false;
+    state.fleeing = false;
+    state.charging = 0;
+    state.chargeCd = 0;
+    state.chargeHitDone = false;
+    state.target = randPointInArena();
+    dino.play("Idle");
   };
   return state;
 }

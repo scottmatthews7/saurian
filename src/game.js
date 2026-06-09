@@ -309,9 +309,29 @@ export async function startGame() {
     minimap.update(player, predators, herd, eggs, pickups);
   });
 
+  // Soft restart — re-rolls a fresh run in place without reloading the page
+  // (keeps the loaded GLBs and the unlocked AudioContext).
+  const resetGame = () => {
+    // dispose any extra predators spawned on later waves; keep the first
+    while (predators.length > 1) predators.pop().dino.dispose();
+    secondSpawned = false;
+    predators.forEach((p) => p.reset());
+    herd.forEach((h) => h.reset());
+    eggs.reset();
+    pickups.reset();
+    const c = world.heightAt(0, 0);
+    player.reset(0, c, 0);
+    score.points = 0; score.combo = 1; score.lastBankAt = -999;
+    game.over = false; game.won = false; game.paused = false;
+    game.elapsed = 0; game.wave = 0;
+    stepTimer = 0; tensionTimer = 0;
+    hud.setScore(0, 1);
+    hud.hideBanner();
+  };
+
   window.addEventListener("keydown", (e) => {
     const k = e.key.toLowerCase();
-    if (k === "r" && game.over) location.reload();
+    if (k === "r" && game.over) resetGame();
     if (k === "p" && started && !game.over) {
       game.paused = !game.paused;
       if (game.paused) hud.showBanner("PAUSED", "Press P to resume.", "start");
@@ -321,6 +341,9 @@ export async function startGame() {
 
   engine.runRenderLoop(() => scene.render());
   window.addEventListener("resize", () => engine.resize());
+
+  // Debug handle for in-browser smoke tests (harmless to leave exposed).
+  window.__game = { engine, scene, game, score, player, predators, herd, eggs, pickups, resetGame };
 
   return { engine, scene };
 }
