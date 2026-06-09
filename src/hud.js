@@ -7,6 +7,8 @@ export function createHUD() {
   const eggCount = el("eggCount");
   const carryCount = el("carryCount");
   const objective = el("objective");
+  const scoreEl = el("score");
+  const comboEl = el("combo");
   const banner = el("banner");
   const trexBar = el("trexFill");
   const staminaBar = el("staminaFill");
@@ -35,6 +37,10 @@ export function createHUD() {
       eggCount.textContent = `${banked} / ${target}`;
       carryCount.textContent = carrying > 0 ? `Carrying ${carrying} — get to the nest!` :
         (remaining > 0 ? `${remaining} eggs out there` : "All eggs found");
+    },
+    setScore(points, combo) {
+      if (scoreEl) scoreEl.textContent = points.toLocaleString();
+      if (comboEl) comboEl.textContent = combo > 1 ? `Combo x${combo}` : "";
     },
     setObjective(text) { objective.textContent = text; },
     // Objective pill with a compass arrow rotated toward a screen-space heading

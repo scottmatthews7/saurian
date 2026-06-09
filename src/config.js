@@ -45,6 +45,7 @@ export const TREX = {
   attackDamage: 22,      // damage to player on contact bite
   maxHealth: 140,
   turnLerp: 0.06,
+  secondSpawnWave: 3,    // a second T-Rex joins the hunt from this wave (~90s)
 };
 
 export const HERBIVORE = {
@@ -72,6 +73,10 @@ export const EGGS = {
   pickupRange: 2.8,
   bobHeight: 0.4,
   glowIntensity: 0.8,
+  baseValue: 100,        // score per egg banked
+  comboWindow: 8,        // sec — bank again within this to grow the combo
+  comboStep: 0.5,        // +0.5x multiplier per chained bank
+  comboMax: 4,           // multiplier cap
 };
 
 export const CAMERA = {

@@ -25,7 +25,7 @@ export function createMinimap() {
   }
 
   return {
-    update(player, trex, herd, eggs) {
+    update(player, predators, herd, eggs) {
       ctx.clearRect(0, 0, size, size);
 
       // arena disc
@@ -61,10 +61,13 @@ export function createMinimap() {
         }
       }
 
-      // trex
-      if (trex && !trex.dead) {
-        const p = trex.dino.root.position;
-        dot(p.x, p.z, trex.mode === "chase" ? "#ff4d4d" : "#c0392b", 4);
+      // predators (one or more T-Rexes)
+      if (predators) {
+        for (const t of predators) {
+          if (t.dead) continue;
+          const p = t.dino.root.position;
+          dot(p.x, p.z, t.mode === "chase" ? "#ff4d4d" : "#c0392b", 4);
+        }
       }
 
       // player with facing wedge

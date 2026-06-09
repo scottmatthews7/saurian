@@ -58,19 +58,38 @@ export async function startGame() {
 
   // --- wire feedback callbacks (audio + particles + screen shake) ---
   const B2 = window.BABYLON;
+  // scoring + combo: chained banks within comboWindow grow a multiplier
+  const score = { points: 0, combo: 1, lastBankAt: -999 };
   eggs.onPickup = (pos) => { audio.pickup(); fx.pickupBurst(pos, new B2.Color4(1, 0.9, 0.5, 1)); };
-  eggs.onBank = () => { audio.bank(); fx.pickupBurst(eggs.nest.position, new B2.Color4(0.5, 1, 0.6, 1)); };
+  eggs.onBank = (n) => {
+    audio.bank();
+    fx.pickupBurst(eggs.nest.position, new B2.Color4(0.5, 1, 0.6, 1));
+    const sinceLast = game.elapsed - score.lastBankAt;
+    score.combo = sinceLast <= EGGS.comboWindow
+      ? Math.min(EGGS.comboMax, score.combo + EGGS.comboStep)
+      : 1;
+    score.lastBankAt = game.elapsed;
+    score.points += Math.round(n * EGGS.baseValue * score.combo);
+    hud.setScore(score.points, score.combo);
+  };
   eggs.onDrop = (pos) => fx.pickupBurst(pos, new B2.Color4(1, 0.5, 0.3, 1));
   player.onAttack = () => audio.bite();
-  trex.onBite = () => {
-    audio.hurt();
-    fx.addShake(JUICE.camShakeOnHit);
-    // a bite while carrying makes you fumble an egg back into the valley
-    const pp = player.dino.root.position;
-    eggs.dropCarried(pp, world.heightAt(pp.x, pp.z));
-  };
-  trex.onRoar = () => audio.roar();
   herd.forEach((h) => { h.onCharge = () => { audio.bite(); fx.addShake(JUICE.chargeShake); }; });
+
+  // Predators are a list so later waves can add a second T-Rex.
+  const predators = [];
+  const wirePredator = (p) => {
+    p.onBite = () => {
+      audio.hurt();
+      fx.addShake(JUICE.camShakeOnHit);
+      const pp = player.dino.root.position;
+      eggs.dropCarried(pp, world.heightAt(pp.x, pp.z));
+    };
+    p.onRoar = () => audio.roar();
+    predators.push(p);
+  };
+  wirePredator(trex);
+  let secondSpawned = false;
 
   // mute toggle (button + M key)
   hud.onMuteClick(() => hud.setMuteLabel(audio.toggleMute()));
@@ -101,7 +120,9 @@ export async function startGame() {
     wave: 0,
   };
   const BEST_TIME_KEY = "dinoArenaBestTime";
+  const BEST_SCORE_KEY = "dinoArenaBestScore";
   const readBest = () => { const v = +localStorage.getItem(BEST_TIME_KEY); return v > 0 ? v : null; };
+  const readBestScore = () => { const v = +localStorage.getItem(BEST_SCORE_KEY); return v > 0 ? v : null; };
   // Footstep cadence reuses the dust interval so puffs and thuds stay in sync.
   const STEP_INTERVAL = JUICE.dustInterval;
   let stepTimer = 0;
@@ -130,14 +151,35 @@ export async function startGame() {
 
     if (!game.over) {
       game.elapsed += dt;
-      // difficulty ramp: every 30s the trex gets a bit faster
+      // difficulty ramp: every 30s predators get a bit faster
       const wave = Math.floor(game.elapsed / 30);
-      if (wave > game.wave) { game.wave = wave; trex.speedBonus = wave * TREX.chaseSpeedRamp; }
+      if (wave > game.wave) {
+        game.wave = wave;
+        const bonus = wave * TREX.chaseSpeedRamp;
+        predators.forEach((p) => { p.speedBonus = bonus; });
+        // a second T-Rex joins the hunt at the configured wave
+        if (!secondSpawned && wave >= TREX.secondSpawnWave) {
+          secondSpawned = true;
+          createTrex(scene, world.shadow, world.heightAt).then((p2) => {
+            p2.speedBonus = game.wave * TREX.chaseSpeedRamp;
+            wirePredator(p2);
+            audio.roar();
+          });
+        }
+      }
 
       player.carrying = eggs.carrying;   // drives carry-slow in the controller
       player.update(dt);
-      trex.update(dt, player);
-      herd.forEach((h) => h.update(dt, player, trex));
+      // the nearest live predator is what the herd flees and the HUD tracks
+      let primary = null, primaryD = Infinity;
+      const pp0 = player.dino.root.position;
+      for (const p of predators) {
+        p.update(dt, player);
+        if (p.dead) continue;
+        const d = Math.hypot(p.dino.root.position.x - pp0.x, p.dino.root.position.z - pp0.z);
+        if (d < primaryD) { primaryD = d; primary = p; }
+      }
+      herd.forEach((h) => h.update(dt, player, primary));
       eggs.update(dt, player);
 
       // footstep dust + sound while running on the ground
@@ -148,11 +190,10 @@ export async function startGame() {
         if (stepTimer <= 0) { stepTimer = STEP_INTERVAL; audio.step(); }
       }
 
-      // T-Rex tension heartbeat: faster + louder the closer it is while chasing
-      if (!trex.dead && trex.mode === "chase") {
-        const tp = trex.dino.root.position;
-        const distT = Math.hypot(pPos.x - tp.x, pPos.z - tp.z);
-        const closeness = Math.max(0, 1 - distT / TREX.sightRange); // 0 far .. 1 on top
+      // tension heartbeat from the nearest chasing predator
+      const chasing = primary && primary.mode === "chase" ? primary : null;
+      if (chasing) {
+        const closeness = Math.max(0, 1 - primaryD / TREX.sightRange); // 0 far .. 1 on top
         tensionTimer -= dt;
         if (tensionTimer <= 0) {
           tensionTimer = AUDIO.tensionIntervalFar -
@@ -163,18 +204,27 @@ export async function startGame() {
         tensionTimer = 0;
       }
 
-      // player bite can damage the trex if close + facing
-      if (player.attacking > 0.3 && !trex.dead) {
-        const pp = player.dino.root.position, tp = trex.dino.root.position;
-        if (Math.hypot(pp.x - tp.x, pp.z - tp.z) < PLAYER.attackRange) {
-          trex.takeDamage(PLAYER.attackDamage * dt * 3); // sustained over the bite window
+      // player bite damages any predator in range during the bite window
+      if (player.attacking > 0.3) {
+        for (const p of predators) {
+          if (p.dead) continue;
+          const tp = p.dino.root.position;
+          if (Math.hypot(pPos.x - tp.x, pPos.z - tp.z) < PLAYER.attackRange) {
+            p.takeDamage(PLAYER.attackDamage * dt * 3); // sustained over the bite window
+          }
         }
       }
 
-      // HUD
+      // expire the combo display once the chain window lapses
+      if (score.combo > 1 && game.elapsed - score.lastBankAt > EGGS.comboWindow) {
+        score.combo = 1;
+        hud.setScore(score.points, score.combo);
+      }
+
+      // HUD — show the most-threatening (nearest live) predator's health
       hud.setHealth(player.health, PLAYER.maxHealth);
       hud.setStamina(player.stamina, PLAYER.staminaMax, player.exhausted);
-      hud.setTrex(trex.health, TREX.maxHealth);
+      hud.setTrex(primary ? primary.health : 0, TREX.maxHealth);
       hud.setEggs(eggs.banked, EGGS.targetToWin, eggs.carrying, eggs.remaining());
 
       // win / lose
@@ -185,12 +235,17 @@ export async function startGame() {
         const prev = readBest();
         const isBest = prev == null || t < prev;
         if (isBest) localStorage.setItem(BEST_TIME_KEY, t.toFixed(1));
+        const prevScore = readBestScore();
+        const bestScore = prevScore == null || score.points > prevScore;
+        if (bestScore) localStorage.setItem(BEST_SCORE_KEY, String(score.points));
         const bestLine = isBest ? "New best time! " : `Best: ${prev.toFixed(0)}s. `;
-        hud.showBanner("YOU SURVIVED", `${bestLine}Banked ${eggs.banked} eggs in ${t.toFixed(0)}s. Press R to play again.`, "win");
+        hud.showBanner("YOU SURVIVED",
+          `${bestLine}Score ${score.points.toLocaleString()}${bestScore ? " (best!)" : ""} · ${t.toFixed(0)}s · ${eggs.banked} eggs. Press R to play again.`,
+          "win");
       } else if (player.dead) {
         game.over = true;
         audio.lose();
-        hud.showBanner("DEVOURED", `You lasted ${game.elapsed.toFixed(0)}s and banked ${eggs.banked} eggs. Press R to retry.`, "lose");
+        hud.showBanner("DEVOURED", `You lasted ${game.elapsed.toFixed(0)}s · score ${score.points.toLocaleString()} · ${eggs.banked} eggs banked. Press R to retry.`, "lose");
       }
 
       // compass + timer guide on the objective pill
@@ -212,7 +267,7 @@ export async function startGame() {
     }
 
     // radar — updated whenever the game is running (even after win/lose)
-    minimap.update(player, trex, herd, eggs);
+    minimap.update(player, predators, herd, eggs);
   });
 
   window.addEventListener("keydown", (e) => {
