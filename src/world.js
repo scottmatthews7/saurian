@@ -1,4 +1,4 @@
-import { ARENA, DAYNIGHT } from "./config.js";
+import { ARENA, DAYNIGHT, ATMOSPHERE } from "./config.js";
 
 // Builds terrain, sky, lighting, fog, foliage and the day/night cycle.
 // Returns handles the rest of the game needs (ground mesh for collisions,
@@ -77,10 +77,12 @@ export function buildWorld(scene) {
   };
 
   scatterFoliage(scene, shadow, heightAt);
+  const atmosphere = buildAtmosphere(scene);
 
   // --- Day/night cycle -----------------------------------------------------
   let t = 0.25; // start mid-morning
   const update = (dt) => {
+    atmosphere.update(dt);
     t = (t + dt / DAYNIGHT.cycleSeconds) % 1;
     const ang = t * Math.PI * 2;
     const sx = Math.cos(ang), sy = Math.sin(ang);
@@ -99,6 +101,108 @@ export function buildWorld(scene) {
   };
 
   return { ground, shadow, heightAt, update };
+}
+
+// Visual set dressing that lives above the playfield: a circling pterosaur
+// flock, drifting clouds, and floating pollen. None of it collides.
+function buildAtmosphere(scene) {
+  const B = window.BABYLON;
+
+  // ---- Pterosaur flock (stylised: a body + two flapping wings) ----------
+  const birdMat = new B.StandardMaterial("birdMat", scene);
+  birdMat.diffuseColor = new B.Color3(0.16, 0.15, 0.18);
+  birdMat.specularColor = B.Color3.Black();
+
+  const birds = [];
+  for (let i = 0; i < ATMOSPHERE.birdCount; i++) {
+    const root = new B.TransformNode("bird" + i, scene);
+    const body = B.MeshBuilder.CreateCylinder("birdBody" + i,
+      { height: 1.6, diameterTop: 0, diameterBottom: 0.5, tessellation: 5 }, scene);
+    body.rotation.x = Math.PI / 2;
+    body.material = birdMat;
+    body.parent = root;
+    body.isPickable = false;
+    const wingL = B.MeshBuilder.CreateBox("wingL" + i, { width: 2.4, height: 0.06, depth: 0.8 }, scene);
+    const wingR = B.MeshBuilder.CreateBox("wingR" + i, { width: 2.4, height: 0.06, depth: 0.8 }, scene);
+    wingL.material = wingR.material = birdMat;
+    wingL.parent = wingR.parent = root;
+    wingL.position.x = -1.3; wingR.position.x = 1.3;
+    wingL.isPickable = wingR.isPickable = false;
+    birds.push({
+      root, wingL, wingR,
+      phase: (i / ATMOSPHERE.birdCount) * Math.PI * 2,
+      radius: ATMOSPHERE.birdRadius * (0.7 + 0.3 * (i % 3) / 2),
+      height: ATMOSPHERE.birdHeight + (i % 3) * 4,
+      flap: Math.random() * Math.PI * 2,
+    });
+  }
+
+  // ---- Drifting clouds (squashed, unlit, additive-soft) -----------------
+  const cloudMat = new B.StandardMaterial("cloudMat", scene);
+  cloudMat.diffuseColor = new B.Color3(1, 1, 1);
+  cloudMat.emissiveColor = new B.Color3(0.85, 0.88, 0.95);
+  cloudMat.specularColor = B.Color3.Black();
+  cloudMat.alpha = 0.55;
+  cloudMat.disableLighting = true;
+  const clouds = [];
+  for (let i = 0; i < ATMOSPHERE.cloudCount; i++) {
+    const c = B.MeshBuilder.CreateSphere("cloud" + i, { segments: 6, diameter: 1 }, scene);
+    c.material = cloudMat;
+    c.isPickable = false;
+    const s = 14 + Math.random() * 22;
+    c.scaling.set(s, s * 0.4, s * 0.7);
+    const a = Math.random() * Math.PI * 2;
+    const r = 30 + Math.random() * 120;
+    c.position.set(Math.cos(a) * r, ATMOSPHERE.cloudHeight + Math.random() * 25, Math.sin(a) * r);
+    clouds.push({ mesh: c, drift: 0.4 + Math.random() * 0.6 });
+  }
+
+  // ---- Floating pollen motes catching the light -------------------------
+  const pollen = new B.ParticleSystem("pollen", 240, scene);
+  const pdt = new B.DynamicTexture("pollenDot", { width: 32, height: 32 }, scene, false);
+  const pctx = pdt.getContext();
+  const pg = pctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+  pg.addColorStop(0, "rgba(255,255,255,1)");
+  pg.addColorStop(1, "rgba(255,255,255,0)");
+  pctx.fillStyle = pg; pctx.fillRect(0, 0, 32, 32); pdt.hasAlpha = true; pdt.update();
+  pollen.particleTexture = pdt;
+  pollen.emitter = new B.Vector3(0, 4, 0);
+  pollen.minEmitBox = new B.Vector3(-ARENA.radius, 0, -ARENA.radius);
+  pollen.maxEmitBox = new B.Vector3(ARENA.radius, 14, ARENA.radius);
+  pollen.color1 = new B.Color4(1, 0.95, 0.7, 0.5);
+  pollen.color2 = new B.Color4(0.9, 1, 0.8, 0.35);
+  pollen.colorDead = new B.Color4(1, 1, 0.8, 0);
+  pollen.minSize = 0.08; pollen.maxSize = 0.22;
+  pollen.minLifeTime = 4; pollen.maxLifeTime = 8;
+  pollen.emitRate = 30;
+  pollen.blendMode = B.ParticleSystem.BLENDMODE_ADD;
+  pollen.gravity = new B.Vector3(0, 0.1, 0);
+  pollen.direction1 = new B.Vector3(-0.3, 0.2, -0.3);
+  pollen.direction2 = new B.Vector3(0.3, 0.5, 0.3);
+  pollen.minEmitPower = 0.2; pollen.maxEmitPower = 0.6;
+  pollen.start();
+
+  let tt = 0;
+  return {
+    update(dt) {
+      tt += dt;
+      for (const b of birds) {
+        const a = b.phase + tt * ATMOSPHERE.birdSpeed;
+        const x = Math.cos(a) * b.radius, z = Math.sin(a) * b.radius;
+        b.root.position.set(x, b.height + Math.sin(tt * 0.5 + b.phase) * 2, z);
+        // face along the tangent of the orbit
+        b.root.rotation.y = -a + Math.PI / 2;
+        b.flap += dt * 6;
+        const flap = Math.sin(b.flap) * 0.6;
+        b.wingL.rotation.z = flap;
+        b.wingR.rotation.z = -flap;
+      }
+      for (const c of clouds) {
+        c.mesh.position.x += c.drift * dt;
+        if (c.mesh.position.x > 150) c.mesh.position.x = -150;
+      }
+    },
+  };
 }
 
 function scatterFoliage(scene, shadow, heightAt) {

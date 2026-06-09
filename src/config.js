@@ -103,6 +103,18 @@ export const DAYNIGHT = {
   cycleSeconds: 120,     // full day length
 };
 
+// Atmosphere: stylised non-gameplay set dressing. A pterosaur flock circles
+// overhead, low drifting clouds, and floating pollen motes catch the light.
+// Pure visual polish — none of it collides or affects the sim.
+export const ATMOSPHERE = {
+  birdCount: 7,          // circling pterosaurs
+  birdHeight: 34,        // altitude they cruise at
+  birdRadius: 60,        // orbit radius around the arena centre
+  birdSpeed: 0.12,       // radians/sec around the orbit
+  cloudCount: 9,
+  cloudHeight: 70,
+};
+
 // Per-species facing correction (radians) applied on top of the gameplay yaw.
 // Quaternius glb dinos import facing +Z in Babylon's left-handed scene, which
 // matches our atan2(dx, dz) -> rotation.y convention, so the default is 0.
