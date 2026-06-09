@@ -1,0 +1,171 @@
+import { TREX, HERBIVORE, ARENA } from "./config.js";
+import { loadDino } from "./dino.js";
+
+// AI agents: one apex T-Rex predator with a patrol/chase/attack FSM, and a
+// herd of herbivores that wander and flee from threats (player + trex).
+
+const HERB_KINDS = ["triceratops", "stegosaurus", "apatosaurus", "parasaur"];
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+function randPointInArena() {
+  const r = Math.sqrt(Math.random()) * (ARENA.radius - 6);
+  const a = Math.random() * Math.PI * 2;
+  return { x: Math.cos(a) * r, z: Math.sin(a) * r };
+}
+
+export async function createTrex(scene, shadow, groundFn) {
+  const dino = await loadDino(scene, "trex", 4.2, shadow);
+  const start = randPointInArena();
+  dino.root.position.set(start.x, groundFn(start.x, start.z), start.z);
+
+  const state = {
+    dino, kind: "trex",
+    facing: 0,
+    health: TREX.maxHealth,
+    target: randPointInArena(),
+    mode: "patrol",
+    attackTimer: 0,
+    hitFlash: 0,
+    dead: false,
+    speedBonus: 0,
+  };
+
+  state.update = function (dt, player) {
+    if (state.dead) return;
+    state.attackTimer = Math.max(0, state.attackTimer - dt);
+    const B = window.BABYLON;
+    const pos = dino.root.position;
+    const pp = player.dino.root.position;
+    const distP = Math.hypot(pp.x - pos.x, pp.z - pos.z);
+
+    // FSM
+    if (!player.dead && distP < TREX.sightRange) state.mode = "chase";
+    else if (state.mode === "chase" && distP > TREX.loseInterestRange) state.mode = "patrol";
+
+    let goal, speed;
+    if (state.mode === "chase") {
+      goal = { x: pp.x, z: pp.z };
+      speed = TREX.chaseSpeed + state.speedBonus;
+      if (distP < TREX.attackRange) {
+        speed = 0;
+        if (state.attackTimer <= 0) {
+          state.attackTimer = TREX.attackCooldown;
+          dino.play("Attack", { loop: false, speed: 1.2 });
+          if (distP < TREX.attackRange) player.takeDamage(TREX.attackDamage);
+        }
+      }
+    } else {
+      goal = state.target;
+      speed = TREX.patrolSpeed;
+      if (Math.hypot(goal.x - pos.x, goal.z - pos.z) < 4) state.target = randPointInArena();
+    }
+
+    const dx = goal.x - pos.x, dz = goal.z - pos.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    const targetYaw = Math.atan2(dx / dist, dz / dist);
+    state.facing = lerpAngle(state.facing, targetYaw, TREX.turnLerp);
+    dino.root.rotation.y = state.facing;
+
+    if (speed > 0) {
+      pos.x += (dx / dist) * speed * dt;
+      pos.z += (dz / dist) * speed * dt;
+      dino.play("Run", { speed: state.mode === "chase" ? 1.2 : 0.85 });
+    } else if (state.attackTimer > TREX.attackCooldown - 0.5) {
+      // attacking
+    } else {
+      dino.play("Idle");
+    }
+    pos.y = groundFn(pos.x, pos.z);
+    clampArena(pos);
+  };
+
+  state.takeDamage = function (amount) {
+    if (state.dead) return;
+    state.health = Math.max(0, state.health - amount);
+    state.hitFlash = 0.2;
+    if (state.health <= 0) { state.dead = true; dino.play("Death", { loop: false }); }
+  };
+
+  return state;
+}
+
+export async function createHerd(scene, shadow, groundFn) {
+  const herd = [];
+  for (let i = 0; i < HERBIVORE.count; i++) {
+    const kind = HERB_KINDS[i % HERB_KINDS.length];
+    const h = await createHerbivore(scene, shadow, groundFn, kind);
+    herd.push(h);
+  }
+  return herd;
+}
+
+async function createHerbivore(scene, shadow, groundFn, kind) {
+  const heights = { triceratops: 2.6, stegosaurus: 2.8, apatosaurus: 5.5, parasaur: 3.2 };
+  const dino = await loadDino(scene, kind, heights[kind] || 3, shadow);
+  const start = randPointInArena();
+  dino.root.position.set(start.x, groundFn(start.x, start.z), start.z);
+
+  const state = {
+    dino, kind,
+    facing: rand(0, 6),
+    target: randPointInArena(),
+    fleeing: false,
+    dead: false,
+    health: 60,
+  };
+
+  state.update = function (dt, player, trex) {
+    if (state.dead) return;
+    const pos = dino.root.position;
+    const threats = [player.dino.root.position];
+    if (trex && !trex.dead) threats.push(trex.dino.root.position);
+
+    // nearest threat
+    let nearest = null, nd = Infinity;
+    for (const t of threats) {
+      const d = Math.hypot(t.x - pos.x, t.z - pos.z);
+      if (d < nd) { nd = d; nearest = t; }
+    }
+    state.fleeing = nd < HERBIVORE.fleeRange;
+
+    let goal, speed;
+    if (state.fleeing && nearest) {
+      goal = { x: pos.x + (pos.x - nearest.x), z: pos.z + (pos.z - nearest.z) };
+      speed = HERBIVORE.fleeSpeed;
+    } else {
+      goal = state.target;
+      speed = HERBIVORE.wanderSpeed;
+      if (Math.hypot(goal.x - pos.x, goal.z - pos.z) < 3) state.target = randPointInArena();
+    }
+
+    const dx = goal.x - pos.x, dz = goal.z - pos.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    const targetYaw = Math.atan2(dx / dist, dz / dist);
+    state.facing = lerpAngle(state.facing, targetYaw, HERBIVORE.turnLerp);
+    dino.root.rotation.y = state.facing;
+
+    pos.x += (dx / dist) * speed * dt;
+    pos.z += (dz / dist) * speed * dt;
+    pos.y = groundFn(pos.x, pos.z);
+    clampArena(pos);
+
+    dino.play(state.fleeing ? "Run" : "Walk", { speed: state.fleeing ? 1.3 : 0.8 });
+  };
+
+  state.takeDamage = function () {};
+  return state;
+}
+
+function clampArena(pos) {
+  const d = Math.hypot(pos.x, pos.z);
+  if (d > ARENA.radius - 2) {
+    const k = (ARENA.radius - 2) / d;
+    pos.x *= k; pos.z *= k;
+  }
+}
+
+function lerpAngle(a, b, t) {
+  let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
+}
