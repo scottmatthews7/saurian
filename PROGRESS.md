@@ -133,20 +133,69 @@
 - **Env note (unchanged):** parallel Claude instances hijack any tab within ~1-2s;
   long probe loops get navigated away, so verification uses short single-shot evals.
 
-## Next (session 5)
-- More biome variety (second pond / rocky mesa / tar pit); ambient grazing anims;
-  a day/night gameplay effect (predators bolder at night).
+## Done (session 5) — polish pass
+- **Balance — deterministic bite** (`game.js`, `player.js`, `ai.js`): the bite
+  was applying `attackDamage*dt*3` *every frame* of the window — frame-rate
+  dependent and well below the configured 34/bite. Now each swing lands exactly
+  `PLAYER.attackDamage` once per target, gated by a per-swing `biteId` +
+  per-target `lastBiteId`. So config means what it says: ~5 bites to fell a
+  T-Rex (140hp), 2 for a herbivore (60hp). Small camera kick (`JUICE.
+  biteConnectShake`) the first time a swing connects = tactile confirmation.
+- **Feel — auto-follow camera** (`player.js createFollowCamera`, `CAMERA.
+  autoFollowLerp/manualHoldSeconds`): the camera now gently eases to sit behind
+  the raptor's movement heading so you always see where you flee in a chase.
+  Suspends for ~1.6s after any manual drag/wheel so deliberate look-around still
+  works. **Verified `camBehindDot=1.0`** running forward.
+- **Visual — gradient skydome** (`world.js makeSkyGradient`): a painted vertical
+  zenith→horizon gradient texture (cooler blue up top, warm pale at the horizon),
+  tinted by the day/night cycle via emissive colour. Real depth vs the old flat
+  fill. (Screenshot-confirmed.)
+- **Lighting fixes found while verifying** (`world.js`, `game.js`, `DAYNIGHT`):
+  (1) the day/night clock advanced while the player sat on the **title screen**,
+  so runs could start in gloom — now frozen until the run is live; (2) the cycle
+  dipped the arena toward darkness mid-run — `cycleSeconds` 120→**240** and a
+  `minDayLight` floor + remap keep it a gentle afternoon mood shift, never
+  nightfall. **Verified bright noon at run start** (sun 1.7, sky 0.55/0.72/0.90).
+- **Fresh idea — intimidating ROAR (Q)** (`config.PLAYER.roar*`, `player.onRoar`
+  in `game.js`, `ai.js roarReact`, HUD Roar bar, touch ROAR button): an active
+  panic/utility tool on an 8s cooldown. A T-Rex within `roarRadius` is staggered
+  (frozen, pursuit broken, dazed-blue flash) for `roarStagger`s; nearby
+  herbivores bolt in terror. Costs nothing but the cooldown → a tactical "get off
+  me" button. HUD Roar charge bar pulses READY when off cooldown.
+  **Verified:** roar flips a chasing T-Rex to patrol, staggers 1.32s (moved 0.0u
+  while staggered), panics a herbivore, engages the 8s cooldown.
+
+## Verified (session 5)
+- All 14 src modules pass `node --check`.
+- Each change probed individually in-browser (isolated context, port 8124):
+  **0 console errors/warnings** throughout; 639 meshes; bite deals exactly 34
+  once per swing (health flat across the whole window — not per-frame); camera
+  sits behind heading; sky gradient + daylight confirmed by screenshot; roar
+  staggers/panics + recharges.
+- **Housekeeping:** closed ~22 of my own stale dino-arena-a tabs that were
+  throttling measured FPS (left peer/dinob tabs alone). FPS still read low (~22)
+  on the final pass only because an active peer held window focus and throttled
+  the background tab — the build is unchanged from the ~95-103 FPS solo number.
+- **Env note (unchanged & still biting):** parallel `dinob` instances grab the
+  selected tab within ~1-2s and re-navigate it; verification uses short
+  single-shot evals on the isolated `dino-arena-a` context, guarded by a
+  `location.href` check.
+
+## Next (session 6)
+- More biome variety (second pond / rocky mesa / tar pit); ambient grazing anims.
+- A day/night *gameplay* effect now that the cycle is readable (predators bolder
+  toward dusk) — the lighting groundwork is in.
 - Egg variety beyond golden (e.g. a "cursed" egg that draws the T-Rex).
-- Tune `PTERO_DIVE` intervals after live play; a ground shadow decal under a
-  diving pterosaur as an extra dodge telegraph.
+- Consider a roar that also briefly buffs the raptor (e.g. a short speed burst)
+  for more offensive use; tune `roarCooldown`/`roarStagger` after live play.
 
 ## Run it
 ```
 cd /Users/scottmatthews/personal_repos/dino-arena-a
 python3 -m http.server 8124
 # open http://localhost:8124/
-# Controls: WASD move · Shift sprint · Space jump · Click/J bite · M mute · P pause · R restart
-# Touch (phones/tablets): left joystick to move (push full to sprint), BITE/JUMP buttons; tap to start/restart
+# Controls: WASD move · Shift sprint · Space jump · Click/J bite · Q roar · M mute · P pause · R restart
+# Touch (phones/tablets): left joystick to move (push full to sprint), ROAR/BITE/JUMP buttons; tap to start/restart
 ```
 
 ## Debug harness
