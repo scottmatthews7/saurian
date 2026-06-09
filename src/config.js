@@ -169,6 +169,10 @@ export const DUSK = {
   // duskFactor at which the run flips to a visible "dusk" presentation (icon/label)
   // AND fires the one-shot "predators grow bolder" cue. Shared so HUD + game agree.
   duskThreshold: 0.5,
+  // Risk/reward payoff: banking eggs as dusk deepens is worth more. The score
+  // multiplier scales from 1x (full day) to 1 + bankBonus at deepest dusk, so
+  // brave late play pays off — dusk is exciting, not only punishing. Arcade.
+  bankBonus: 1.0,         // +100% bank value at deepest dusk (so up to 2x)
 };
 
 // Atmosphere: stylised non-gameplay set dressing. A pterosaur flock circles

@@ -79,11 +79,15 @@ export async function startGame() {
       ? Math.min(EGGS.comboMax, score.combo + EGGS.comboStep)
       : 1;
     score.lastBankAt = game.elapsed;
+    // Dusk bank bonus: banking as dusk deepens is worth more (risk/reward).
+    const dusk = world.getDusk();
+    const duskMul = 1 + DUSK.bankBonus * dusk;
     // value is in "egg units" (golden eggs are worth goldenValueMul each)
-    const gained = Math.round(value * EGGS.baseValue * score.combo);
+    const gained = Math.round(value * EGGS.baseValue * score.combo * duskMul);
     score.points += gained;
     hud.setScore(score.points, score.combo);
-    hud.popup(`+${gained.toLocaleString()}${score.combo > 1 ? ` ×${score.combo}` : ""}`, "score");
+    const duskTag = dusk >= DUSK.duskThreshold ? " 🌆" : "";
+    hud.popup(`+${gained.toLocaleString()}${score.combo > 1 ? ` ×${score.combo}` : ""}${duskTag}`, "score");
   };
   eggs.onDrop = (pos) => fx.pickupBurst(pos, new B2.Color4(1, 0.5, 0.3, 1));
   pickups.onHeal = (pos) => {
