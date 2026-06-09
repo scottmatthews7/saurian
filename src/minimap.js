@@ -25,7 +25,7 @@ export function createMinimap() {
   }
 
   return {
-    update(player, predators, herd, eggs) {
+    update(player, predators, herd, eggs, pickups) {
       ctx.clearRect(0, 0, size, size);
 
       // arena disc
@@ -44,11 +44,20 @@ export function createMinimap() {
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // eggs (uncollected)
+      // eggs (uncollected) — golden eggs render larger and brighter
       if (eggs) {
         for (const e of eggs.eggs) {
           if (e.collected || e.banked) continue;
-          dot(e.mesh.position.x, e.mesh.position.z, "#ffd95a", 2.5);
+          if (e.golden) dot(e.mesh.position.x, e.mesh.position.z, "#ffb31a", 4);
+          else dot(e.mesh.position.x, e.mesh.position.z, "#ffd95a", 2.5);
+        }
+      }
+
+      // meat pickups
+      if (pickups) {
+        for (const it of pickups.items) {
+          if (!it.active) continue;
+          dot(it.mesh.position.x, it.mesh.position.z, "#ff6b5a", 2.5);
         }
       }
 

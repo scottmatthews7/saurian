@@ -105,11 +105,21 @@ export function createAudio() {
       n.connect(f); f.connect(g); g.connect(master);
       n.start(); n.stop(now() + 0.12);
     },
-    // Bright ascending blip for collecting an egg.
-    pickup() {
+    // Bright ascending blip for collecting an egg; golden eggs get an extra
+    // sparkle arpeggio so the rare pickup feels rewarding.
+    pickup(golden) {
       if (!ctx || muted) return;
       tone(660, 0.14, "triangle", 0.35, 990);
       tone(990, 0.18, "sine", 0.25, 1320);
+      if (golden) {
+        [1320, 1760, 2093].forEach((f, i) => setTimeout(() => tone(f, 0.16, "triangle", 0.22), 60 + i * 70));
+      }
+    },
+    // Warm restorative swell when eating meat to heal.
+    heal() {
+      if (!ctx || muted) return;
+      tone(330, 0.3, "sine", 0.3, 495);
+      tone(495, 0.35, "sine", 0.2, 660);
     },
     // Warm chord when an egg is banked at the nest.
     bank() {

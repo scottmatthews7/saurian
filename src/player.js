@@ -25,6 +25,7 @@ export async function createPlayer(scene, shadow, input) {
     grounded: true,
     facing: 0,           // yaw radians
     health: PLAYER.maxHealth,
+    maxHealthValue: PLAYER.maxHealth,
     attackTimer: 0,
     invuln: 0,
     attacking: 0,        // remaining attack-anim lock
@@ -147,6 +148,12 @@ export async function createPlayer(scene, shadow, input) {
       state.dead = true;
       dino.play("Death", { loop: false });
     }
+  };
+
+  state.heal = function (amount) {
+    if (state.dead) return;
+    state.health = Math.min(state.maxHealthValue, state.health + amount);
+    dino.flash(0.2, new B.Color3(0.1, 0.7, 0.2));
   };
 
   // ground height helper (matches world.heightAt; injected at game wiring)

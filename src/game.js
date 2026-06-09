@@ -2,6 +2,7 @@ import { buildWorld } from "./world.js";
 import { createPlayer, createFollowCamera } from "./player.js";
 import { createTrex, createHerd } from "./ai.js";
 import { createEggs } from "./eggs.js";
+import { createPickups } from "./pickups.js";
 import { createInput } from "./input.js";
 import { createHUD } from "./hud.js";
 import { createAudio } from "./audio.js";
@@ -55,13 +56,17 @@ export async function startGame() {
 
   setLoad("Scattering eggs…");
   const eggs = createEggs(scene, world.shadow, world.heightAt);
+  const pickups = createPickups(scene, world.shadow, world.heightAt);
 
   // --- wire feedback callbacks (audio + particles + screen shake) ---
   const B2 = window.BABYLON;
   // scoring + combo: chained banks within comboWindow grow a multiplier
   const score = { points: 0, combo: 1, lastBankAt: -999 };
-  eggs.onPickup = (pos) => { audio.pickup(); fx.pickupBurst(pos, new B2.Color4(1, 0.9, 0.5, 1)); };
-  eggs.onBank = (n) => {
+  eggs.onPickup = (pos, golden) => {
+    audio.pickup(golden);
+    fx.pickupBurst(pos, golden ? new B2.Color4(1, 0.82, 0.25, 1) : new B2.Color4(1, 0.9, 0.5, 1));
+  };
+  eggs.onBank = ({ count, value }) => {
     audio.bank();
     fx.pickupBurst(eggs.nest.position, new B2.Color4(0.5, 1, 0.6, 1));
     const sinceLast = game.elapsed - score.lastBankAt;
@@ -69,12 +74,21 @@ export async function startGame() {
       ? Math.min(EGGS.comboMax, score.combo + EGGS.comboStep)
       : 1;
     score.lastBankAt = game.elapsed;
-    score.points += Math.round(n * EGGS.baseValue * score.combo);
+    // value is in "egg units" (golden eggs are worth goldenValueMul each)
+    score.points += Math.round(value * EGGS.baseValue * score.combo);
     hud.setScore(score.points, score.combo);
   };
   eggs.onDrop = (pos) => fx.pickupBurst(pos, new B2.Color4(1, 0.5, 0.3, 1));
+  pickups.onHeal = (pos) => { audio.heal(); fx.pickupBurst(pos, new B2.Color4(0.3, 1, 0.4, 1)); };
   player.onAttack = () => audio.bite();
-  herd.forEach((h) => { h.onCharge = () => { audio.bite(); fx.addShake(JUICE.chargeShake); }; });
+  herd.forEach((h) => {
+    h.onCharge = () => { audio.bite(); fx.addShake(JUICE.chargeShake); };
+    h.onDown = (pos) => {
+      audio.hurt();
+      fx.pickupBurst(pos, new B2.Color4(0.8, 0.2, 0.15, 1));
+      pickups.spawn(pos.x, pos.z);
+    };
+  });
 
   // Predators are a list so later waves can add a second T-Rex.
   const predators = [];
@@ -181,6 +195,7 @@ export async function startGame() {
       }
       herd.forEach((h) => h.update(dt, player, primary));
       eggs.update(dt, player);
+      pickups.update(dt, player);
 
       // footstep dust + sound while running on the ground
       const pPos = player.dino.root.position;
@@ -204,13 +219,22 @@ export async function startGame() {
         tensionTimer = 0;
       }
 
-      // player bite damages any predator in range during the bite window
+      // player bite damages any predator or herbivore in range during the
+      // bite window (felled herbivores drop meat that heals the raptor)
       if (player.attacking > 0.3) {
+        const biteDmg = PLAYER.attackDamage * dt * 3; // sustained over the bite window
         for (const p of predators) {
           if (p.dead) continue;
           const tp = p.dino.root.position;
           if (Math.hypot(pPos.x - tp.x, pPos.z - tp.z) < PLAYER.attackRange) {
-            p.takeDamage(PLAYER.attackDamage * dt * 3); // sustained over the bite window
+            p.takeDamage(biteDmg);
+          }
+        }
+        for (const h of herd) {
+          if (h.dead) continue;
+          const tp = h.dino.root.position;
+          if (Math.hypot(pPos.x - tp.x, pPos.z - tp.z) < PLAYER.attackRange) {
+            h.takeDamage(biteDmg);
           }
         }
       }
@@ -267,7 +291,7 @@ export async function startGame() {
     }
 
     // radar — updated whenever the game is running (even after win/lose)
-    minimap.update(player, predators, herd, eggs);
+    minimap.update(player, predators, herd, eggs, pickups);
   });
 
   window.addEventListener("keydown", (e) => {

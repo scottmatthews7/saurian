@@ -122,6 +122,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     dead: false,
     health: 60,
     onCharge: null,     // (set by game) called when a charge starts
+    onDown: null,       // (position) called when killed by the player
   };
 
   const canCharge = kind === "triceratops";
@@ -202,7 +203,16 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     dino.play(state.fleeing ? "Run" : "Walk", { speed: state.fleeing ? 1.3 : 0.8 });
   };
 
-  state.takeDamage = function () {};
+  state.takeDamage = function (amount) {
+    if (state.dead) return;
+    state.health = Math.max(0, state.health - amount);
+    dino.flash(JUICE.hitFlashSeconds, new window.BABYLON.Color3(0.9, 0.3, 0.2));
+    if (state.health <= 0) {
+      state.dead = true;
+      dino.play("Death", { loop: false });
+      if (state.onDown) state.onDown(dino.root.position.clone());
+    }
+  };
   return state;
 }
 

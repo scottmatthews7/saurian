@@ -20,6 +20,12 @@ export function createEggs(scene, shadow, groundFn) {
   eggMat.emissiveColor = new B.Color3(0.5, 0.45, 0.2).scale(EGGS.glowIntensity);
   eggMat.specularColor = new B.Color3(0.6, 0.6, 0.5);
 
+  // Golden egg material — brighter, warmer, with a stronger glow.
+  const goldMat = new B.StandardMaterial("goldEggMat", scene);
+  goldMat.diffuseColor = new B.Color3(1.0, 0.82, 0.25);
+  goldMat.emissiveColor = new B.Color3(1.0, 0.75, 0.15).scale(EGGS.glowIntensity);
+  goldMat.specularColor = new B.Color3(1.0, 0.9, 0.5);
+
   // Carried-egg visuals: a small pool of glowing eggs that hover above the
   // raptor's back while carrying, so the load is visible, not just a HUD count.
   const carriedVisuals = [];
@@ -33,32 +39,42 @@ export function createEggs(scene, shadow, groundFn) {
 
   const eggs = [];
   for (let i = 0; i < EGGS.count; i++) {
-    const r = 20 + Math.random() * (ARENA.radius - 26);
+    // Golden eggs spawn farther out (riskier to reach).
+    const golden = Math.random() < EGGS.goldenChance;
+    const r = golden
+      ? ARENA.radius - 20 + Math.random() * 12
+      : 20 + Math.random() * (ARENA.radius - 26);
     const a = Math.random() * Math.PI * 2;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
-    const mesh = B.MeshBuilder.CreateSphere("egg" + i, { diameterX: 1, diameterY: 1.4, diameterZ: 1 }, scene);
-    mesh.material = eggMat;
+    const dia = golden ? 1.25 : 1;
+    const mesh = B.MeshBuilder.CreateSphere("egg" + i, { diameterX: dia, diameterY: dia * 1.4, diameterZ: dia }, scene);
+    mesh.material = golden ? goldMat : eggMat;
     const baseY = groundFn(x, z) + 0.9;
     mesh.position.set(x, baseY, z);
     shadow.addShadowCaster(mesh);
 
     // glow light
     const light = new B.PointLight("eggLight" + i, mesh.position.clone(), scene);
-    light.diffuse = new B.Color3(1, 0.9, 0.5);
-    light.intensity = 0.6;
-    light.range = 10;
+    light.diffuse = golden ? new B.Color3(1, 0.8, 0.3) : new B.Color3(1, 0.9, 0.5);
+    light.intensity = golden ? 1.0 : 0.6;
+    light.range = golden ? 14 : 10;
 
-    eggs.push({ mesh, light, baseY, collected: false, banked: false });
+    eggs.push({
+      mesh, light, baseY, golden,
+      counts: golden ? EGGS.goldenCounts : 1,
+      value: golden ? EGGS.goldenValueMul : 1,
+      collected: false, banked: false,
+    });
   }
 
   const state = {
     nest, eggs,
     carried: [],      // stack of carried egg indices (length === carrying)
     get carrying() { return state.carried.length; },
-    banked: 0,
+    banked: 0,        // counts toward the win target (golden eggs count double)
     bobT: 0,
-    onPickup: null,   // (position) -> void, set by game for SFX/FX
-    onBank: null,     // (count) -> void
+    onPickup: null,   // (position, golden) -> void, set by game for SFX/FX
+    onBank: null,     // ({ count, value }) -> void  count=eggs, value=score units
     onDrop: null,     // (position) -> void
     update(dt, player) {
       state.bobT += dt;
@@ -66,27 +82,35 @@ export function createEggs(scene, shadow, groundFn) {
       for (let i = 0; i < eggs.length; i++) {
         const e = eggs[i];
         if (e.banked || e.collected) continue;
-        e.mesh.position.y = e.baseY + Math.sin(state.bobT * 2 + i) * EGGS.bobHeight;
-        e.mesh.rotation.y += dt;
+        const bob = e.golden ? EGGS.bobHeight * 1.5 : EGGS.bobHeight;
+        e.mesh.position.y = e.baseY + Math.sin(state.bobT * 2 + i) * bob;
+        e.mesh.rotation.y += dt * (e.golden ? 1.6 : 1);
         e.light.position.copyFrom(e.mesh.position);
+        if (e.golden) e.light.intensity = 0.85 + 0.35 * Math.sin(state.bobT * 4 + i);
         const d = Math.hypot(pp.x - e.mesh.position.x, pp.z - e.mesh.position.z);
         if (d < EGGS.pickupRange && !player.dead) {
           e.collected = true;
           e.mesh.setEnabled(false);
           e.light.setEnabled(false);
           state.carried.push(i);
-          if (state.onPickup) state.onPickup(e.mesh.position.clone());
+          if (state.onPickup) state.onPickup(e.mesh.position.clone(), e.golden);
         }
       }
       // bank when near nest
       if (state.carried.length > 0) {
         const dn = Math.hypot(pp.x, pp.z);
         if (dn < 5) {
-          const n = state.carried.length;
-          state.banked += n;
-          state.carried.forEach((idx) => { eggs[idx].banked = true; });
+          const idxs = state.carried;
+          const count = idxs.length;
+          let target = 0, value = 0;
+          idxs.forEach((idx) => {
+            eggs[idx].banked = true;
+            target += eggs[idx].counts;
+            value += eggs[idx].value;
+          });
+          state.banked += target;
           state.carried = [];
-          if (state.onBank) state.onBank(n);
+          if (state.onBank) state.onBank({ count, value });
         }
       }
 
@@ -98,6 +122,7 @@ export function createEggs(scene, shadow, groundFn) {
         const cv = carriedVisuals[k];
         if (k >= n) { if (cv.isEnabled()) cv.setEnabled(false); continue; }
         if (!cv.isEnabled()) cv.setEnabled(true);
+        cv.material = eggs[state.carried[k]].golden ? goldMat : eggMat;
         const tier = Math.floor(k / 2);
         const side = (k % 2 === 0 ? -0.35 : 0.35);
         cv.position.set(

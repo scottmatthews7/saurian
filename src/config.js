@@ -77,6 +77,19 @@ export const EGGS = {
   comboWindow: 8,        // sec — bank again within this to grow the combo
   comboStep: 0.5,        // +0.5x multiplier per chained bank
   comboMax: 4,           // multiplier cap
+  // A rare golden egg glows brighter, is worth more, and counts double toward
+  // the win target — a risk/reward beacon, usually scattered far out.
+  goldenChance: 0.18,    // probability an egg spawns golden
+  goldenValueMul: 3,     // score multiplier vs a normal egg
+  goldenCounts: 2,       // counts as this many toward the win target
+};
+
+// Meat pickups: a fleeing herbivore the raptor bites drops meat that heals on
+// pickup, giving a reason to engage the herd rather than only run. Design.
+export const PICKUPS = {
+  meatHeal: 30,          // health restored per meat
+  meatRange: 2.8,
+  meatLifetime: 22,      // sec before it despawns
 };
 
 export const CAMERA = {
