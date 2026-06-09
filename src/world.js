@@ -63,7 +63,7 @@ export function buildWorld(scene) {
   ground.receiveShadows = true;
 
   const groundMat = new B.StandardMaterial("groundMat", scene);
-  groundMat.diffuseColor = new B.Color3(0.36, 0.5, 0.26);
+  groundMat.diffuseTexture = makeGroundTexture(scene);
   groundMat.specularColor = new B.Color3(0.05, 0.05, 0.05);
   ground.material = groundMat;
 
@@ -101,6 +101,36 @@ export function buildWorld(scene) {
   };
 
   return { ground, shadow, heightAt, update };
+}
+
+// Procedural mottled grass texture so the ground reads as a living field
+// rather than a flat colour. Painted once into a DynamicTexture and tiled.
+function makeGroundTexture(scene) {
+  const B = window.BABYLON;
+  const S = 512;
+  const dt = new B.DynamicTexture("groundTex", { width: S, height: S }, scene, true);
+  const ctx = dt.getContext();
+  // base grass
+  ctx.fillStyle = "#5a8038";
+  ctx.fillRect(0, 0, S, S);
+  // layered blotches: lighter grass, darker grass, dry dirt
+  const blob = (color, count, rMin, rMax) => {
+    ctx.fillStyle = color;
+    for (let i = 0; i < count; i++) {
+      const x = Math.random() * S, y = Math.random() * S;
+      const r = rMin + Math.random() * (rMax - rMin);
+      ctx.globalAlpha = 0.18 + Math.random() * 0.22;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+  };
+  blob("#6f9a44", 320, 6, 26);   // light grass
+  blob("#46682c", 300, 6, 30);   // dark grass
+  blob("#7a6438", 90, 4, 18);    // dry dirt
+  blob("#8aa758", 200, 2, 8);    // bright flecks
+  ctx.globalAlpha = 1;
+  dt.update();
+  dt.uScale = dt.vScale = 8;  // tile across the large ground plane
+  return dt;
 }
 
 // Visual set dressing that lives above the playfield: a circling pterosaur
@@ -219,12 +249,22 @@ function scatterFoliage(scene, shadow, heightAt) {
   trunk.material = trunkMat;
   trunk.isVisible = false;
 
-  const leaves = B.MeshBuilder.CreateCylinder("leavesSrc", { height: 5, diameterTop: 0, diameterBottom: 5, tessellation: 7 }, scene);
-  const leafMat = new B.StandardMaterial("leafMat", scene);
-  leafMat.diffuseColor = new B.Color3(0.18, 0.42, 0.2);
-  leafMat.specularColor = B.Color3.Black();
-  leaves.material = leafMat;
-  leaves.isVisible = false;
+  // Three leaf source cones in varied greens for colour variety across the
+  // forest; each tree picks one and stacks a smaller second tier on top.
+  const leafGreens = [
+    new B.Color3(0.18, 0.42, 0.2),
+    new B.Color3(0.14, 0.34, 0.16),
+    new B.Color3(0.24, 0.48, 0.22),
+  ];
+  const leafSources = leafGreens.map((col, k) => {
+    const m = B.MeshBuilder.CreateCylinder("leavesSrc" + k, { height: 5, diameterTop: 0, diameterBottom: 5, tessellation: 7 }, scene);
+    const mat = new B.StandardMaterial("leafMat" + k, scene);
+    mat.diffuseColor = col;
+    mat.specularColor = B.Color3.Black();
+    m.material = mat;
+    m.isVisible = false;
+    return m;
+  });
 
   for (let i = 0; i < ARENA.treeCount; i++) {
     let x, z;
@@ -235,10 +275,16 @@ function scatterFoliage(scene, shadow, heightAt) {
     const t = trunk.createInstance("trunk" + i);
     t.position.set(x, y + 2 * s, z); t.scaling.setAll(s); t.checkCollisions = true;
     shadow.addShadowCaster(t);
-    const l = leaves.createInstance("leaves" + i);
-    l.position.set(x, y + 5.5 * s, z); l.scaling.setAll(s * rand(0.9, 1.3));
+    const src = leafSources[i % leafSources.length];
+    const l = src.createInstance("leaves" + i);
+    l.position.set(x, y + 5.0 * s, z); l.scaling.setAll(s * rand(0.9, 1.3));
     l.rotation.y = rand(0, Math.PI);
     shadow.addShadowCaster(l);
+    // a smaller second tier crowns the tree for a fuller conifer silhouette
+    const l2 = src.createInstance("leavesTop" + i);
+    l2.position.set(x, y + 7.6 * s, z); l2.scaling.setAll(s * rand(0.55, 0.75));
+    l2.rotation.y = rand(0, Math.PI);
+    shadow.addShadowCaster(l2);
   }
 
   // --- Rocks --------------------------------------------------------------
