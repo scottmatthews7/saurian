@@ -100,13 +100,45 @@
   JS and made new code look absent. Always `navigate_page reload ignoreCache:true`
   to verify edits. (curl `:8124/src/*.js` confirms the server itself is fresh.)
 
-## Next (session 4)
-- **Herbivore collisions:** AI dinos still walk through trees/rocks (they set
-  position directly, no `moveWithCollisions`). Fine for arcade feel; upgrade if desired.
-- **Restart without full reload:** `R` currently `location.reload()` (re-fetches
-  GLBs). A proper soft-reset would re-roll eggs/positions/health in place.
-- **Mobile/touch controls** if targeting phones (currently keyboard + mouse only).
-- More egg/biome variety; a water pond hazard; pterosaur dive as a 2nd threat.
+## Done (session 4)
+- **Content — water pond hazard** (`world.js`, `config.js WATER`): a basin is
+  carved into the terrain heightmap (`heightAt` matches the vertex deform) with a
+  translucent shimmering water disc + a ring of reeds. Wading **slows** the raptor
+  (`WATER.slowFactor`) and **drains health** (`damagePerSec`) — bypasses i-frames
+  as a continuous environmental tick; a splash SFX + blue spray fire on entry
+  (`player.onSplash`, `audio.splash`). Eggs never spawn in it; radar shows it.
+- **AI — obstacle avoidance** (`ai.js avoidObstacles` + `setObstacles`,
+  `config.AI_AVOID`): world collects solid footprints (collidable tree trunks +
+  big rocks) and exposes `world.obstacles`; a single steering routine (pond
+  appended) bends each dino's heading away from any footprint within a clearance
+  band. Herd + T-Rex no longer clip through trees/rocks. **Smoke-verified:** a
+  herbivore placed on a trunk (d=0) is pushed out to ~5 units within 1.5s.
+- **Mobile/touch controls** (`touch.js`, `config.TOUCH`, CSS in `index.html`):
+  mounts only on touch devices. A left **floating analog joystick** maps to the
+  existing camera-relative WASD keys (full deflection → sprint); right-side
+  **BITE / JUMP** buttons drive the attack/jump queues (`input.queueAttack/
+  queueJump`). First touch starts the run; a tap restarts after a game over.
+- **Threat — pterosaur dive** (`world.updateThreats`, `config.PTERO_DIVE`,
+  `audio.screech`): the previously decorative flock now attacks — one bird peels
+  off, hovers with a telegraphing screech + red glow, then swoops at the raptor;
+  a connecting swoop deals `damage` then it climbs back. A 2nd, airborne threat.
+
+## Verified (session 4)
+- All src modules pass `node --check`.
+- Live in-browser (isolated context, port 8124): **0 console errors/warnings**;
+  638 meshes; water disc + 71 reeds + 7 birds present; wading sets `player.wading`
+  and drains health (~4/s); obstacle avoidance pushes a clipped herbivore clear.
+  (FPS read low ~10-12 only because the shared machine had ~47 throttled tabs;
+  the build itself is unchanged from the ~95-103 FPS solo measurement.)
+- **Env note (unchanged):** parallel Claude instances hijack any tab within ~1-2s;
+  long probe loops get navigated away, so verification uses short single-shot evals.
+
+## Next (session 5)
+- More biome variety (second pond / rocky mesa / tar pit); ambient grazing anims;
+  a day/night gameplay effect (predators bolder at night).
+- Egg variety beyond golden (e.g. a "cursed" egg that draws the T-Rex).
+- Tune `PTERO_DIVE` intervals after live play; a ground shadow decal under a
+  diving pterosaur as an extra dodge telegraph.
 
 ## Run it
 ```
@@ -114,6 +146,7 @@ cd /Users/scottmatthews/personal_repos/dino-arena-a
 python3 -m http.server 8124
 # open http://localhost:8124/
 # Controls: WASD move · Shift sprint · Space jump · Click/J bite · M mute · P pause · R restart
+# Touch (phones/tablets): left joystick to move (push full to sprint), BITE/JUMP buttons; tap to start/restart
 ```
 
 ## Debug harness
