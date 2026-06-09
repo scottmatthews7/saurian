@@ -8,7 +8,7 @@ import { createHUD } from "./hud.js";
 import { createAudio } from "./audio.js";
 import { createFx } from "./fx.js";
 import { createMinimap } from "./minimap.js";
-import { PLAYER, TREX, EGGS, JUICE, AUDIO } from "./config.js";
+import { PLAYER, TREX, EGGS, JUICE, AUDIO, PICKUPS } from "./config.js";
 
 // Nearest uncollected egg to a position, or null if none remain.
 function nearestEgg(eggs, pos) {
@@ -65,6 +65,7 @@ export async function startGame() {
   eggs.onPickup = (pos, golden) => {
     audio.pickup(golden);
     fx.pickupBurst(pos, golden ? new B2.Color4(1, 0.82, 0.25, 1) : new B2.Color4(1, 0.9, 0.5, 1));
+    if (golden) hud.popup("GOLDEN EGG!", "gold");
   };
   eggs.onBank = ({ count, value }) => {
     audio.bank();
@@ -75,11 +76,17 @@ export async function startGame() {
       : 1;
     score.lastBankAt = game.elapsed;
     // value is in "egg units" (golden eggs are worth goldenValueMul each)
-    score.points += Math.round(value * EGGS.baseValue * score.combo);
+    const gained = Math.round(value * EGGS.baseValue * score.combo);
+    score.points += gained;
     hud.setScore(score.points, score.combo);
+    hud.popup(`+${gained.toLocaleString()}${score.combo > 1 ? ` ×${score.combo}` : ""}`, "score");
   };
   eggs.onDrop = (pos) => fx.pickupBurst(pos, new B2.Color4(1, 0.5, 0.3, 1));
-  pickups.onHeal = (pos) => { audio.heal(); fx.pickupBurst(pos, new B2.Color4(0.3, 1, 0.4, 1)); };
+  pickups.onHeal = (pos) => {
+    audio.heal();
+    fx.pickupBurst(pos, new B2.Color4(0.3, 1, 0.4, 1));
+    hud.popup(`+${PICKUPS.meatHeal} HP`, "heal");
+  };
   player.onAttack = () => audio.bite();
   // Universal hurt feedback fires for any damage source (bite or charge hit).
   player.onHurt = () => { audio.hurt(); fx.addShake(JUICE.camShakeOnHit); hud.hitFlash(); };

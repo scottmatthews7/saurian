@@ -14,6 +14,7 @@ export function createHUD() {
   const staminaBar = el("staminaFill");
   const vignette = el("vignette");
   const hitFlashEl = el("hitFlash");
+  const popups = el("popups");
   const muteBtn = el("muteBtn");
 
   return {
@@ -32,6 +33,15 @@ export function createHUD() {
       hitFlashEl.classList.remove("fire");
       void hitFlashEl.offsetWidth; // reflow so the animation restarts
       hitFlashEl.classList.add("fire");
+    },
+    // Floating "+N" style reward popup that rises and fades near the score.
+    popup(text, cls) {
+      if (!popups) return;
+      const p = document.createElement("div");
+      p.className = `popup ${cls || ""}`;
+      p.textContent = text;
+      popups.appendChild(p);
+      setTimeout(() => p.remove(), 1100);
     },
     onMuteClick(fn) { if (muteBtn) muteBtn.addEventListener("click", fn); },
     setMuteLabel(muted) { if (muteBtn) muteBtn.textContent = muted ? "🔇 Muted" : "🔊 Sound"; },

@@ -33,6 +33,17 @@
     #carryCount { font-size: 13px; opacity: 0.85; margin-top: 2px; }
     #score { font-size: 20px; font-weight: bold; margin-top: 8px; }
     #combo { font-size: 13px; color: var(--good); opacity: 0.9; min-height: 16px; }
+    #popups { position: relative; height: 0; }
+    .popup { position: absolute; right: 0; top: 0; font-size: 22px; font-weight: 800;
+      white-space: nowrap; text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      animation: popRise 1.1s ease-out forwards; }
+    .popup.score { color: var(--accent); }
+    .popup.gold { color: #ffd24a; font-size: 26px; }
+    .popup.heal { color: var(--good); }
+    @keyframes popRise { 0% { opacity: 0; transform: translateY(8px) scale(0.8); }
+      15% { opacity: 1; transform: translateY(0) scale(1.1); }
+      40% { transform: translateY(-6px) scale(1); }
+      100% { opacity: 0; transform: translateY(-40px) scale(1); } }
 
     #objective { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
       font-size: 15px; background: rgba(8,18,22,0.5); padding: 8px 16px; border-radius: 20px;
@@ -126,6 +137,7 @@
       <div id="carryCount"></div>
       <div id="score">0</div>
       <div id="combo"></div>
+      <div id="popups"></div>
     </div>
     <div id="minimapWrap">
       <div class="label">Radar</div>
