@@ -66,18 +66,47 @@
   teleported the T-Rex onto the raptor for the frame, so it ate me in ~7s — which also
   end-to-end proves chase->bite->lose). **Scale/orientation/ground-contact: all good.**
 
-## Next (session 3)
-- Fine-tune per-species ground contact if any herbivore floats/sinks (raptor + T-Rex
-  confirmed fine). `heights` in `ai.js`, `PLAYER.height` in config.
-- **Herbivore collisions:** AI dinos currently walk through trees/rocks (they set
+## Done (session 3)
+- **Content — golden eggs:** rare (18%) brighter eggs spawn far out, worth 3x
+  score and counting double toward the win target; pulsing glow, sparkle pickup
+  SFX, larger radar blip, "GOLDEN EGG!" popup. (`eggs.js`, `EGGS.golden*`.)
+- **Content — meat health pickups:** herbivores are now killable (bite them
+  down) and drop pooled meat that heals the raptor (`pickups.js`, `player.heal`,
+  `audio.heal`, green flash + "+30 HP" popup, red radar dots).
+- **Visuals — atmosphere** (`world.buildAtmosphere`): 7 flapping pterosaurs
+  orbiting overhead, 9 drifting clouds, additive pollen motes. Pure set dressing.
+- **Visuals — ground + trees:** procedural mottled grass DynamicTexture (tiled
+  8x) replaces flat green; trees now pick one of 3 green tones and stack a
+  second crown cone for fuller, varied silhouettes.
+- **Title screen** (`hud.showTitle`): animated DINO ARENA / SURVIVAL card with
+  objective blurb, 6-key controls grid, best time/score, blinking prompt.
+- **Game feel — bite lunge:** the raptor bursts forward during the bite window
+  (`PLAYER.lungeSpeed/lungeSeconds`) so attacks have weight and can close gaps.
+- **Game feel — T-Rex enrage:** below 40% health a T-Rex speeds up, runs faster,
+  glows angry-red, and roars (`TREX.enrage*`).
+- **Feel — hit feedback:** full-screen red `#hitFlash` pulse on any damage;
+  unified `player.onHurt` (audio + shake + flash) now also fires on triceratops
+  charge hits, not just bites.
+- **Juice — reward popups:** floating "+N xCombo", "GOLDEN EGG!", "+30 HP" near
+  the score (`hud.popup`).
+
+## Verified (session 3)
+- All 13 src modules pass `node --check`.
+- Live in-browser (isolated context, **reloaded with ignoreCache** — see lesson):
+  0 console errors; golden eggs (2) + meat pool (8) present; atmosphere = 7 birds,
+  9 clouds, pollen active; ground textured; 70 tree crowns / 143 leaf instances;
+  bite lunge advances the raptor; hitFlash + popup DOM paths fire. ~584 meshes.
+- **Lesson:** Chrome aggressively caches ES modules; a plain reload served stale
+  JS and made new code look absent. Always `navigate_page reload ignoreCache:true`
+  to verify edits. (curl `:8124/src/*.js` confirms the server itself is fresh.)
+
+## Next (session 4)
+- **Herbivore collisions:** AI dinos still walk through trees/rocks (they set
   position directly, no `moveWithCollisions`). Fine for arcade feel; upgrade if desired.
-- **Multiple T-Rexes on later waves** (stretch from s1) — spawn a 2nd predator at a
-  high wave for escalating pressure.
-- **More biomes / egg types** (e.g. a rare high-value egg), score multiplier for fast
-  banking, combo for back-to-back deliveries.
+- **Restart without full reload:** `R` currently `location.reload()` (re-fetches
+  GLBs). A proper soft-reset would re-roll eggs/positions/health in place.
 - **Mobile/touch controls** if targeting phones (currently keyboard + mouse only).
-- Consider a proper title screen with a START button (the parallel "dinob" build has
-  one; ours starts on first input — both fine).
+- More egg/biome variety; a water pond hazard; pterosaur dive as a 2nd threat.
 
 ## Run it
 ```
