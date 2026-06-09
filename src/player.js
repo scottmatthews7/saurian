@@ -30,6 +30,9 @@ export async function createPlayer(scene, shadow, input) {
     attacking: 0,        // remaining attack-anim lock
     moving: false,
     sprinting: false,
+    stamina: PLAYER.staminaMax,
+    exhausted: false,    // true until stamina recovers past the sprint floor
+    carrying: 0,         // eggs carried (set by game each frame, drives carrySlow)
     dead: false,
     onAttack: null,      // fired when a bite starts (set by game for SFX)
     pos: collider.position,
@@ -59,10 +62,25 @@ export async function createPlayer(scene, shadow, input) {
     if (input.keys.has("a")) move.subtractInPlace(right);
 
     const moving = move.lengthSquared() > 0.001 && state.attacking <= 0;
-    const sprint = input.keys.has("shift");
-    const speed = sprint ? PLAYER.runSpeed : PLAYER.walkSpeed;
+    const wantSprint = input.keys.has("shift");
+
+    // --- stamina: drain while sprinting, regen otherwise; lock out sprint
+    // until stamina recovers past the floor once exhausted. ---
+    const canSprint = wantSprint && moving && state.stamina > 0 && !state.exhausted;
+    if (canSprint) {
+      state.stamina = Math.max(0, state.stamina - PLAYER.staminaDrain * dt);
+      if (state.stamina <= 0) state.exhausted = true;
+    } else {
+      state.stamina = Math.min(PLAYER.staminaMax, state.stamina + PLAYER.staminaRegen * dt);
+      if (state.exhausted && state.stamina >= PLAYER.staminaSprintMin) state.exhausted = false;
+    }
+    const sprint = canSprint;
+
+    // carrying eggs slows you down — a risk/reward weight on the return trip.
+    const carryMul = 1 / (1 + state.carrying * PLAYER.carrySlow);
+    const speed = (sprint ? PLAYER.runSpeed : PLAYER.walkSpeed) * carryMul;
     state.moving = moving;
-    state.sprinting = moving && sprint;
+    state.sprinting = sprint;
 
     if (moving) {
       move.normalize();

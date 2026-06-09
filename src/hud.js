@@ -9,6 +9,7 @@ export function createHUD() {
   const objective = el("objective");
   const banner = el("banner");
   const trexBar = el("trexFill");
+  const staminaBar = el("staminaFill");
   const vignette = el("vignette");
   const muteBtn = el("muteBtn");
 
@@ -25,6 +26,11 @@ export function createHUD() {
     onMuteClick(fn) { if (muteBtn) muteBtn.addEventListener("click", fn); },
     setMuteLabel(muted) { if (muteBtn) muteBtn.textContent = muted ? "🔇 Muted" : "🔊 Sound"; },
     setTrex(v, max) { trexBar.style.width = `${Math.max(0, (v / max) * 100)}%`; },
+    setStamina(v, max, exhausted) {
+      if (!staminaBar) return;
+      staminaBar.style.width = `${Math.max(0, (v / max) * 100)}%`;
+      staminaBar.classList.toggle("exhausted", !!exhausted);
+    },
     setEggs(banked, target, carrying, remaining) {
       eggCount.textContent = `${banked} / ${target}`;
       carryCount.textContent = carrying > 0 ? `Carrying ${carrying} — get to the nest!` :

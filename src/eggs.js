@@ -42,41 +42,58 @@ export function createEggs(scene, shadow, groundFn) {
 
   const state = {
     nest, eggs,
-    carrying: 0,
+    carried: [],      // stack of carried egg indices (length === carrying)
+    get carrying() { return state.carried.length; },
     banked: 0,
     bobT: 0,
     onPickup: null,   // (position) -> void, set by game for SFX/FX
     onBank: null,     // (count) -> void
+    onDrop: null,     // (position) -> void
     update(dt, player) {
       state.bobT += dt;
       const pp = player.dino.root.position;
       for (let i = 0; i < eggs.length; i++) {
         const e = eggs[i];
-        if (e.banked) continue;
-        if (!e.collected) {
-          e.mesh.position.y = e.baseY + Math.sin(state.bobT * 2 + i) * EGGS.bobHeight;
-          e.mesh.rotation.y += dt;
-          e.light.position.copyFrom(e.mesh.position);
-          const d = Math.hypot(pp.x - e.mesh.position.x, pp.z - e.mesh.position.z);
-          if (d < EGGS.pickupRange && !player.dead) {
-            e.collected = true;
-            e.mesh.setEnabled(false);
-            e.light.setEnabled(false);
-            state.carrying++;
-            if (state.onPickup) state.onPickup(e.mesh.position.clone());
-          }
+        if (e.banked || e.collected) continue;
+        e.mesh.position.y = e.baseY + Math.sin(state.bobT * 2 + i) * EGGS.bobHeight;
+        e.mesh.rotation.y += dt;
+        e.light.position.copyFrom(e.mesh.position);
+        const d = Math.hypot(pp.x - e.mesh.position.x, pp.z - e.mesh.position.z);
+        if (d < EGGS.pickupRange && !player.dead) {
+          e.collected = true;
+          e.mesh.setEnabled(false);
+          e.light.setEnabled(false);
+          state.carried.push(i);
+          if (state.onPickup) state.onPickup(e.mesh.position.clone());
         }
       }
       // bank when near nest
-      if (state.carrying > 0) {
+      if (state.carried.length > 0) {
         const dn = Math.hypot(pp.x, pp.z);
         if (dn < 5) {
-          const n = state.carrying;
+          const n = state.carried.length;
           state.banked += n;
-          state.carrying = 0;
+          state.carried.forEach((idx) => { eggs[idx].banked = true; });
+          state.carried = [];
           if (state.onBank) state.onBank(n);
         }
       }
+    },
+    // Drop one carried egg back into the world near a position (on a hit).
+    dropCarried(position, groundY) {
+      const idx = state.carried.pop();
+      if (idx === undefined) return false;
+      const e = eggs[idx];
+      const a = Math.random() * Math.PI * 2;
+      const x = position.x + Math.cos(a) * 3, z = position.z + Math.sin(a) * 3;
+      e.collected = false;
+      e.baseY = (groundY != null ? groundY : position.y) + 0.9;
+      e.mesh.position.set(x, e.baseY, z);
+      e.light.position.copyFrom(e.mesh.position);
+      e.mesh.setEnabled(true);
+      e.light.setEnabled(true);
+      if (state.onDrop) state.onDrop(e.mesh.position.clone());
+      return true;
     },
     remaining() { return eggs.filter((e) => !e.collected && !e.banked).length; },
   };

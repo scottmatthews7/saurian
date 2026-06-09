@@ -49,8 +49,15 @@ export async function startGame() {
   const B2 = window.BABYLON;
   eggs.onPickup = (pos) => { audio.pickup(); fx.pickupBurst(pos, new B2.Color4(1, 0.9, 0.5, 1)); };
   eggs.onBank = () => { audio.bank(); fx.pickupBurst(eggs.nest.position, new B2.Color4(0.5, 1, 0.6, 1)); };
+  eggs.onDrop = (pos) => fx.pickupBurst(pos, new B2.Color4(1, 0.5, 0.3, 1));
   player.onAttack = () => audio.bite();
-  trex.onBite = () => { audio.hurt(); fx.addShake(JUICE.camShakeOnHit); };
+  trex.onBite = () => {
+    audio.hurt();
+    fx.addShake(JUICE.camShakeOnHit);
+    // a bite while carrying makes you fumble an egg back into the valley
+    const pp = player.dino.root.position;
+    eggs.dropCarried(pp, world.heightAt(pp.x, pp.z));
+  };
   trex.onRoar = () => audio.roar();
 
   // mute toggle (button + M key)
@@ -111,6 +118,7 @@ export async function startGame() {
       const wave = Math.floor(game.elapsed / 30);
       if (wave > game.wave) { game.wave = wave; trex.speedBonus = wave * TREX.chaseSpeedRamp; }
 
+      player.carrying = eggs.carrying;   // drives carry-slow in the controller
       player.update(dt);
       trex.update(dt, player);
       herd.forEach((h) => h.update(dt, player, trex));
@@ -134,6 +142,7 @@ export async function startGame() {
 
       // HUD
       hud.setHealth(player.health, PLAYER.maxHealth);
+      hud.setStamina(player.stamina, PLAYER.staminaMax, player.exhausted);
       hud.setTrex(trex.health, TREX.maxHealth);
       hud.setEggs(eggs.banked, EGGS.targetToWin, eggs.carrying, eggs.remaining());
 

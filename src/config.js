@@ -24,6 +24,14 @@ export const PLAYER = {
   attackCooldown: 0.7, // sec
   attackDamage: 34,    // damage dealt to a predator on a landed bite
   invulnAfterHit: 1.0, // i-frames after taking damage (sec)
+  // Sprint stamina — turns infinite-sprint escape into a managed resource so
+  // the T-Rex stays threatening. Values chosen for ~3.3s of sprint then a
+  // recovery window; a deliberate arcade-feel design choice.
+  staminaMax: 100,
+  staminaDrain: 30,     // per second while sprinting
+  staminaRegen: 18,     // per second while not sprinting
+  staminaSprintMin: 10, // need at least this much to start sprinting again
+  carrySlow: 0.6,       // speed multiplier per egg carried, applied as 1/(1+n*x)
 };
 
 export const TREX = {
