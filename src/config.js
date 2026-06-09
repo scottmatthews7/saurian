@@ -135,6 +135,21 @@ export const ATMOSPHERE = {
   cloudHeight: 70,
 };
 
+// Pterosaur dive attack: occasionally a member of the flock peels off and
+// swoops at the raptor. A telegraphed screech precedes the dive so it can be
+// dodged; contact at the bottom of the swoop deals a small hit, then it climbs
+// back to the orbit. A second airborne threat besides the ground predators.
+export const PTERO_DIVE = {
+  minInterval: 9,     // sec — minimum gap between dive attempts
+  maxInterval: 16,    // sec — maximum gap
+  telegraphTime: 1.1, // sec of warning screech/glow before the swoop commits
+  diveSpeed: 38,      // units/sec on the way down toward the player
+  climbSpeed: 22,     // units/sec returning to the orbit
+  hitRange: 3.2,      // contact range at the bottom of the swoop
+  damage: 12,         // health lost on a connecting swoop
+  hitCooldown: 1.0,   // sec lockout so one swoop lands at most one hit
+};
+
 // Per-species facing correction (radians) applied on top of the gameplay yaw.
 // Quaternius glb dinos import facing +Z in Babylon's left-handed scene, which
 // matches our atan2(dx, dz) -> rotation.y convention, so the default is 0.

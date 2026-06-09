@@ -223,6 +223,11 @@ export async function startGame() {
       eggs.update(dt, player);
       pickups.update(dt, player);
 
+      // pterosaur dive attack — a telegraphed screech then a swoop from above
+      world.updateThreats(dt, player,
+        () => audio.screech(),
+        (pos) => fx.pickupBurst(pos, new B2.Color4(0.7, 0.2, 0.2, 1)));
+
       // footstep dust + sound while running on the ground
       const pPos = player.dino.root.position;
       fx.footDust(dt, pPos, player.moving && player.grounded);

@@ -145,6 +145,24 @@ export function createAudio() {
       n.start(); n.stop(now() + 0.4);
       tone(520, 0.18, "sine", 0.18, 240);
     },
+    // Pterosaur screech: a shrill rising-then-falling cry warning of a dive.
+    screech() {
+      if (!ctx || muted) return;
+      const dur = 0.55;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(900, now());
+      o.frequency.exponentialRampToValueAtTime(2200, now() + 0.12);
+      o.frequency.exponentialRampToValueAtTime(700, now() + dur);
+      g.gain.setValueAtTime(0.0001, now());
+      g.gain.exponentialRampToValueAtTime(0.3, now() + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.0001, now() + dur);
+      const f = ctx.createBiquadFilter();
+      f.type = "bandpass"; f.frequency.value = 1600; f.Q.value = 4;
+      o.connect(f); f.connect(g); g.connect(master);
+      o.start(); o.stop(now() + dur + 0.02);
+    },
     // Player hurt: dissonant low buzz.
     hurt() {
       if (!ctx || muted) return;

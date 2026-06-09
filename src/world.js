@@ -1,4 +1,4 @@
-import { ARENA, DAYNIGHT, ATMOSPHERE, WATER } from "./config.js";
+import { ARENA, DAYNIGHT, ATMOSPHERE, WATER, PTERO_DIVE } from "./config.js";
 
 // Smooth basin profile for the pond: 1 at the centre, easing to 0 at the rim.
 // Carved into the terrain heightmap so the pool sits in a real depression.
@@ -139,7 +139,11 @@ export function buildWorld(scene) {
     scene.clearColor.set(skyR, skyG, skyB, 1);
   };
 
-  return { ground, shadow, heightAt, update, inWater, waterCenter, waterSurfaceY: waterY };
+  return {
+    ground, shadow, heightAt, update, inWater, waterCenter, waterSurfaceY: waterY,
+    updateThreats: (dt, player, onScreech, onHit) =>
+      atmosphere.updateThreats(dt, player, onScreech, onHit),
+  };
 }
 
 // A sparse ring of reeds around the pond shoreline so the water edge reads
@@ -226,12 +230,34 @@ function buildAtmosphere(scene) {
     wingL.position.x = -1.3; wingR.position.x = 1.3;
     wingL.isPickable = wingR.isPickable = false;
     birds.push({
-      root, wingL, wingR,
+      root, wingL, wingR, body,
       phase: (i / ATMOSPHERE.birdCount) * Math.PI * 2,
       radius: ATMOSPHERE.birdRadius * (0.7 + 0.3 * (i % 3) / 2),
       height: ATMOSPHERE.birdHeight + (i % 3) * 4,
       flap: Math.random() * Math.PI * 2,
+      diving: false,        // skipped by the passive orbit while it swoops
     });
+  }
+
+  // Diving-bird material so a committed swoop reads as a threat (angry red).
+  const diveMat = new B.StandardMaterial("birdDiveMat", scene);
+  diveMat.diffuseColor = new B.Color3(0.5, 0.1, 0.1);
+  diveMat.emissiveColor = new B.Color3(0.5, 0.05, 0.05);
+  diveMat.specularColor = B.Color3.Black();
+
+  // ---- Dive-attack FSM ---------------------------------------------------
+  // idle -> (timer) -> telegraph -> dive -> climb -> idle. One bird at a time.
+  const dive = {
+    state: "idle",
+    timer: PTERO_DIVE.minInterval,
+    bird: null,
+    t: 0,
+    hitDone: false,
+    targetX: 0, targetZ: 0, targetY: 0,
+  };
+  function randInterval() {
+    return PTERO_DIVE.minInterval +
+      Math.random() * (PTERO_DIVE.maxInterval - PTERO_DIVE.minInterval);
   }
 
   // ---- Drifting clouds (squashed, unlit, additive-soft) -----------------
@@ -280,10 +306,17 @@ function buildAtmosphere(scene) {
   pollen.start();
 
   let tt = 0;
+  function endDive(b) {
+    if (b) { b.diving = false; b.body.material = birdMat; b.root.rotation.x = 0; }
+    dive.state = "idle";
+    dive.bird = null;
+    dive.timer = randInterval();
+  }
   return {
     update(dt) {
       tt += dt;
       for (const b of birds) {
+        if (b.diving) continue;   // a diving bird is driven by updateThreats
         const a = b.phase + tt * ATMOSPHERE.birdSpeed;
         const x = Math.cos(a) * b.radius, z = Math.sin(a) * b.radius;
         b.root.position.set(x, b.height + Math.sin(tt * 0.5 + b.phase) * 2, z);
@@ -297,6 +330,96 @@ function buildAtmosphere(scene) {
       for (const c of clouds) {
         c.mesh.position.x += c.drift * dt;
         if (c.mesh.position.x > 150) c.mesh.position.x = -150;
+      }
+    },
+    // Pterosaur dive attack. Called from the game loop with the live player and
+    // hit/screech callbacks so the swoop can react to the raptor's position.
+    updateThreats(dt, player, onScreech, onHit) {
+      const D = PTERO_DIVE;
+      if (player.dead) { if (dive.state !== "idle") endDive(dive.bird); return; }
+      const pp = player.dino.root.position;
+
+      if (dive.state === "idle") {
+        dive.timer -= dt;
+        if (dive.timer <= 0) {
+          // pick the orbiting bird nearest the player to peel off
+          let best = null, bd = Infinity;
+          for (const b of birds) {
+            if (b.diving) continue;
+            const d = Math.hypot(b.root.position.x - pp.x, b.root.position.z - pp.z);
+            if (d < bd) { bd = d; best = b; }
+          }
+          if (best) {
+            dive.bird = best; best.diving = true; best.body.material = diveMat;
+            dive.state = "telegraph"; dive.t = D.telegraphTime; dive.hitDone = false;
+            if (onScreech) onScreech();
+          } else {
+            dive.timer = 1;
+          }
+        }
+        return;
+      }
+
+      const b = dive.bird;
+      if (!b) { dive.state = "idle"; return; }
+      b.flap += dt * 14;            // fast, agitated wingbeats during the attack
+      const flap = Math.sin(b.flap) * 0.9;
+      b.wingL.rotation.z = flap; b.wingR.rotation.z = -flap;
+
+      if (dive.state === "telegraph") {
+        // hover and lock onto the player's current spot, pulsing the glow
+        dive.t -= dt;
+        diveMat.emissiveColor.r = 0.4 + 0.4 * Math.sin(tt * 20);
+        const dx = pp.x - b.root.position.x, dz = pp.z - b.root.position.z;
+        b.root.rotation.y = Math.atan2(dx, dz);
+        if (dive.t <= 0) {
+          dive.targetX = pp.x; dive.targetZ = pp.z;
+          dive.targetY = pp.y + 1.2;   // aim for the raptor's body
+          dive.state = "dive";
+        }
+        return;
+      }
+
+      if (dive.state === "dive") {
+        const dx = dive.targetX - b.root.position.x;
+        const dy = dive.targetY - b.root.position.y;
+        const dz = dive.targetZ - b.root.position.z;
+        const d = Math.hypot(dx, dy, dz) || 1;
+        const step = D.diveSpeed * dt;
+        b.root.position.x += (dx / d) * step;
+        b.root.position.y += (dy / d) * step;
+        b.root.position.z += (dz / d) * step;
+        b.root.rotation.y = Math.atan2(dx, dz);
+        b.root.rotation.x = -0.7;   // nose-down dive pitch
+        // contact check against the live player (target may have moved)
+        if (!dive.hitDone) {
+          const pd = Math.hypot(pp.x - b.root.position.x, pp.z - b.root.position.z);
+          if (pd < D.hitRange && Math.abs(b.root.position.y - pp.y) < 3) {
+            dive.hitDone = true;
+            const before = player.health;
+            player.takeDamage(D.damage);
+            if (player.health < before && onHit) onHit(b.root.position.clone());
+          }
+        }
+        if (d <= step * 1.2 || b.root.position.y <= dive.targetY + 0.1) dive.state = "climb";
+        return;
+      }
+
+      if (dive.state === "climb") {
+        const targetY = b.height;
+        b.root.position.y += D.climbSpeed * dt;
+        b.root.rotation.x = 0.4;    // nose-up climb
+        // glide back toward the orbit ring tangentially
+        const ang = Math.atan2(b.root.position.z, b.root.position.x);
+        const tx = Math.cos(ang) * b.radius, tz = Math.sin(ang) * b.radius;
+        b.root.position.x += (tx - b.root.position.x) * Math.min(1, 2 * dt);
+        b.root.position.z += (tz - b.root.position.z) * Math.min(1, 2 * dt);
+        if (b.root.position.y >= targetY) {
+          // re-seat its orbit phase so the passive loop picks up smoothly
+          b.phase = ang - tt * ATMOSPHERE.birdSpeed;
+          endDive(b);
+        }
+        return;
       }
     },
   };
