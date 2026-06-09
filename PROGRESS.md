@@ -56,10 +56,19 @@
   are served). The deterministic Node test + scene-inspection smokes are the source
   of truth, not screenshots.
 
+## Visual confirmation (session 2 — got one clean shot before hijack)
+- Captured a real gameplay screenshot of our build. Confirmed: raptor renders
+  small/upright/feet-on-ground in the nest torus, facing forward; T-Rex is large,
+  upright, grounded, correctly scaled relative to the raptor; stylised trees + soft
+  shadows + fog + hill rim all read well. Full HUD correct (health/stamina/trex bars,
+  sound toggle, eggs 0/6 + "8 eggs out there" + score, radar with egg/predator/herd
+  dots, compass pill). Low-health red vignette + DEVOURED lose banner both fired (I'd
+  teleported the T-Rex onto the raptor for the frame, so it ate me in ~7s — which also
+  end-to-end proves chase->bite->lose). **Scale/orientation/ground-contact: all good.**
+
 ## Next (session 3)
-- **Beauty screenshot** when peers are idle (or use a private Chrome profile / a
-  different port the others don't probe). Confirm each species' scale/ground contact
-  visually; tune `heights` in `ai.js` and the player `PLAYER.height` if any float/sink.
+- Fine-tune per-species ground contact if any herbivore floats/sinks (raptor + T-Rex
+  confirmed fine). `heights` in `ai.js`, `PLAYER.height` in config.
 - **Herbivore collisions:** AI dinos currently walk through trees/rocks (they set
   position directly, no `moveWithCollisions`). Fine for arcade feel; upgrade if desired.
 - **Multiple T-Rexes on later waves** (stretch from s1) — spawn a 2nd predator at a
