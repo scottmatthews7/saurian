@@ -1,4 +1,4 @@
-import { TREX, HERBIVORE, TRICERATOPS, ARENA, JUICE, WATER, AI_AVOID } from "./config.js";
+import { TREX, HERBIVORE, TRICERATOPS, ARENA, JUICE, WATER, AI_AVOID, DUSK } from "./config.js";
 import { loadDino } from "./dino.js";
 
 // Solid obstacle footprints ({x, z, r}) the AI steers around. Injected from the
@@ -7,6 +7,11 @@ let OBSTACLES = [];
 export function setObstacles(list) {
   OBSTACLES = [...list, { x: WATER.centerX, z: WATER.centerZ, r: WATER.radius + 1 }];
 }
+
+// Run-scoped dusk factor (0 full day .. 1 deepest dusk). Pushed in each frame
+// from the world clock; predators read it to grow bolder as dusk falls.
+let DUSK_FACTOR = 0;
+export function setDusk(f) { DUSK_FACTOR = f; }
 
 // Steer a move (unit dir dx,dz) away from nearby obstacle footprints. Adds an
 // outward push from each footprint within its clearance band, then renormalises.
@@ -94,16 +99,22 @@ export async function createTrex(scene, shadow, groundFn) {
       }
     }
 
+    // Dusk emboldens the predator: it spots the raptor from further, gives up
+    // later, and runs faster. Blended by the run's dusk factor (0 day .. 1 dusk).
+    const sightRange = TREX.sightRange + DUSK.trexSightBonus * DUSK_FACTOR;
+    const loseRange = TREX.loseInterestRange + DUSK.trexLoseBonus * DUSK_FACTOR;
+    const duskSpeed = DUSK.trexSpeedBonus * DUSK_FACTOR;
+
     // FSM
     const wasChasing = state.mode === "chase";
-    if (!player.dead && distP < TREX.sightRange) state.mode = "chase";
-    else if (state.mode === "chase" && distP > TREX.loseInterestRange) state.mode = "patrol";
+    if (!player.dead && distP < sightRange) state.mode = "chase";
+    else if (state.mode === "chase" && distP > loseRange) state.mode = "patrol";
     if (!wasChasing && state.mode === "chase" && state.onRoar) state.onRoar();
 
     let goal, speed;
     if (state.mode === "chase") {
       goal = { x: pp.x, z: pp.z };
-      speed = TREX.chaseSpeed + state.speedBonus + (enraged ? TREX.enrageSpeedBonus : 0);
+      speed = TREX.chaseSpeed + state.speedBonus + duskSpeed + (enraged ? TREX.enrageSpeedBonus : 0);
       if (distP < TREX.attackRange) {
         speed = 0;
         if (state.attackTimer <= 0) {
@@ -245,7 +256,8 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
       const d = Math.hypot(t.x - pos.x, t.z - pos.z);
       if (d < nd) { nd = d; nearest = t; }
     }
-    state.fleeing = nd < HERBIVORE.fleeRange;
+    // The herd gets jumpier at dusk too — they spook from further away.
+    state.fleeing = nd < HERBIVORE.fleeRange + DUSK.herbFleeBonus * DUSK_FACTOR;
 
     const distP = Math.hypot(pp.x - pos.x, pp.z - pos.z);
 

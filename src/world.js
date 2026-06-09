@@ -1,4 +1,4 @@
-import { ARENA, DAYNIGHT, ATMOSPHERE, WATER, PTERO_DIVE } from "./config.js";
+import { ARENA, DAYNIGHT, DUSK, ATMOSPHERE, WATER, PTERO_DIVE } from "./config.js";
 
 // Smooth basin profile for the pond: 1 at the centre, easing to 0 at the rim.
 // Carved into the terrain heightmap so the pool sits in a real depression.
@@ -116,40 +116,58 @@ export function buildWorld(scene) {
   const obstacles = scatterFoliage(scene, shadow, heightAt);
   const atmosphere = buildAtmosphere(scene, heightAt);
 
-  // --- Day/night cycle -----------------------------------------------------
-  let t = 0.25; // start mid-morning
+  // --- Day/night cycle + run-scoped dusk arc -------------------------------
+  let t = 0.25; // start mid-morning (ambient cycle, mood only)
   let t_water = 0;
-  // The day/night clock only advances once a run is live, so the world stays
-  // bright while the player reads the title screen (previously it could drift
-  // into night before they even started). Atmosphere + water still animate.
+  let runSeconds = 0;     // live run time driving the dusk arc
+  let duskFactor = 0;     // 0 full day .. 1 deepest dusk (the gameplay knob)
+  // The day/night clock + dusk arc only advance once a run is live, so the world
+  // stays bright on the title screen. Atmosphere + water still animate either way.
   const update = (dt, advanceDayClock = true) => {
     atmosphere.update(dt);
     // subtle water shimmer
     t_water += dt;
     waterMat.emissiveColor.b = 0.16 + 0.05 * Math.sin(t_water * 1.5);
     water.position.y = waterY + Math.sin(t_water * 0.8) * 0.03;
-    if (advanceDayClock) t = (t + dt / DAYNIGHT.cycleSeconds) % 1;
+    if (advanceDayClock) {
+      t = (t + dt / DAYNIGHT.cycleSeconds) % 1;
+      runSeconds += dt;
+    }
+    // Dusk arc: full day for startSeconds, then a smooth ramp to 1 by
+    // fullDuskSeconds. This is the gameplay-facing time-of-day, separate from
+    // the slow ambient `t` so a single run actually feels it.
+    const raw = (runSeconds - DUSK.startSeconds) /
+      Math.max(0.001, DUSK.fullDuskSeconds - DUSK.startSeconds);
+    const clamped = Math.min(1, Math.max(0, raw));
+    duskFactor = clamped * clamped * (3 - 2 * clamped); // smoothstep
+
     const ang = t * Math.PI * 2;
     const sx = Math.cos(ang), sy = Math.sin(ang);
     sun.direction = new B.Vector3(-sx, -Math.max(0.15, sy), -0.4).normalize();
-    // Floor the day factor so the arena stays readable even at the cycle's dim
-    // end — the day/night swing is mood, not a darkness-survival mechanic.
-    const day = Math.max(DAYNIGHT.minDayLight, sy * 0.5 + 0.5);  // 0.35 dim .. 1 noon
+    // Ambient day factor (mood) floored so the slow cycle never darkens play.
+    const ambientDay = Math.max(DAYNIGHT.minDayLight, sy * 0.5 + 0.5);
+    // Dusk dims the arena toward `minLight` (floored — danger, not blindness).
+    const day = ambientDay * (1 - (1 - DUSK.minLight) * duskFactor);
     sun.intensity = 0.2 + day * 1.5;
     const sunsetTint = Math.max(0, 1 - Math.abs(sy) * 3);
-    sun.diffuse = new B.Color3(1.0, 0.96 - sunsetTint * 0.3, 0.86 - sunsetTint * 0.5);
+    // Warm the sun + sky toward orange as dusk deepens (readable "it's getting late").
+    const warm = DUSK.warmth * duskFactor;
+    sun.diffuse = new B.Color3(1.0, 0.96 - sunsetTint * 0.3 - warm * 0.25, 0.86 - sunsetTint * 0.5 - warm * 0.5);
     hemi.intensity = 0.18 + day * 0.5;
-    const skyR = 0.12 + day * 0.43 + sunsetTint * 0.25;
-    const skyG = 0.16 + day * 0.56;
-    const skyB = 0.28 + day * 0.62;
+    const skyR = (0.12 + day * 0.43 + sunsetTint * 0.25) + warm * 0.25;
+    const skyG = (0.16 + day * 0.56) - warm * 0.06;
+    const skyB = (0.28 + day * 0.62) - warm * 0.22;
     skyMat.emissiveColor.set(skyR, skyG, skyB);
     scene.fogColor.set(skyR * 1.05, skyG * 1.05, skyB * 1.0);
     scene.clearColor.set(skyR, skyG, skyB, 1);
   };
 
+  const resetDusk = () => { runSeconds = 0; duskFactor = 0; };
+
   return {
     ground, shadow, heightAt, update, inWater, waterCenter, waterSurfaceY: waterY,
-    obstacles,
+    obstacles, resetDusk,
+    getDusk: () => duskFactor,
     updateThreats: (dt, player, onScreech, onHit) =>
       atmosphere.updateThreats(dt, player, onScreech, onHit),
   };

@@ -1,6 +1,6 @@
 import { buildWorld } from "./world.js";
 import { createPlayer, createFollowCamera } from "./player.js";
-import { createTrex, createHerd, setObstacles } from "./ai.js";
+import { createTrex, createHerd, setObstacles, setDusk } from "./ai.js";
 import { createEggs } from "./eggs.js";
 import { createPickups } from "./pickups.js";
 import { createInput } from "./input.js";
@@ -9,7 +9,7 @@ import { createHUD } from "./hud.js";
 import { createAudio } from "./audio.js";
 import { createFx } from "./fx.js";
 import { createMinimap } from "./minimap.js";
-import { PLAYER, TREX, EGGS, JUICE, AUDIO, PICKUPS } from "./config.js";
+import { PLAYER, TREX, EGGS, JUICE, AUDIO, PICKUPS, DUSK } from "./config.js";
 
 // Nearest uncollected egg to a position, or null if none remain.
 function nearestEgg(eggs, pos) {
@@ -176,6 +176,9 @@ export async function startGame() {
   const STEP_INTERVAL = JUICE.dustInterval;
   let stepTimer = 0;
   let tensionTimer = 0;
+  // Fires a one-shot "the predators grow bolder" cue the first time dusk deepens
+  // past DUSK.duskThreshold in a run. A roar + popup so the player reads it.
+  let duskAnnounced = false;
 
   hud.setObjective(`Bank ${EGGS.targetToWin} eggs at your nest. Don't get eaten.`);
   {
@@ -211,6 +214,18 @@ export async function startGame() {
 
     if (!game.over) {
       game.elapsed += dt;
+
+      // Day/night gameplay: push the run's dusk factor into the AI (predators
+      // grow bolder) and the HUD time-of-day bar. One-shot cue when dusk deepens.
+      const dusk = world.getDusk();
+      setDusk(dusk);
+      hud.setDusk(dusk);
+      if (!duskAnnounced && dusk >= DUSK.duskThreshold) {
+        duskAnnounced = true;
+        hud.popup("DUSK FALLS — predators grow bolder", "warn");
+        audio.roar();
+      }
+
       // difficulty ramp: every 30s predators get a bit faster
       const wave = Math.floor(game.elapsed / 30);
       if (wave > game.wave) {
@@ -354,6 +369,8 @@ export async function startGame() {
     herd.forEach((h) => h.reset());
     eggs.reset();
     pickups.reset();
+    world.resetDusk();   // fresh run starts in full daylight again
+    setDusk(0); hud.setDusk(0); duskAnnounced = false;
     const c = world.heightAt(0, 0);
     player.reset(0, c, 0);
     score.points = 0; score.combo = 1; score.lastBankAt = -999;

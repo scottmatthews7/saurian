@@ -15,6 +15,10 @@ export function createHUD() {
   const roarBar = el("roarFill");
   const roarReady = el("roarReady");
   const vignette = el("vignette");
+  const duskFill = el("duskFill");
+  const duskIcon = el("duskIcon");
+  const duskLabel = el("duskLabel");
+  const duskTint = el("duskTint");
   const hitFlashEl = el("hitFlash");
   const popups = el("popups");
   const muteBtn = el("muteBtn");
@@ -54,6 +58,20 @@ export function createHUD() {
       const f = Math.max(0, Math.min(1, fraction));
       roarBar.style.width = `${f * 100}%`;
       if (roarReady) roarReady.classList.toggle("on", f >= 1);
+    },
+    // Time-of-day indicator. `factor` is the dusk factor (0 full day .. 1 deepest
+    // dusk). The bar shows daylight *remaining* (depletes as dusk falls); the icon
+    // and label flip to a dusk look past the midpoint; the screen edges warm amber.
+    setDusk(factor) {
+      const f = Math.max(0, Math.min(1, factor));
+      if (duskFill) duskFill.style.width = `${(1 - f) * 100}%`;
+      if (duskTint) duskTint.style.opacity = `${f}`;
+      const isDusk = f >= 0.5;
+      if (duskIcon) duskIcon.textContent = isDusk ? "🌆" : "☀️";
+      if (duskLabel) {
+        duskLabel.textContent = isDusk ? "Dusk" : "Daylight";
+        duskLabel.classList.toggle("dusk", isDusk);
+      }
     },
     setStamina(v, max, exhausted) {
       if (!staminaBar) return;

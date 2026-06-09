@@ -149,6 +149,28 @@ export const DAYNIGHT = {
   minDayLight: 0.35,     // floor on the day factor so the arena never goes truly dark while playing
 };
 
+// Run-scoped DUSK arc — the actual day/night *gameplay* mechanic. Independent of
+// the slow ambient DAYNIGHT cycle: every run starts in bright afternoon and
+// marches toward dusk over `fullDuskSeconds`, giving each session a readable,
+// escalating arc. As dusk deepens (duskFactor 0..1) predators grow bolder. The
+// world never goes pitch black — `minLight` floors the visible darkness so it
+// stays playable; the danger, not the gloom, is the point. All arcade-feel.
+export const DUSK = {
+  startSeconds: 25,       // sec of full daylight before dusk begins creeping in
+  fullDuskSeconds: 150,   // sec from run start to deepest dusk (duskFactor = 1)
+  minLight: 0.45,         // light floor at deepest dusk (0 = black, 1 = noon)
+  warmth: 0.35,           // how far the sky/fog shifts toward warm orange at full dusk
+  // How much boldness the T-Rex gains at full dusk (multipliers/additions blended
+  // by duskFactor). Sight reaches further, it loses interest later and runs faster.
+  trexSightBonus: 16,     // +world units of sight range at full dusk
+  trexLoseBonus: 14,      // +world units of lose-interest range at full dusk
+  trexSpeedBonus: 2.5,    // +chase units/sec at full dusk
+  herbFleeBonus: 6,       // +herbivore flee range at full dusk (the herd gets jumpy too)
+  // duskFactor at which the run flips to a visible "dusk" presentation (icon/label)
+  // AND fires the one-shot "predators grow bolder" cue. Shared so HUD + game agree.
+  duskThreshold: 0.5,
+};
+
 // Atmosphere: stylised non-gameplay set dressing. A pterosaur flock circles
 // overhead, low drifting clouds, and floating pollen motes catch the light.
 // Pure visual polish — none of it collides or affects the sim.

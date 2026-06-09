@@ -29,6 +29,9 @@
     #staminaFill { background: linear-gradient(90deg, #2e86de, #54e0c7); }
     #staminaFill.exhausted { background: linear-gradient(90deg, #7a7a7a, #aa4040); }
     #roarFill { background: linear-gradient(90deg, #d98e2b, #ffd27a); }
+    /* Daylight remaining: full bright at run start, depletes toward dusk. */
+    #duskFill { background: linear-gradient(90deg, #c0451f, #ffd27a, #fff2c4); }
+    #duskLabel.dusk { color: #ff9a5b; }
     .readyTag { font-size: 10px; color: #ffd27a; opacity: 0; margin-left: 6px; letter-spacing: 1px; }
     .readyTag.on { opacity: 1; animation: readyPulse 1.2s ease-in-out infinite; }
     @keyframes readyPulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
@@ -45,6 +48,7 @@
     .popup.score { color: var(--accent); }
     .popup.gold { color: #ffd24a; font-size: 26px; }
     .popup.heal { color: var(--good); }
+    .popup.warn { color: #ff9a4a; font-size: 16px; letter-spacing: 0.5px; }
     @keyframes popRise { 0% { opacity: 0; transform: translateY(8px) scale(0.8); }
       15% { opacity: 1; transform: translateY(0) scale(1.1); }
       40% { transform: translateY(-6px) scale(1); }
@@ -107,6 +111,11 @@
       transition: opacity 0.3s ease; box-shadow: inset 0 0 200px 60px rgba(170,10,10,0.85);
       background: radial-gradient(circle at center, rgba(0,0,0,0) 55%, rgba(150,0,0,0.28) 100%); }
 
+    /* Warm dusk vignette: edges of the screen deepen amber as dusk falls. */
+    #duskTint { position: absolute; inset: 0; pointer-events: none; opacity: 0;
+      transition: opacity 0.6s ease;
+      background: radial-gradient(circle at center, rgba(0,0,0,0) 50%, rgba(120,45,10,0.55) 100%); }
+
     /* Brief full-screen red flash on taking a hit (added/removed from JS). */
     #hitFlash { position: absolute; inset: 0; pointer-events: none; opacity: 0;
       background: radial-gradient(circle at center, rgba(220,20,20,0) 30%, rgba(200,0,0,0.55) 100%); }
@@ -160,6 +169,8 @@
       <div class="bar"><div id="trexFill" class="barFill"></div></div>
       <div class="label">Roar <span id="roarReady" class="readyTag">READY</span></div>
       <div class="bar"><div id="roarFill" class="barFill"></div></div>
+      <div class="label"><span id="duskIcon">☀️</span> <span id="duskLabel">Daylight</span></div>
+      <div class="bar"><div id="duskFill" class="barFill"></div></div>
     </div>
     <div id="topRight" class="panel">
       <div class="label">Eggs Banked</div>
@@ -175,6 +186,7 @@
     </div>
     <div id="muteBtn" title="Toggle sound (M)">🔊 Sound</div>
     <div id="objective"></div>
+    <div id="duskTint"></div>
     <div id="vignette"></div>
     <div id="hitFlash"></div>
     <div id="banner"></div>
