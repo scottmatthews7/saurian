@@ -32,7 +32,7 @@ export async function startGame() {
   setLoad("Hatching the raptor…");
   const player = await createPlayer(scene, world.shadow, input);
   player.setGroundFn(world.heightAt);
-  player.dino.root.position.y = world.heightAt(0, 0);
+  player.warpTo(0, world.heightAt(0, 0), 0);
 
   const camRig = createFollowCamera(scene, player);
 

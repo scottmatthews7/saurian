@@ -9,7 +9,13 @@ export async function createPlayer(scene, shadow, input) {
   const dino = await loadDino(scene, "raptor", PLAYER.height, shadow);
   dino.root.position.set(0, 2, 0);
 
-  const collider = dino.root; // we move the root and rely on ellipsoid
+  // TransformNode has no moveWithCollisions, so we drive an invisible collider
+  // mesh and copy its position onto the visual dino root each frame.
+  const collider = B.MeshBuilder.CreateBox("playerCollider", { size: 0.1 }, scene);
+  collider.isVisible = false;
+  collider.isPickable = false;
+  collider.checkCollisions = true;
+  collider.position.copyFrom(dino.root.position);
   collider.ellipsoid = new B.Vector3(PLAYER.radius, PLAYER.height / 2, PLAYER.radius);
   collider.ellipsoidOffset = new B.Vector3(0, PLAYER.height / 2, 0);
 
@@ -91,6 +97,9 @@ export async function createPlayer(scene, shadow, input) {
       collider.position.x *= k; collider.position.z *= k;
     }
 
+    // sync the visual dino to the collider (yaw is applied separately)
+    dino.root.position.copyFrom(collider.position);
+
     // --- animation state ---
     if (state.attacking > 0) {
       // attack clip already playing
@@ -125,6 +134,12 @@ export async function createPlayer(scene, shadow, input) {
   // ground height helper (matches world.heightAt; injected at game wiring)
   let groundFloor = () => 0;
   state.setGroundFn = (fn) => { groundFloor = (p) => fn(p.x, p.z); };
+
+  // Place both collider and visual at a world position (avoids first-frame pop).
+  state.warpTo = (x, y, z) => {
+    collider.position.set(x, y, z);
+    dino.root.position.set(x, y, z);
+  };
 
   return state;
 }
