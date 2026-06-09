@@ -24,6 +24,9 @@ export const PLAYER = {
   attackCooldown: 0.7, // sec
   attackDamage: 34,    // damage dealt to a predator on a landed bite
   invulnAfterHit: 1.0, // i-frames after taking damage (sec)
+  attackLockSeconds: 0.45, // movement-lock duration of a bite (the bite window)
+  lungeSpeed: 9,       // forward burst (units/sec) during the bite window
+  lungeSeconds: 0.18,  // how long the lunge push lasts within the bite
   // Sprint stamina — turns infinite-sprint escape into a managed resource so
   // the T-Rex stays threatening. Values chosen for ~3.3s of sprint then a
   // recovery window; a deliberate arcade-feel design choice.
@@ -46,6 +49,10 @@ export const TREX = {
   maxHealth: 140,
   turnLerp: 0.06,
   secondSpawnWave: 3,    // a second T-Rex joins the hunt from this wave (~90s)
+  // A wounded T-Rex enrages: below this health fraction it gains a speed boost
+  // and a sustained angry glow — a comeback threat when you nearly have it.
+  enrageThreshold: 0.4,
+  enrageSpeedBonus: 3,
 };
 
 export const HERBIVORE = {

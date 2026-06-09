@@ -27,6 +27,8 @@ export async function createTrex(scene, shadow, groundFn) {
     attackTimer: 0,
     dead: false,
     speedBonus: 0,
+    enraged: false,    // true once wounded past the enrage threshold
+    enrageGlow: 0,     // re-flash timer for the sustained angry glow
     onBite: null,    // (set by game) called when the trex lands a bite on the player
     onRoar: null,    // called when entering chase
   };
@@ -40,6 +42,21 @@ export async function createTrex(scene, shadow, groundFn) {
     const pp = player.dino.root.position;
     const distP = Math.hypot(pp.x - pos.x, pp.z - pos.z);
 
+    // Enrage when wounded: faster, with a sustained angry glow + a roar on the
+    // transition. A comeback threat right when you think you've won.
+    const enraged = state.health <= TREX.maxHealth * TREX.enrageThreshold;
+    if (enraged && !state.enraged) {
+      state.enraged = true;
+      if (state.onRoar) state.onRoar();
+    }
+    if (enraged) {
+      state.enrageGlow -= dt;
+      if (state.enrageGlow <= 0) {
+        state.enrageGlow = 0.3;
+        dino.flash(0.35, new B.Color3(0.9, 0.1, 0.05));
+      }
+    }
+
     // FSM
     const wasChasing = state.mode === "chase";
     if (!player.dead && distP < TREX.sightRange) state.mode = "chase";
@@ -49,7 +66,7 @@ export async function createTrex(scene, shadow, groundFn) {
     let goal, speed;
     if (state.mode === "chase") {
       goal = { x: pp.x, z: pp.z };
-      speed = TREX.chaseSpeed + state.speedBonus;
+      speed = TREX.chaseSpeed + state.speedBonus + (enraged ? TREX.enrageSpeedBonus : 0);
       if (distP < TREX.attackRange) {
         speed = 0;
         if (state.attackTimer <= 0) {
@@ -75,7 +92,7 @@ export async function createTrex(scene, shadow, groundFn) {
     if (speed > 0) {
       pos.x += (dx / dist) * speed * dt;
       pos.z += (dz / dist) * speed * dt;
-      dino.play("Run", { speed: state.mode === "chase" ? 1.2 : 0.85 });
+      dino.play("Run", { speed: state.mode === "chase" ? (enraged ? 1.5 : 1.2) : 0.85 });
     } else if (state.attackTimer > TREX.attackCooldown - 0.5) {
       // attacking
     } else {

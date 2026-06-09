@@ -8,6 +8,7 @@ export async function createPlayer(scene, shadow, input) {
   const B = window.BABYLON;
   const dino = await loadDino(scene, "raptor", PLAYER.height, shadow);
   dino.root.position.set(0, 2, 0);
+  const ATTACK_LOCK = PLAYER.attackLockSeconds;
 
   // TransformNode has no moveWithCollisions, so we drive an invisible collider
   // mesh and copy its position onto the visual dino root each frame.
@@ -99,6 +100,13 @@ export async function createPlayer(scene, shadow, input) {
     }
 
     const horiz = moving ? move.scale(speed * dt) : B.Vector3.Zero();
+    // Bite lunge: a short forward burst at the start of the attack window so
+    // the bite has weight and can close distance onto a backing-away target.
+    if (state.attacking > ATTACK_LOCK - PLAYER.lungeSeconds) {
+      const lunge = PLAYER.lungeSpeed * dt;
+      horiz.x += Math.sin(state.facing) * lunge;
+      horiz.z += Math.cos(state.facing) * lunge;
+    }
     const disp = new B.Vector3(horiz.x, state.velY * dt, horiz.z);
     collider.moveWithCollisions(disp);
 
@@ -133,7 +141,7 @@ export async function createPlayer(scene, shadow, input) {
     // --- attack ---
     if (input.consumeAttack() && state.attackTimer <= 0 && state.grounded) {
       state.attackTimer = PLAYER.attackCooldown;
-      state.attacking = 0.45;
+      state.attacking = ATTACK_LOCK;
       dino.play("Attack", { loop: false, speed: 1.4 });
       if (state.onAttack) state.onAttack();
     }
