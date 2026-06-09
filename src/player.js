@@ -32,6 +32,8 @@ export async function createPlayer(scene, shadow, input) {
     attacking: 0,        // remaining attack-anim lock
     biteId: 0,           // increments each swing; lets the game land one hit per target per bite
     biteConnected: false,// true once a swing has dealt damage (drives the bite "chomp" SFX/feel)
+    roarTimer: 0,        // roar cooldown remaining (sec)
+    onRoar: null,        // fired when a roar successfully triggers (game applies the AoE + FX)
     moving: false,
     sprinting: false,
     stamina: PLAYER.staminaMax,
@@ -58,6 +60,15 @@ export async function createPlayer(scene, shadow, input) {
     state.attackTimer = Math.max(0, state.attackTimer - dt);
     state.invuln = Math.max(0, state.invuln - dt);
     state.attacking = Math.max(0, state.attacking - dt);
+    state.roarTimer = Math.max(0, state.roarTimer - dt);
+
+    // Intimidating roar (Q): off-cooldown only. The game wires onRoar to apply
+    // the area effect (stagger the T-Rex, panic the herd) and the FX/SFX.
+    if (input.consumeRoar() && state.roarTimer <= 0 && !state.dead) {
+      state.roarTimer = PLAYER.roarCooldown;
+      dino.flash(0.3, new B.Color3(0.9, 0.7, 0.2));
+      if (state.onRoar) state.onRoar(collider.position.clone());
+    }
 
     // --- movement input (camera-relative) ---
     const fwd = camForward();
@@ -213,6 +224,7 @@ export async function createPlayer(scene, shadow, input) {
     state.attacking = 0;
     state.biteId = 0;
     state.biteConnected = false;
+    state.roarTimer = 0;
     state.stamina = PLAYER.staminaMax;
     state.exhausted = false;
     state.carrying = 0;

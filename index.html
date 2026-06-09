@@ -28,6 +28,10 @@
     #trexFill { background: linear-gradient(90deg, #8e44ad, #c0392b); }
     #staminaFill { background: linear-gradient(90deg, #2e86de, #54e0c7); }
     #staminaFill.exhausted { background: linear-gradient(90deg, #7a7a7a, #aa4040); }
+    #roarFill { background: linear-gradient(90deg, #d98e2b, #ffd27a); }
+    .readyTag { font-size: 10px; color: #ffd27a; opacity: 0; margin-left: 6px; letter-spacing: 1px; }
+    .readyTag.on { opacity: 1; animation: readyPulse 1.2s ease-in-out infinite; }
+    @keyframes readyPulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
 
     #topRight { top: 16px; right: 16px; text-align: right; }
     #eggCount { font-size: 30px; font-weight: bold; color: var(--accent); }
@@ -154,6 +158,8 @@
       <div class="bar"><div id="staminaFill" class="barFill"></div></div>
       <div class="label">T-Rex Health</div>
       <div class="bar"><div id="trexFill" class="barFill"></div></div>
+      <div class="label">Roar <span id="roarReady" class="readyTag">READY</span></div>
+      <div class="bar"><div id="roarFill" class="barFill"></div></div>
     </div>
     <div id="topRight" class="panel">
       <div class="label">Eggs Banked</div>

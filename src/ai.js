@@ -56,6 +56,7 @@ export async function createTrex(scene, shadow, groundFn) {
     enraged: false,    // true once wounded past the enrage threshold
     enrageGlow: 0,     // re-flash timer for the sustained angry glow
     lastBiteId: -1,    // last player swing id that hit this target (one hit per swing)
+    staggered: 0,      // sec remaining frozen/dazed by the player's roar
     onBite: null,    // (set by game) called when the trex lands a bite on the player
     onRoar: null,    // called when entering chase
   };
@@ -68,6 +69,15 @@ export async function createTrex(scene, shadow, groundFn) {
     const pos = dino.root.position;
     const pp = player.dino.root.position;
     const distP = Math.hypot(pp.x - pos.x, pp.z - pos.z);
+
+    // Staggered by the player's roar: dazed in place (pursuit broken) until the
+    // timer lapses, then it resumes hunting. Keeps the ground animation idle.
+    if (state.staggered > 0) {
+      state.staggered = Math.max(0, state.staggered - dt);
+      pos.y = groundFn(pos.x, pos.z);
+      dino.play("Idle");
+      return;
+    }
 
     // Enrage when wounded: faster, with a sustained angry glow + a roar on the
     // transition. A comeback threat right when you think you've won.
@@ -137,6 +147,16 @@ export async function createTrex(scene, shadow, groundFn) {
     if (state.health <= 0) { state.dead = true; dino.play("Death", { loop: false }); }
   };
 
+  // React to the player's intimidating roar: stagger (pursuit broken) and drop
+  // back to patrol so the chase resets. A dazed-blue flash reads the daze.
+  state.roarReact = function (seconds) {
+    if (state.dead) return;
+    state.staggered = Math.max(state.staggered, seconds);
+    state.mode = "patrol";
+    state.target = randPointInArena();
+    dino.flash(0.3, new window.BABYLON.Color3(0.3, 0.4, 0.9));
+  };
+
   // Soft restart: revive at a fresh spot, full health, back on patrol.
   state.reset = function () {
     const p = randPointInArena();
@@ -149,6 +169,7 @@ export async function createTrex(scene, shadow, groundFn) {
     state.enraged = false;
     state.enrageGlow = 0;
     state.lastBiteId = -1;
+    state.staggered = 0;
     state.dead = false;
     dino.play("Idle");
   };
@@ -183,6 +204,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     dead: false,
     health: 60,
     lastBiteId: -1,     // last player swing id that hit this target (one hit per swing)
+    panic: 0,           // sec of forced terror-flee directly away from the player (the roar)
     onCharge: null,     // (set by game) called when a charge starts
     onDown: null,       // (position) called when killed by the player
   };
@@ -195,6 +217,24 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     const pos = dino.root.position;
     const pp = player.dino.root.position;
     state.chargeCd = Math.max(0, state.chargeCd - dt);
+    state.panic = Math.max(0, state.panic - dt);
+
+    // Roar panic: bolt directly away from the player at flee speed, overriding
+    // wander/charge, until the panic timer lapses.
+    if (state.panic > 0) {
+      const adx = pos.x - pp.x, adz = pos.z - pp.z;
+      const ad = Math.hypot(adx, adz) || 1;
+      const dir = avoidObstacles(pos, adx / ad, adz / ad);
+      state.facing = lerpAngle(state.facing, Math.atan2(dir.dx, dir.dz), 0.25);
+      dino.setYaw(state.facing);
+      pos.x += dir.dx * HERBIVORE.fleeSpeed * dt;
+      pos.z += dir.dz * HERBIVORE.fleeSpeed * dt;
+      pos.y = groundFn(pos.x, pos.z);
+      clampArena(pos);
+      state.fleeing = true;
+      dino.play("Run", { speed: 1.4 });
+      return;
+    }
 
     const threats = [pp];
     if (trex && !trex.dead) threats.push(trex.dino.root.position);
@@ -277,6 +317,14 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     }
   };
 
+  // React to the player's roar: a few seconds of terror-flee straight away.
+  state.roarReact = function (seconds) {
+    if (state.dead) return;
+    state.panic = Math.max(state.panic, seconds);
+    state.charging = 0;
+    dino.flash(0.25, new window.BABYLON.Color3(0.9, 0.9, 0.3));
+  };
+
   // Soft restart: revive, full health, fresh wander target.
   state.reset = function () {
     const p = randPointInArena();
@@ -288,6 +336,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     state.chargeCd = 0;
     state.chargeHitDone = false;
     state.lastBiteId = -1;
+    state.panic = 0;
     state.target = randPointInArena();
     dino.play("Idle");
   };

@@ -12,6 +12,8 @@ export function createHUD() {
   const banner = el("banner");
   const trexBar = el("trexFill");
   const staminaBar = el("staminaFill");
+  const roarBar = el("roarFill");
+  const roarReady = el("roarReady");
   const vignette = el("vignette");
   const hitFlashEl = el("hitFlash");
   const popups = el("popups");
@@ -46,6 +48,13 @@ export function createHUD() {
     onMuteClick(fn) { if (muteBtn) muteBtn.addEventListener("click", fn); },
     setMuteLabel(muted) { if (muteBtn) muteBtn.textContent = muted ? "🔇 Muted" : "🔊 Sound"; },
     setTrex(v, max) { trexBar.style.width = `${Math.max(0, (v / max) * 100)}%`; },
+    // Roar charge: fraction 0 (just used) .. 1 (ready); pulses READY when full.
+    setRoar(fraction) {
+      if (!roarBar) return;
+      const f = Math.max(0, Math.min(1, fraction));
+      roarBar.style.width = `${f * 100}%`;
+      if (roarReady) roarReady.classList.toggle("on", f >= 1);
+    },
     setStamina(v, max, exhausted) {
       if (!staminaBar) return;
       staminaBar.style.width = `${Math.max(0, (v / max) * 100)}%`;
@@ -86,6 +95,7 @@ export function createHUD() {
             ${ctrl("SHIFT", "Sprint")}
             ${ctrl("SPACE", "Jump")}
             ${ctrl("CLICK / J", "Bite")}
+            ${ctrl("Q", "Roar")}
             ${ctrl("P", "Pause")}
             ${ctrl("M", "Mute")}
           </div>

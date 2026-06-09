@@ -35,6 +35,14 @@ export const PLAYER = {
   staminaRegen: 18,     // per second while not sprinting
   staminaSprintMin: 10, // need at least this much to start sprinting again
   carrySlow: 0.6,       // speed multiplier per egg carried, applied as 1/(1+n*x)
+  // Intimidating ROAR (Q) — an active panic/utility tool. On a cooldown the
+  // raptor bellows: a chasing T-Rex inside the radius is briefly staggered
+  // (its pursuit broken), and nearby herbivores bolt in terror. Costs nothing
+  // but the cooldown, so it's a tactical "get off me" button, not spammable.
+  // All values are arcade-feel design choices.
+  roarCooldown: 8,      // sec between roars
+  roarRadius: 22,       // world units of effect
+  roarStagger: 1.4,     // sec a caught T-Rex is frozen/dazed
 };
 
 export const TREX = {
@@ -192,6 +200,7 @@ export const JUICE = {
   lowHealthThreshold: 0.35, // fraction below which the red vignette appears
   chargeShake: 0.3,         // camera shake when a triceratops charges
   biteConnectShake: 0.22,   // small kick when the raptor's bite lands (tactile confirmation; < a hit-taken)
+  roarShake: 0.45,          // strong brief kick selling the intimidating roar
 };
 
 export const AUDIO = {

@@ -99,6 +99,23 @@ export async function startGame() {
   };
   // Universal hurt feedback fires for any damage source (bite or charge hit).
   player.onHurt = () => { audio.hurt(); fx.addShake(JUICE.camShakeOnHit); hud.hitFlash(); };
+  // Intimidating roar: stagger any T-Rex in range and panic nearby herbivores.
+  player.onRoar = (pos) => {
+    audio.roar();
+    fx.addShake(JUICE.roarShake);
+    fx.pickupBurst(pos, new B2.Color4(1, 0.85, 0.4, 1));
+    const r2 = PLAYER.roarRadius * PLAYER.roarRadius;
+    for (const p of predators) {
+      if (p.dead || !p.roarReact) continue;
+      const tp = p.dino.root.position;
+      if ((tp.x - pos.x) ** 2 + (tp.z - pos.z) ** 2 < r2) p.roarReact(PLAYER.roarStagger);
+    }
+    for (const h of herd) {
+      if (h.dead || !h.roarReact) continue;
+      const tp = h.dino.root.position;
+      if ((tp.x - pos.x) ** 2 + (tp.z - pos.z) ** 2 < r2) h.roarReact(PLAYER.roarStagger);
+    }
+  };
   herd.forEach((h) => {
     h.onCharge = () => { audio.bite(); fx.addShake(JUICE.chargeShake); };
     h.onDown = (pos) => {
@@ -280,6 +297,7 @@ export async function startGame() {
       // HUD — show the most-threatening (nearest live) predator's health
       hud.setHealth(player.health, PLAYER.maxHealth);
       hud.setStamina(player.stamina, PLAYER.staminaMax, player.exhausted);
+      hud.setRoar(1 - player.roarTimer / PLAYER.roarCooldown);
       hud.setTrex(primary ? primary.health : 0, TREX.maxHealth);
       hud.setEggs(eggs.banked, EGGS.targetToWin, eggs.carrying, eggs.remaining());
 
