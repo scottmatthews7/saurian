@@ -282,6 +282,7 @@ export async function startGame() {
       // footstep dust + sound while running on the ground
       const pPos = player.dino.root.position;
       fx.footDust(dt, pPos, player.moving && player.grounded);
+      fx.dashTrail(pPos, player.dashActive > 0);
       if (player.sprinting && player.grounded) {
         stepTimer -= dt;
         if (stepTimer <= 0) { stepTimer = STEP_INTERVAL; audio.step(); }

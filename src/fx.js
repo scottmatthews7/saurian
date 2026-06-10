@@ -31,6 +31,27 @@ export function createFx(scene) {
 
   let dustTimer = 0;
 
+  // ---- Dash trail --------------------------------------------------------
+  // A pooled additive system that leaves a brief cyan streak behind the raptor
+  // for the duration of a dash burst, so the dodge reads as a quick smear.
+  const trail = new B.ParticleSystem("dashTrail", 120, scene);
+  trail.particleTexture = tex;
+  trail.emitter = new B.Vector3(0, 0, 0);
+  trail.minEmitBox = new B.Vector3(-0.25, 0.2, -0.25);
+  trail.maxEmitBox = new B.Vector3(0.25, 1.0, 0.25);
+  trail.color1 = new B.Color4(0.5, 0.9, 1, 0.7);
+  trail.color2 = new B.Color4(0.3, 0.7, 1, 0.5);
+  trail.colorDead = new B.Color4(0.4, 0.8, 1, 0);
+  trail.minSize = 0.4; trail.maxSize = 1.0;
+  trail.minLifeTime = 0.15; trail.maxLifeTime = 0.3;
+  trail.emitRate = 0;
+  trail.blendMode = B.ParticleSystem.BLENDMODE_ADD;
+  trail.gravity = new B.Vector3(0, 0.5, 0);
+  trail.direction1 = new B.Vector3(-0.3, 0, -0.3);
+  trail.direction2 = new B.Vector3(0.3, 0.4, 0.3);
+  trail.minEmitPower = 0.1; trail.maxEmitPower = 0.5;
+  trail.start();
+
   // ---- Pickup burst ------------------------------------------------------
   function pickupBurst(position, color) {
     const ps = new B.ParticleSystem("pickup", 60, scene);
@@ -74,6 +95,13 @@ export function createFx(scene) {
         dust.manualEmitCount = 6;
         dust.emitRate = 0;
       }
+    },
+    // Emit cyan motes along the raptor's path while a dash burst is active.
+    dashTrail(position, active) {
+      if (!active) return;
+      trail.emitter = position;
+      trail.manualEmitCount = 5;
+      trail.emitRate = 0;
     },
     pickupBurst,
     addShake(mag) { shake = Math.max(shake, mag); },
