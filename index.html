@@ -75,6 +75,22 @@
     #minimap { display: block; border-radius: 8px; }
     #minimapWrap .label { margin-bottom: 4px; text-align: center; }
 
+    /* Backpack hotbar (item 6) — centred above the objective pill. */
+    #hotbar { position: absolute; bottom: 58px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 8px; pointer-events: none; }
+    .hbCell { position: relative; width: 46px; height: 46px; border-radius: 9px;
+      background: rgba(8,18,22,0.55); border: 1px solid rgba(255,255,255,0.14);
+      backdrop-filter: blur(4px); display: flex; align-items: center;
+      justify-content: center; }
+    .hbCell.filled { border-color: rgba(255,255,255,0.3); }
+    .hbCell.active { border-color: var(--accent); box-shadow: 0 0 12px rgba(255,205,88,0.6);
+      background: rgba(40,32,10,0.7); }
+    .hbKey { position: absolute; top: 2px; left: 5px; font-size: 10px; font-weight: 700;
+      opacity: 0.6; }
+    .hbIcon { font-size: 24px; line-height: 1; }
+    .hbCount { position: absolute; bottom: 1px; right: 4px; font-size: 11px;
+      font-weight: 800; color: var(--accent); text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+
     #muteBtn { position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
       pointer-events: auto; cursor: pointer; font-size: 13px; letter-spacing: 1px;
       text-transform: uppercase; color: #fff; opacity: 0.8;
@@ -198,6 +214,7 @@
       <canvas id="minimap"></canvas>
     </div>
     <div id="muteBtn" title="Toggle sound (M)">🔊 Sound</div>
+    <div id="hotbar"></div>
     <div id="objective"></div>
     <div id="duskTint"></div>
     <div id="vignette"></div>

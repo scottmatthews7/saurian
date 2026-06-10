@@ -4,13 +4,15 @@ import { createPlayer, createFollowCamera } from "./player.js";
 import { createTrex, createHerd, createRaptorPack, setObstacles, setDusk } from "./ai.js";
 import { createEggs } from "./eggs.js";
 import { createPickups } from "./pickups.js";
+import { createInventory } from "./inventory.js";
+import { createTools, applyStagger } from "./tools.js";
 import { createInput } from "./input.js";
 import { createTouchControls } from "./touch.js";
 import { createHUD } from "./hud.js";
 import { createAudio } from "./audio.js";
 import { createFx } from "./fx.js";
 import { createMinimap } from "./minimap.js";
-import { PLAYER, TREX, EGGS, JUICE, AUDIO, PICKUPS, DUSK, RAPTOR, SCORE } from "./config.js";
+import { PLAYER, TREX, EGGS, JUICE, AUDIO, PICKUPS, DUSK, RAPTOR, SCORE, TOOLS } from "./config.js";
 
 // Nearest uncollected egg to a position, or null if none remain.
 function nearestEgg(eggs, pos) {
@@ -69,6 +71,14 @@ export async function startGame() {
   const eggs = createEggs(scene, world.shadow, world.heightAt);
   const pickups = createPickups(scene, world.shadow, world.heightAt);
 
+  // Primitive tools + backpack inventory (wishlist item 6). The backpack holds
+  // collected weapons; tools.js scatters pickups, shows the equipped weapon
+  // in-hand, throws rocks, and deters predators with a lit torch.
+  const inventory = createInventory();
+  const tools = createTools(scene, world.shadow, world.heightAt, inventory);
+  inventory.onChange = (inv) => hud.setHotbar(inv);
+  hud.setHotbar(inventory);
+
   // --- wire feedback callbacks (audio + particles + screen shake) ---
   const B2 = window.BABYLON;
   // Survival scoring: points accrue from time alive (faster at dusk), pickups,
@@ -92,6 +102,19 @@ export async function startGame() {
     fx.pickupBurst(pos, new B2.Color4(0.3, 1, 0.4, 1));
     addScore(SCORE.meatPickup);
     hud.popup(`+${SCORE.meatPickup} · +${PICKUPS.meatHeal} HP`, "heal");
+  };
+  // Tools feedback: a pickup chime + popup naming the weapon; a whoosh on throw;
+  // a thud + spray when a thrown rock connects.
+  tools.onPickup = (pos, kind) => {
+    audio.pickup(false);
+    fx.pickupBurst(pos, new B2.Color4(0.85, 0.8, 0.7, 1));
+    hud.popup(`PICKED UP ${(TOOLS.kinds[kind] || {}).label || kind} — press 1-6 to equip`, "good");
+  };
+  tools.onThrow = () => audio.swing();
+  tools.onProjectileHit = (pos) => {
+    audio.thud();
+    fx.pickupBurst(pos, new B2.Color4(0.9, 0.85, 0.7, 1));
+    fx.addShake(JUICE.strikeConnectShake);
   };
   // A perfect dodge: dash i-frames negated a predator's attack. Skill pays.
   player.onCloseCall = (pos) => {
@@ -273,6 +296,15 @@ export async function startGame() {
       eggs.update(dt, player);
       pickups.update(dt, player);
 
+      // Tools (item 6): weapon pickups, in-hand mesh + swing, thrown rocks,
+      // torch deterrence. Throw on G / right-click (spends a rock). Stagger
+      // timers (set by a heavy hit / thrown rock) tick down here so the AI's
+      // hold-when-staggered guard releases on schedule.
+      if (input.consumeThrow()) tools.throwEquipped(player);
+      tools.update(dt, player, predators, herd);
+      tools.tickStagger(dt, predators);
+      tools.tickStagger(dt, herd);
+
       // pterosaur dive attack — a telegraphed screech then a swoop from above
       world.updateThreats(dt, player,
         () => audio.screech(),
@@ -388,16 +420,23 @@ export async function startGame() {
       // swing lands exactly PLAYER.attackDamage once, no matter the frame rate.
       // Felled herbivores drop meat that heals the player.
       if (player.attacking > 0) {
+        // Equipped-weapon modifier (item 6): a melee weapon does MORE damage /
+        // longer reach than the bare punch+kick (PLAYER baseline, the fallback).
+        const weapon = inventory.equipped();
+        const strikeDamage = weapon ? weapon.damage : PLAYER.attackDamage;
+        const strikeRange = weapon ? weapon.range : PLAYER.attackRange;
         const tryStrike = (t) => {
           if (t.dead || t.lastStrikeId === player.strikeId) return;
           const tp = t.dino.root.position;
-          if (Math.hypot(pPos.x - tp.x, pPos.z - tp.z) < PLAYER.attackRange) {
+          if (Math.hypot(pPos.x - tp.x, pPos.z - tp.z) < strikeRange) {
             t.lastStrikeId = player.strikeId;
             // FEEDING FRENZY payoff: a T-Rex struck while head-down feeding takes
             // bonus damage — the brave-player punish window. Loud feedback so the
             // player learns the opening pays.
             const feeding = t.feeding > 0;
-            t.takeDamage(PLAYER.attackDamage * (feeding ? TREX.feedVulnMultiplier : 1));
+            t.takeDamage(strikeDamage * (feeding ? TREX.feedVulnMultiplier : 1));
+            // Heavy weapons (club, rock-bonk) STAGGER: freeze the predator briefly.
+            if (weapon && weapon.stagger) applyStagger(t);
             audio.thud();        // the blow lands: a meaty impact, not a chomp
             if (feeding) {
               hud.popup("FEEDING FRENZY — flank hit!", "good");
@@ -471,6 +510,8 @@ export async function startGame() {
     herd.forEach((h) => h.reset());
     eggs.reset();
     pickups.reset();
+    inventory.reset();   // empty the backpack + re-scatter the weapons
+    tools.reset();
     world.resetDusk();   // fresh run starts in full daylight again
     world.resetThreats(); // abort any in-flight pterosaur dive from the old run
     setDusk(0); hud.setDusk(0); duskAnnounced = false;
@@ -495,6 +536,10 @@ export async function startGame() {
 
   window.addEventListener("keydown", (e) => {
     const k = e.key.toLowerCase();
+    // Hotbar select (item 6): number keys 1..N equip that backpack slot; 0
+    // unequips back to bare hands. Re-pressing the equipped slot also unequips.
+    if (k >= "1" && k <= "9") inventory.select(parseInt(k, 10) - 1);
+    if (k === "0") inventory.unequip();
     if (k === "r" && game.over) resetGame();
     if (k === "p" && started && !game.over) {
       game.paused = !game.paused;
@@ -507,7 +552,7 @@ export async function startGame() {
   window.addEventListener("resize", () => engine.resize());
 
   // Debug handle for in-browser smoke tests (harmless to leave exposed).
-  window.__game = { engine, scene, game, score, player, predators, herd, eggs, pickups, world, hud, audio, resetGame };
+  window.__game = { engine, scene, game, score, player, predators, herd, eggs, pickups, inventory, tools, world, hud, audio, resetGame };
 
   return { engine, scene };
 }

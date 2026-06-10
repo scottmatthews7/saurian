@@ -20,8 +20,27 @@ export function createHUD() {
   const hitFlashEl = el("hitFlash");
   const popups = el("popups");
   const muteBtn = el("muteBtn");
+  const hotbar = el("hotbar");
+
+  // One-time icon glyphs per weapon kind for the hotbar slots.
+  const TOOL_ICONS = { spear: "🗡️", club: "🏏", rock: "🪨", torch: "🔥" };
 
   return {
+    // Hotbar render (wishlist item 6). Draws one cell per backpack slot showing
+    // its number key, icon, and stack count; the equipped slot is highlighted.
+    // `inv` is the inventory state (slots[] + active index).
+    setHotbar(inv) {
+      if (!hotbar) return;
+      const cells = inv.slots.map((s, i) => {
+        const active = i === inv.active ? " active" : "";
+        const filled = s ? " filled" : "";
+        const icon = s ? (TOOL_ICONS[s.kind] || "•") : "";
+        const count = s && s.count > 1 ? `<span class="hbCount">${s.count}</span>` : "";
+        return `<div class="hbCell${active}${filled}"><span class="hbKey">${i + 1}</span>`
+          + `<span class="hbIcon">${icon}</span>${count}</div>`;
+      }).join("");
+      hotbar.innerHTML = cells;
+    },
     setHealth(v, max) {
       const frac = Math.max(0, v / max);
       healthFill.style.width = `${frac * 100}%`;
@@ -114,6 +133,8 @@ export function createHUD() {
             ${ctrl("SPACE", "Jump")}
             ${ctrl("CLICK / J", "Punch / Kick")}
             ${ctrl("F", "Dash")}
+            ${ctrl("1-6", "Equip tool")}
+            ${ctrl("G / RMB", "Throw rock")}
             ${ctrl("P", "Pause")}
             ${ctrl("M", "Mute")}
           </div>

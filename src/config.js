@@ -342,6 +342,65 @@ export const PICKUPS = {
   meatLifetime: 22,      // sec before it despawns
 };
 
+// PRIMITIVE TOOLS + BACKPACK INVENTORY (wishlist item 6). Primitive weapons are
+// scattered in the arena to walk over and collect into a backpack; the active
+// one is selected from a hotbar (number keys) and shown in the human's hand.
+// With a melee weapon equipped, the strike does MORE damage / longer reach than
+// the bare punch+kick (PLAYER.attackDamage 34 / attackRange 4.5, which stays the
+// unarmed fallback). A rock is thrown as a projectile. A torch deters predators.
+//
+// All combat numbers anchor on the existing economy so weapons feel like a clear
+// upgrade without trivialising the fight:
+//  - Unarmed baseline: 34 dmg, 4.5 reach (PLAYER). Fells a 24-HP raptor in one
+//    hit, a 60-HP herbivore in two, a 140-HP T-Rex in ~5.
+//  - Spear: long reach, solid damage — the safe anti-raptor poke (keeps the
+//    swarm at arm's length). Reach 6.5 > unarmed 4.5.
+//  - Club: short reach, big damage + a real stagger — the heavy bruiser that
+//    rocks a predator back.
+//  - Rock: thrown projectile, one-shot consumable per pickup; staggers + chips.
+//  - Torch: weak melee but DETERS predators (a fear radius that pushes raptors
+//    back), and a warm light. Cheap deterrence, not a damage weapon.
+export const TOOLS = {
+  pickupRange: 2.6,        // walk-over radius to collect a weapon (≈ EGGS.pickupRange 2.8 / PICKUPS.meatRange 2.8)
+  bobHeight: 0.3,          // idle bob amplitude of a dropped weapon (≈ EGGS.bobHeight 0.4, a touch calmer)
+  worldCount: 5,           // primitive weapons scattered in the arena at once
+  respawnSeconds: 30,      // a collected weapon respawns fresh after this (mirrors EGGS.respawnSeconds 30 — keeps the valley stocked on a long run)
+  backpackSlots: 6,        // hotbar / backpack capacity (1..6 number keys; 4 weapon kinds + room for dupes)
+
+  // STAGGER: a melee hit can briefly freeze a predator's approach (it reels). A
+  // window where it can't advance/attack — the player's reward for landing a
+  // heavy blow. Bare hands don't stagger; weapons do (per-weapon `stagger`).
+  staggerSeconds: 0.7,     // how long a staggered predator is frozen (≈ the player's own attackLock 0.45 + a beat; long enough to read + reposition)
+
+  // Thrown ROCK projectile. Flies flat-ish toward the aim heading, staggers and
+  // chips whatever it hits, then is spent. Speed/range are eyeballed against the
+  // arena scale (radius 90) and the dash burst (dashSpeed 30) so a throw clearly
+  // outpaces a chasing predator and reaches across a mid-distance gap.
+  rockSpeed: 34,           // units/sec projectile speed (> dashSpeed 30 so it reads as a fast throw)
+  rockRange: 28,           // max travel before it falls spent (≈ TREX.sightRange 34 — reaches a predator just spotting you)
+  rockHitRange: 2.2,       // contact radius of the flying rock against a target
+  rockGravity: -9,         // gentle arc so the throw dips over distance (well under PLAYER.gravity -22 — a lobbed stone, not a bullet)
+
+  // TORCH deterrence: predators within this radius are pushed back (a fear nudge
+  // applied in their AI via a repulsion from the lit torch). Cheap — a position
+  // push, no new pathing. Range sits between a raptor's bite (1.8) and the
+  // T-Rex's (5.0) so it keeps the swarm at bay but a committed T-Rex can still
+  // close through it.
+  torchDeterRange: 7,      // world units the lit torch pushes predators back within
+  torchDeterStrength: 6,   // units/sec outward shove on a deterred predator (< chaseSpeed 8.5 so a T-Rex still grinds forward, raptors at 13.5 are slowed not stopped)
+
+  // Per-weapon kinds. `damage`/`range` override the unarmed PLAYER baseline while
+  // equipped; `stagger` true means a landed hit freezes a predator for
+  // staggerSeconds. `throwable` rocks are consumed on throw. `deter` torches push
+  // predators back. Damage/range are all anchored on the unarmed 34/4.5:
+  kinds: {
+    spear:  { label: "Spear",  damage: 42, range: 6.5, stagger: false },  // long poke, +reach for safe anti-raptor jabs (range 6.5 > unarmed 4.5)
+    club:   { label: "Club",   damage: 55, range: 4.0, stagger: true },   // heavy bruiser: big damage + a real stagger, short reach
+    rock:   { label: "Rock",   damage: 30, range: 4.0, stagger: true, throwable: true },  // melee bonk OR a thrown projectile (staggers); chips ~1/4 of a T-Rex bar on a throw
+    torch:  { label: "Torch",  damage: 20, range: 4.2, stagger: false, deter: true },     // weak melee but DETERS predators + lights the area
+  },
+};
+
 // A shallow water pond carved into the valley. Wading through it slows the
 // raptor and ticks gentle damage — a terrain hazard to route around (or risk
 // crossing as a shortcut). The T-Rex and herd avoid it. Design choice.

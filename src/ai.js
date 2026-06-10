@@ -1,5 +1,6 @@
 import { TREX, HERBIVORE, TRICERATOPS, RAPTOR, ARENA, JUICE, WATER, AI_AVOID, DUSK, DINO_VARIANTS } from "./config.js";
 import { loadDino } from "./dino.js";
+import { isStaggered } from "./tools.js";
 
 // Solid obstacle footprints ({x, z, r}) the AI steers around. Injected from the
 // world build; the pond is appended so one routine handles every avoidance.
@@ -169,6 +170,15 @@ export async function createTrex(scene, shadow, groundFn) {
     const pos = dino.root.position;
     const pp = player.dino.root.position;
     const distP = Math.hypot(pp.x - pos.x, pp.z - pos.z);
+
+    // STAGGER (item 6): a heavy weapon hit / thrown rock froze the predator — it
+    // reels in place, unable to advance or bite, until the timer (ticked by the
+    // game) lapses. The reward window for landing a club/rock blow.
+    if (isStaggered(state)) {
+      pos.y = groundFn(pos.x, pos.z);
+      dino.play("Idle");
+      return;
+    }
 
     // FEEDING FRENZY: having felled its prey, the T-Rex gorges on the carcass —
     // planted, head-down, distracted, and VULNERABLE (raptor bites do bonus
@@ -404,6 +414,14 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
     const pos = dino.root.position;
     const pp = player.dino.root.position;
     const distP = Math.hypot(pp.x - pos.x, pp.z - pos.z);
+
+    // STAGGER (item 6): a heavy hit / thrown rock froze this raptor — it reels in
+    // place until the game-ticked timer lapses.
+    if (isStaggered(state)) {
+      pos.y = groundFn(pos.x, pos.z);
+      dino.play("Idle");
+      return;
+    }
 
     const sightRange = RAPTOR.sightRange + DUSK.trexSightBonus * DUSK_FACTOR;
     const loseRange = RAPTOR.loseInterestRange + DUSK.trexLoseBonus * DUSK_FACTOR;

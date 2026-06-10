@@ -5,6 +5,7 @@ export function createInput(canvas) {
   let jumpQueued = false;
   let attackQueued = false;
   let dashQueued = false;
+  let throwQueued = false;   // G / right-click: throw the equipped rock
   let sprintToggled = false; // Caps Lock sprint-toggle (user request). macOS only
                              // reports CapsLock keyup when the light turns OFF,
                              // so hold-detection is unreliable — toggle instead.
@@ -16,6 +17,7 @@ export function createInput(canvas) {
     if (k === " ") { jumpQueued = true; e.preventDefault(); }
     if (k === "j") attackQueued = true;
     if (k === "f") dashQueued = true;
+    if (k === "g") throwQueued = true;
     if (k === "capslock") sprintToggled = !sprintToggled;
   });
   window.addEventListener("keyup", (e) => keys.delete(norm(e)));
@@ -25,7 +27,10 @@ export function createInput(canvas) {
   window.addEventListener("blur", () => keys.clear());
   canvas.addEventListener("pointerdown", (e) => {
     if (e.button === 0) attackQueued = true;
+    if (e.button === 2) throwQueued = true;   // right-click throws the equipped rock
   });
+  // Right-click is the throw; suppress the context menu over the canvas.
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
   return {
     keys,
@@ -35,9 +40,11 @@ export function createInput(canvas) {
     consumeJump() { const v = jumpQueued; jumpQueued = false; return v; },
     consumeAttack() { const v = attackQueued; attackQueued = false; return v; },
     consumeDash() { const v = dashQueued; dashQueued = false; return v; },
+    consumeThrow() { const v = throwQueued; throwQueued = false; return v; },
     // Edge-trigger queues exposed so the touch layer can drive the same input.
     queueJump() { jumpQueued = true; },
     queueAttack() { attackQueued = true; },
     queueDash() { dashQueued = true; },
+    queueThrow() { throwQueued = true; },
   };
 }
