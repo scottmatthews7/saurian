@@ -338,7 +338,54 @@
   once mid-probe during a long `sleep` — `player.update` stops when `over`, so
   later evals reset the run first; the mechanic itself verified clean.)
 
-## Next (session 10)
+## Done (session 10) — WARD BEACONS (spatial safety / dusk-readability payoff)
+- **New mechanic — ward beacons** (`src/beacons.js`, `config.BEACONS`, wired in
+  `game.js`/`hud.js`/`audio.js`/`minimap.js`/`index.html`): three unlit braziers
+  ringed around the arena (`ringRadius` 56, evenly spaced, auto-nudged off the
+  pond). The raptor **lights one by walking up to it** (proximity `lightRange`
+  11 — no key, so it's touch-friendly). A lit beacon does two intertwined things:
+  - **Wards predators:** any T-Rex inside `wardRadius` (18 — deliberately < the
+    roar's 22, so it's a local pocket not arena-wide) has its chase broken and a
+    short `wardStagger` (0.6s) refreshed every frame it sits in range. Reuses the
+    existing `roarReact` stagger — a lit beacon is a moving-but-safe pocket to
+    route a chase through, most valuable once dusk emboldens the predators.
+  - **Lights the gloom:** a warm point light + flickering flame mesh, so the
+    *mechanic* and the *dusk-readability* payoff (the session-9 "torch-lit nest"
+    idea) are literally the same object — lit beacons are bright islands in dusk.
+  - **Sanctuary bonus:** lighting all three in a run fires a one-shot SANCTUARY
+    (`sanctuaryHeal` 25 HP + `sanctuaryScore` 500 pts), a tidy optional objective
+    layered over the egg hunt — a reason to clear the ring rather than ignore it.
+  - Readability/juice: warm rising chime (`audio.beacon`) + amber burst on each
+    light; a "BEACON LIT n/3" popup, a louder win-chime + shake + gold popup on
+    sanctuary; HUD `🔥🔥·` beacon-ring counter (glows when full); radar shows lit
+    beacons with their ward ring + unlit ones as hollow markers to seek out;
+    title screen teaches it. Beacons **snuff out + re-arm on a soft restart**.
+- All tunables in `config.BEACONS` with provenance notes tied to the chase
+  economy (ward < roar radius, ring between nest and rim). No scattered numbers.
+
+## Verified (session 10)
+- All 15 src modules pass `node --check`; `dusk_test` + `cursed_egg_test` still
+  pass; new `node tools/beacons_test.mjs` passes (ring placement inside arena +
+  off-pond + spread, proximity lighting on/off, ward radius in/out, one-shot
+  sanctuary trigger, config sanity).
+- Live in-browser (isolated context `dinoa-s10`, port 8124, **0 console
+  errors/warnings**, 648 meshes): 3 beacons at radius 56 inside the arena; walking
+  onto one lights it (light + flame enabled, `litCount` ticks); a forced-chase
+  T-Rex placed in a lit ward is staggered (`staggered` → 0.6 after `wardPredators`);
+  lighting the full ring fires sanctuary once (+500 score; +25 HP applied when
+  below max, correctly no-ops at full HP); a soft restart snuffs all beacons
+  (lit=0, lights/flames off, `sanctuaryFired` re-armed).
+- **Env note (unchanged):** parallel `dinob`/peer instances grab the selected tab
+  within ~1-2s; verification used single-shot evals guarded by a `location.href`
+  8124 check + the `window.__game` handle, then closed my own context tab.
+
+## Next (session 11)
+- Beacons could *gutter out* over time (relight to keep warding) for a tension
+  upkeep loop; or a beacon's ward could grow with dusk as a defensive mirror of
+  the dusk bank-bonus.
+- Original session-10 ideas still open below.
+
+## Next (older ideas)
 - More biome variety (second pond / rocky mesa / tar pit); ambient grazing anims.
 - Egg variety beyond golden (e.g. a "cursed" egg that draws the T-Rex —
   especially nasty at dusk).
