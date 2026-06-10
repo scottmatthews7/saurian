@@ -1,4 +1,4 @@
-import { ARENA, MINIMAP, WATER } from "./config.js";
+import { ARENA, MINIMAP, WATER, OCEAN } from "./config.js";
 
 // Top-down radar drawn on a 2D canvas overlay. Shows the arena disc, the
 // player (with facing wedge), the T-Rex, the herd, eggs, and meat.
@@ -36,6 +36,19 @@ export function createMinimap() {
       ctx.lineWidth = 2;
       ctx.strokeStyle = "rgba(255,255,255,0.25)";
       ctx.stroke();
+
+      // OCEAN: the open sea fills the eastern margin (x > OCEAN.shoreX). Clip to
+      // the arena disc and paint that band sea-teal so the coast reads on the map.
+      {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(c, c, mapR, 0, Math.PI * 2);
+        ctx.clip();
+        const [sx] = toMap(OCEAN.shoreX, 0);
+        ctx.fillStyle = "rgba(30,90,120,0.7)";
+        ctx.fillRect(sx, 0, size - sx, size);
+        ctx.restore();
+      }
 
       // water pond
       {

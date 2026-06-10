@@ -1,4 +1,4 @@
-import { TREX, HERBIVORE, TRICERATOPS, RAPTOR, ARENA, JUICE, WATER, AI_AVOID, DUSK, DINO_VARIANTS } from "./config.js";
+import { TREX, HERBIVORE, TRICERATOPS, RAPTOR, ARENA, JUICE, WATER, AI_AVOID, DUSK, DINO_VARIANTS, TERRITORY } from "./config.js";
 import { loadDino } from "./dino.js";
 import { isStaggered } from "./tools.js";
 
@@ -13,6 +13,55 @@ export function setObstacles(list) {
 // from the world clock; predators read it to grow bolder as dusk falls.
 let DUSK_FACTOR = 0;
 export function setDusk(f) { DUSK_FACTOR = f; }
+
+// --- TERRITORIES (owner: keep each species in its area) --------------------
+// Each species has a home region (TERRITORY[kind]); the AI keeps a dino roughly
+// inside it with a SOFT boundary, not a wall. `territoryFor` resolves a kind's
+// region (falls back to a generous arena-centred region so an unlisted kind
+// still behaves). `territoryWeight` is 0 well inside the region, ramping to 1 at
+// the soft edge and beyond — it drives both an inward pull on the heading and a
+// loss of interest in chasing a target that sits outside the region.
+const FALLBACK_TERRITORY = { centerX: 0, centerZ: 0, radius: ARENA.radius, edgeSoftness: 24 };
+function territoryFor(kind) { return TERRITORY[kind] || FALLBACK_TERRITORY; }
+
+// 0 (comfortably inside) .. 1 (at/over the soft edge) for a point vs a region.
+function territoryWeight(T, x, z) {
+  const d = Math.hypot(x - T.centerX, z - T.centerZ);
+  const soft = T.radius - T.edgeSoftness;        // inside this radius = fully home
+  if (d <= soft) return 0;
+  return Math.min(1, (d - soft) / T.edgeSoftness);
+}
+
+// Bend a desired move (unit dir dx,dz) back toward the territory centre as the
+// dino nears/exceeds its region edge. Inside the comfort zone it's a no-op; in
+// the soft band it blends an inward component in proportional to how far out it
+// is; past the hard leash (edgeSoftness × leashHardMul beyond the radius) the
+// inward pull dominates so it firmly turns home. Returns a renormalised unit dir.
+function applyTerritory(T, pos, dx, dz) {
+  const w = territoryWeight(T, pos.x, pos.z);
+  if (w <= 0) return { dx, dz };
+  // inward unit vector (toward the region centre)
+  const ix = T.centerX - pos.x, iz = T.centerZ - pos.z;
+  const il = Math.hypot(ix, iz) || 1;
+  const inx = ix / il, inz = iz / il;
+  // Hard leash: past the radius + edgeSoftness×leashHardMul, force a strong pull.
+  const overHard = Math.hypot(pos.x - T.centerX, pos.z - T.centerZ)
+    - (T.radius + T.edgeSoftness * (TERRITORY.leashHardMul || 2));
+  const hard = overHard > 0 ? 1 : 0;
+  // Blend: soft band eases the inward pull in by w; the hard leash slams it to 1.
+  const k = Math.max(w, hard);
+  const mx = dx * (1 - k) + inx * k;
+  const mz = dz * (1 - k) + inz * k;
+  const m = Math.hypot(mx, mz) || 1;
+  return { dx: mx / m, dz: mz / m };
+}
+
+// True if a CHASE target sits outside this dino's territory far enough that it
+// should lose interest and break off (so a predator won't chase the player
+// across the whole map). Uses the same soft edge but tests the TARGET point.
+function targetBeyondTerritory(T, tx, tz) {
+  return territoryWeight(T, tx, tz) >= 1;
+}
 
 // Steer a move (unit dir dx,dz) away from nearby obstacle footprints. Adds an
 // outward push from each footprint within its clearance band, then renormalises.
@@ -76,10 +125,18 @@ function avoidObstacles(pos, dx, dz, steerState) {
 // The herd roster mixes the four original animated herbivores with the new
 // herbivore VARIANTS (wishlist item 4c) so a run shows a wider species spread.
 // Variants reuse a base rig but get their own diet/behaviour from DINO_VARIANTS.
+//
+// DISABLED variants (DINO_VARIANTS[kind].disabled) are filtered out: the
+// Spinosaurus reuses the low-poly trex.glb and reads as a stray low-poly T-Rex
+// (owner: "there's still the old low poly t rexes running around"), so it is
+// removed from the roster until a procedural Spinosaurus mesh exists. After
+// this filter the ONLY T-Rex-shaped creature in-game is the one procedural
+// predator (createTrex). The compsognathus reuses the raptor rig (small biped),
+// not trex, so it is NOT a low-poly theropod and stays in.
 const HERB_KINDS = [
   "triceratops", "stegosaurus", "apatosaurus", "parasaur",
   "spinosaurus", "ankylosaurus", "pachycephalosaurus", "brachiosaurus", "compsognathus",
-];
+].filter((k) => !(DINO_VARIANTS[k] && DINO_VARIANTS[k].disabled));
 
 // Per-kind target model height (world units). Variants carry their own `height`
 // in DINO_VARIANTS; the four originals are listed here. Falls back to 3.
@@ -121,22 +178,45 @@ export function pickPrey(state, pos, distP, herd, sightRange, loseRange, lockedT
 }
 
 function rand(a, b) { return a + Math.random() * (b - a); }
-function randPointInArena() {
-  const r = Math.sqrt(Math.random()) * (ARENA.radius - 6);
+// A random point inside a species' TERRITORY (clamped to the arena), used for
+// spawns and wander targets so each dino lives in its region. Sampled within
+// the comfort radius (radius − edgeSoftness) so wander targets don't sit out on
+// the soft edge.
+function randPointInTerritory(T) {
+  const comfort = Math.max(8, T.radius - T.edgeSoftness);
+  const r = Math.sqrt(Math.random()) * comfort;
   const a = Math.random() * Math.PI * 2;
-  return { x: Math.cos(a) * r, z: Math.sin(a) * r };
+  let x = T.centerX + Math.cos(a) * r;
+  let z = T.centerZ + Math.sin(a) * r;
+  // keep inside the playable disc
+  const d = Math.hypot(x, z), lim = ARENA.radius - 6;
+  if (d > lim) { const k = lim / d; x *= k; z *= k; }
+  return { x, z };
 }
 
+// T-Rex render height (world units). OWNER FIX ("the t rex is too small compared
+// to the man"): the man is 2.0u (~1.8m); the old 4.2 left the rex barely twice
+// his height — pony-sized for a 9-tonne animal. Raised to 6.0u so it TOWERS over
+// the player. The procedural mesh's proportions put the hip at ~0.58 of the
+// standing head height, so at 6.0u total the hip sits ~3.5u and the head ~6u —
+// roughly 3× the 2.0u player, the massive, threatening read the owner wants
+// (a real T-Rex hip ~4m, head ~5-6m vs a 1.8m human). Provenance: owner request
+// + the PRD-trex.md fossil proportions (hip ~0.31 L, head-height the silhouette
+// top), eyeballed beside the player in a headless scale screenshot.
+const TREX_RENDER_HEIGHT = 6.0;
+
 export async function createTrex(scene, shadow, groundFn) {
-  const dino = await loadDino(scene, "trex", 4.2, shadow);
-  const start = randPointInArena();
+  const dino = await loadDino(scene, "trex", TREX_RENDER_HEIGHT, shadow);
+  const territory = territoryFor("trex");   // dry/rocky + open plains (see TERRITORY)
+  const start = randPointInTerritory(territory);
   dino.root.position.set(start.x, groundFn(start.x, start.z), start.z);
 
   const state = {
     dino, kind: "trex",
+    territory,
     facing: 0,
     health: TREX.maxHealth,
-    target: randPointInArena(),
+    target: randPointInTerritory(territory),
     mode: "patrol",
     attackTimer: 0,
     dead: false,
@@ -233,11 +313,18 @@ export async function createTrex(scene, shadow, groundFn) {
     state.prey = pickPrey(state, pos, distP, herd, sightRange, loseRange, lockedToPlayer);
 
     const wasChasing = state.mode === "chase";
+    // TERRITORY: the predator won't chase a target that has fled clear out of its
+    // home region — it loses interest at its own boundary and turns back rather
+    // than running across the whole map (owner's "not running around in random
+    // areas"). The territory is large, so a normal hunt is unaffected; this only
+    // bites when the player/prey crosses well into another biome.
+    const T = state.territory;
+    const playerBeyond = targetBeyondTerritory(T, pp.x, pp.z);
     // It ignores the player for a beat after losing them (aggroCd) so a clean
     // getaway sticks — but it'll still peel off to hunt the herd meanwhile.
-    const seesPlayer = !player.dead && distP < sightRange && state.aggroCd <= 0;
+    const seesPlayer = !player.dead && distP < sightRange && state.aggroCd <= 0 && !playerBeyond;
     if (state.prey || seesPlayer) state.mode = "chase";
-    else if (state.mode === "chase" && distP > loseRange) {
+    else if (state.mode === "chase" && (distP > loseRange || (playerBeyond && !state.prey))) {
       state.mode = "patrol";
       state.aggroCd = TREX.disengageCooldown; // give up; leave the player alone a while
     }
@@ -292,12 +379,15 @@ export async function createTrex(scene, shadow, groundFn) {
     } else {
       goal = state.target;
       speed = TREX.patrolSpeed;
-      if (Math.hypot(goal.x - pos.x, goal.z - pos.z) < 4) state.target = randPointInArena();
+      if (Math.hypot(goal.x - pos.x, goal.z - pos.z) < 4) state.target = randPointInTerritory(T);
     }
 
     const dx0 = goal.x - pos.x, dz0 = goal.z - pos.z;
     const dist = Math.hypot(dx0, dz0) || 1;
-    const dir = avoidObstacles(pos, dx0 / dist, dz0 / dist, state.steer);
+    let dir = avoidObstacles(pos, dx0 / dist, dz0 / dist, state.steer);
+    // TERRITORY soft boundary: bend the heading back toward home as it nears /
+    // exceeds its region edge (no-op while comfortably inside).
+    dir = applyTerritory(T, pos, dir.dx, dir.dz);
     const targetYaw = Math.atan2(dir.dx, dir.dz);
     state.facing = lerpAngle(state.facing, targetYaw, TREX.turnLerp);
     dino.setYaw(state.facing);
@@ -322,13 +412,13 @@ export async function createTrex(scene, shadow, groundFn) {
     if (state.health <= 0) { state.dead = true; dino.play("Death", { loop: false }); }
   };
 
-  // Soft restart: revive at a fresh spot, full health, back on patrol.
+  // Soft restart: revive at a fresh spot in its territory, full health, on patrol.
   state.reset = function () {
-    const p = randPointInArena();
+    const p = randPointInTerritory(state.territory);
     dino.root.position.set(p.x, groundFn(p.x, p.z), p.z);
     state.health = TREX.maxHealth;
     state.mode = "patrol";
-    state.target = randPointInArena();
+    state.target = randPointInTerritory(state.territory);
     state.ambushTimer = 0;
     state.ambushCd = 0;
     state.aggroCd = 0;
@@ -361,17 +451,20 @@ export async function createRaptorPack(scene, shadow, groundFn, count) {
   // Shared pack object: a spawn anchor + a "locked on" flag so the pack yips
   // once as a group, and the member's slot index drives its flank angle.
   const pack = { calledOut: false };
-  const center = randPointInArena();
+  // The pack spawns inside the RAPTOR territory (the jungle & its edges) so it
+  // hunts from the treeline rather than anywhere on the map.
+  const territory = territoryFor("raptor");
+  const center = randPointInTerritory(territory);
   const members = [];
   for (let i = 0; i < n; i++) {
-    const m = await createRaptor(scene, shadow, groundFn, pack, i, n, center);
+    const m = await createRaptor(scene, shadow, groundFn, pack, i, n, center, territory);
     members.push(m);
   }
   pack.members = members;
   return members;
 }
 
-async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, center) {
+async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, center, territory) {
   const dino = await loadDino(scene, "raptor", RAPTOR.modelHeight, shadow);
   const jitter = () => (Math.random() - 0.5) * 10;
   dino.root.position.set(
@@ -383,10 +476,11 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
 
   const state = {
     dino, kind: "raptor",
+    territory,
     facing: rand(0, 6),
     health: RAPTOR.maxHealth,
     maxHealth: RAPTOR.maxHealth,
-    target: randPointInArena(),
+    target: randPointInTerritory(territory),
     mode: "patrol",
     attackTimer: 0,
     dead: false,
@@ -429,9 +523,14 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
 
     state.aggroCd = Math.max(0, (state.aggroCd || 0) - dt);
     const wasChasing = state.mode === "chase";
-    const seesPlayer = !player.dead && distP < sightRange && state.aggroCd <= 0;
+    // TERRITORY: the pack won't chase the player clear out of its jungle range —
+    // it breaks off at its own boundary and drifts back (owner's "not running
+    // around in random areas"). Large range, so a normal hunt is unaffected.
+    const T = state.territory;
+    const playerBeyond = targetBeyondTerritory(T, pp.x, pp.z);
+    const seesPlayer = !player.dead && distP < sightRange && state.aggroCd <= 0 && !playerBeyond;
     if (seesPlayer) state.mode = "chase";
-    else if (state.mode === "chase" && distP > loseRange) {
+    else if (state.mode === "chase" && (distP > loseRange || playerBeyond)) {
       state.mode = "patrol";
       state.aggroCd = RAPTOR.disengageCooldown; // pack gives up once you're clear
     }
@@ -474,12 +573,14 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
     } else {
       goal = state.target;
       speed = RAPTOR.patrolSpeed;
-      if (Math.hypot(goal.x - pos.x, goal.z - pos.z) < 4) state.target = randPointInArena();
+      if (Math.hypot(goal.x - pos.x, goal.z - pos.z) < 4) state.target = randPointInTerritory(T);
     }
 
     const dx0 = goal.x - pos.x, dz0 = goal.z - pos.z;
     const dist = Math.hypot(dx0, dz0) || 1;
-    const dir = avoidObstacles(pos, dx0 / dist, dz0 / dist, state.steer);
+    let dir = avoidObstacles(pos, dx0 / dist, dz0 / dist, state.steer);
+    // TERRITORY soft boundary: pull the heading back toward the pack's range.
+    dir = applyTerritory(T, pos, dir.dx, dir.dz);
     const targetYaw = Math.atan2(dir.dx, dir.dz);
     state.facing = lerpAngle(state.facing, targetYaw, RAPTOR.turnLerp);
     dino.setYaw(state.facing);
@@ -505,11 +606,11 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
   };
 
   state.reset = function () {
-    const p = randPointInArena();
+    const p = randPointInTerritory(state.territory);
     dino.root.position.set(p.x, groundFn(p.x, p.z), p.z);
     state.health = state.maxHealth;
     state.mode = "patrol";
-    state.target = randPointInArena();
+    state.target = randPointInTerritory(state.territory);
     state.attackTimer = 0;
     state.speedBonus = 0;
     state.lastStrikeId = -1;
@@ -538,7 +639,8 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
   // (speedMul). Defaults to the HERBIVORE baseline for the four originals.
   const maxHealth = Math.round(HERBIVORE.maxHealth * ((variant && variant.healthMul) || 1));
   const speedMul = (variant && variant.speedMul) || 1;
-  const start = randPointInArena();
+  const territory = territoryFor(kind);   // each species grazes in its own region
+  const start = randPointInTerritory(territory);
   dino.root.position.set(start.x, groundFn(start.x, start.z), start.z);
 
   // A charger uses its own crisper turn rate + a post-charge recover settle so it
@@ -551,8 +653,9 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
 
   const state = {
     dino, kind,
+    territory,
     facing: rand(0, 6),
-    target: randPointInArena(),
+    target: randPointInTerritory(territory),
     fleeing: false,
     charging: 0,        // remaining charge-commit time (chargers only)
     chargeCd: 0,
@@ -639,12 +742,17 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     } else {
       goal = state.target;
       speed = HERBIVORE.wanderSpeed * speedMul;
-      if (Math.hypot(goal.x - pos.x, goal.z - pos.z) < 3) state.target = randPointInArena();
+      if (Math.hypot(goal.x - pos.x, goal.z - pos.z) < 3) state.target = randPointInTerritory(state.territory);
     }
 
     const dx0 = goal.x - pos.x, dz0 = goal.z - pos.z;
     const dist = Math.hypot(dx0, dz0) || 1;
-    const dir = avoidObstacles(pos, dx0 / dist, dz0 / dist, state.steer);
+    let dir = avoidObstacles(pos, dx0 / dist, dz0 / dist, state.steer);
+    // TERRITORY soft boundary, applied only while GRAZING (not fleeing) — a
+    // panicked herbivore is allowed to bolt past its edge, but its normal wander
+    // keeps it in its grazing region rather than drifting across the map. (We
+    // don't pull a fleeing animal back, or it'd turn into the predator.)
+    if (!state.fleeing) dir = applyTerritory(state.territory, pos, dir.dx, dir.dz);
     const targetYaw = Math.atan2(dir.dx, dir.dz);
     state.facing = lerpAngle(state.facing, targetYaw, turnLerp);
     dino.setYaw(state.facing);
@@ -668,9 +776,9 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     }
   };
 
-  // Soft restart: revive, full health, fresh wander target.
+  // Soft restart: revive in its territory, full health, fresh wander target.
   state.reset = function () {
-    const p = randPointInArena();
+    const p = randPointInTerritory(state.territory);
     dino.root.position.set(p.x, groundFn(p.x, p.z), p.z);
     state.health = state.maxHealth;
     state.dead = false;
@@ -680,7 +788,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     state.chargeHitDone = false;
     state.lastStrikeId = -1;
     state.recover = 0;
-    state.target = randPointInArena();
+    state.target = randPointInTerritory(state.territory);
     dino.play("Idle");
   };
   return state;

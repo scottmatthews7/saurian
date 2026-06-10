@@ -1,6 +1,9 @@
-import { EGGS, ARENA, WATER } from "./config.js";
+import { EGGS, ARENA, WATER, OCEAN } from "./config.js";
 
 const inPond = (x, z) => Math.hypot(x - WATER.centerX, z - WATER.centerZ) < WATER.radius + 2;
+// Don't scatter eggs into the sea (east of the coastline) — keep them reachable.
+const inOcean = (x, z) => x > (OCEAN.shoreX + Math.sin(z * 0.045) * 6 + Math.cos(z * 0.017) * 4);
+const offLimits = (x, z) => inPond(x, z) || inOcean(x, z);
 
 // CONSUMABLE egg pickups scattered in the arena (the old return-to-nest
 // banking loop is gone). Walking over an egg eats it on the spot: health +
@@ -35,7 +38,7 @@ export function createEggs(scene, shadow, groundFn) {
         : 20 + Math.random() * (ARENA.radius - 26);
       const a = Math.random() * Math.PI * 2;
       x = Math.cos(a) * r; z = Math.sin(a) * r;
-    } while (inPond(x, z));
+    } while (offLimits(x, z));
     e.golden = golden;
     e.collected = false;
     e.respawnT = 0;

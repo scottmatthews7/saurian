@@ -365,9 +365,11 @@ export function createFollowCamera(scene, target) {
   canvas.addEventListener("pointermove", () => { if (dragging) manualHold = CAMERA.manualHoldSeconds; });
   canvas.addEventListener("wheel", () => { manualHold = CAMERA.manualHoldSeconds; }, { passive: true });
 
-  return {
+  const rig = {
     cam,
+    frozen: false,   // headless harnesses set this to park the camera manually
     update(shake, dt) {
+      if (rig.frozen) return;   // verification harness owns the camera
       const p = target.dino.root.position;
       smoothTarget.x += (p.x - smoothTarget.x) * CAMERA.lerp;
       smoothTarget.y += (p.y + 3 - smoothTarget.y) * CAMERA.lerp;
@@ -390,6 +392,7 @@ export function createFollowCamera(scene, target) {
       }
     },
   };
+  return rig;
 }
 
 function lerpAngle(a, b, t) {

@@ -2,13 +2,19 @@
 // stylised arcade chase game — not derived from any external benchmark.
 // Adjust here only; nothing below should hardcode gameplay numbers.
 
+// WORLD overhaul: the arena is DOUBLED from radius 90 -> 180 (owner: "expand the
+// map by double the size"). Everything that derives from the radius — terrain
+// generation, heightAt, biome zone placement, dino/egg/prop spawn ranges, the
+// minimap, AI wander/return bounds — reads ARENA.radius, so they all scale. The
+// scatter COUNTS are raised ~4x (area scales with radius^2) so the bigger map
+// doesn't read empty; all instanced, so the draw cost stays flat.
 export const ARENA = {
-  radius: 90,          // playable circle radius (world units)
-  groundSize: 220,     // ground plane edge length
+  radius: 180,         // playable circle radius (world units) — DOUBLED from 90
+  groundSize: 440,     // ground plane edge length (= 2 × the old 220, tracks the radius)
   fogDensity: 0.012,   // exponential fog
-  treeCount: 70,       // scattered trees/rocks
-  rockCount: 36,
-  grassPatches: 320,
+  treeCount: 260,      // scattered trees (~4× the old 70 — area grew 4× with the doubled radius; instanced)
+  rockCount: 130,      // scattered rocks (~4× the old 36; instanced)
+  grassPatches: 1200,  // mid-field grass cards (~4× the old 320; instanced)
 };
 
 export const PLAYER = {
@@ -227,6 +233,17 @@ export const DINO_VARIANTS = {
     emissive: { r: 0.02, g: 0.05, b: 0.07 },
     diet: "herbivore",
     canCharge: true,
+    // DISABLED (owner: "there's still the old low poly t rexes running around").
+    // The Spinosaurus reuses the low-poly trex.glb recoloured+stretched and is
+    // NOT proceduralized, so on the map it reads as a low-poly T-Rex roaming
+    // about. The procedural-mesh swap in dino.js is gated to kind==="trex" only,
+    // so this variant never gets the high-quality mesh. Until a procedural
+    // Spinosaurus exists it is removed from the spawn roster (ai.js filters on
+    // this flag) so the ONLY T-Rex-shaped creature in-game is the one procedural
+    // predator. Its TERRITORY (wetland) is kept below for when it returns.
+    // TODO(spino): re-enable once procmesh/spinosaurus.js exists and dino.js
+    // swaps it in like the T-Rex — then drop this flag.
+    disabled: true,
   },
   // Ankylosaurus — squat armoured tank; reuse the stegosaurus quadruped, wider +
   // lower, mossy grey-green. Slow, very tanky herbivore that holds ground.
@@ -272,6 +289,59 @@ export const DINO_VARIANTS = {
     diet: "herbivore",
     speedMul: 1.4,                           // little and quick — flees faster than the herd
   },
+};
+
+// PER-SPECIES TERRITORIES (owner: "restricting dinosaurs to operate in certain
+// areas so they're not running around in random areas"). Each species has a
+// home REGION on the doubled map: a centre (world x,z) + radius, plus the BIOME
+// it belongs to (for the PRD geography sections). The AI enforces this as a SOFT
+// boundary (ai.js, applyTerritory): a dino wandering/chasing past its territory
+// edge feels an inward pull and loses interest in chasing prey beyond it, so it
+// turns back rather than roaming the whole map — but territories are LARGE (not
+// cages) so the predator hunt stays fun. Centres/radii track the biome layout
+// set above (pond W, desert SW, jungle N, ocean E, open plains centre).
+//
+//   biome   — the zone this species operates in (matches the PRD geography text)
+//   centerX/centerZ/radius — the home region on the radius-180 map
+//   edgeSoftness — world units before the edge where the inward pull ramps in
+//                  (the soft band; bigger = gentler turn-back)
+//   leashHard — absolute outer limit: a dino is never pulled hard until this far
+//               past its radius (so a committed chase can briefly overrun the
+//               soft edge before being reined in — keeps hunts from feeling
+//               like a wall). A multiple of the soft band.
+export const TERRITORY = {
+  // T-Rex — dry/rocky + open plains. A LARGE central+south-west range so the
+  // apex hunt roams the open valley and the desert margin, but not the far
+  // northern jungle or the eastern coast.
+  trex: { biome: "dry rocky margin & open plains", centerX: -40, centerZ: -40, radius: 130, edgeSoftness: 24 },
+  // Raptors — the jungle thicket & its edges (north). Fast flankers that stalk
+  // out of the treeline; their range hugs the northern jungle.
+  raptor: { biome: "jungle thicket & its edges", centerX: 10, centerZ: 110, radius: 95, edgeSoftness: 22 },
+  // Sauropods — open plains (the central valley). Big placid grazers stay in
+  // the open middle ground.
+  apatosaurus: { biome: "open plains", centerX: 0, centerZ: 0, radius: 120, edgeSoftness: 24 },
+  brachiosaurus: { biome: "open plains", centerX: 0, centerZ: 0, radius: 120, edgeSoftness: 24 },
+  // Stegosaurus / Triceratops — plains & the forest edge (north-of-centre,
+  // overlapping the jungle fringe where they browse).
+  stegosaurus: { biome: "open plains & forest edge", centerX: 5, centerZ: 55, radius: 110, edgeSoftness: 22 },
+  triceratops: { biome: "open plains & forest edge", centerX: 5, centerZ: 55, radius: 110, edgeSoftness: 22 },
+  // Parasaurolophus — plains/forest edge, like the other crested browsers.
+  parasaur: { biome: "open plains & forest edge", centerX: 5, centerZ: 45, radius: 110, edgeSoftness: 22 },
+  // --- Variant herbivores -------------------------------------------------
+  // Ankylosaurus — armoured plains grazer (open valley, south-of-centre).
+  ankylosaurus: { biome: "open plains", centerX: -10, centerZ: -20, radius: 100, edgeSoftness: 22 },
+  // Pachycephalosaurus — dry scrub at the desert edge (south-west fringe).
+  pachycephalosaurus: { biome: "dry scrub & plains margin", centerX: -45, centerZ: -75, radius: 90, edgeSoftness: 22 },
+  // Compsognathus — skittish little scavengers around the jungle edge.
+  compsognathus: { biome: "jungle edge & plains", centerX: 15, centerZ: 80, radius: 100, edgeSoftness: 22 },
+  // Spinosaurus — WETLAND/swamp (the western pond), for when it returns (it is
+  // currently disabled from spawning; see DINO_VARIANTS.spinosaurus).
+  spinosaurus: { biome: "wetland & swamp (western pond)", centerX: -78, centerZ: 56, radius: 70, edgeSoftness: 20 },
+  // Plesiosaur (marine) — the eastern OCEAN, for the future marine reptile.
+  plesiosaur: { biome: "the eastern ocean", centerX: 150, centerZ: 0, radius: 90, edgeSoftness: 20 },
+  // Multiplier on edgeSoftness giving the hard outer leash (how far a committed
+  // chase may overrun the soft edge before a firm inward pull). Shared by all.
+  leashHardMul: 2.0,
 };
 
 // Pterosaur flyer (wishlist item 4 — replace the procedural cone). A proper
@@ -407,9 +477,12 @@ export const TOOLS = {
 // raptor and ticks gentle damage — a terrain hazard to route around (or risk
 // crossing as a shortcut). The T-Rex and herd avoid it. Design choice.
 export const WATER = {
-  centerX: -34,         // pond centre (world units), off to one side of the nest
-  centerZ: 28,
-  radius: 17,           // surface radius
+  // INLAND pond/wetland — distinct from the new eastern OCEAN (see OCEAN below).
+  // On the doubled map (radius 180) it sits in the WEST half so it doesn't crowd
+  // the spawn or the ocean; scaled up to read on the bigger valley.
+  centerX: -78,         // pond centre (world units), west of the nest
+  centerZ: 56,
+  radius: 26,           // surface radius (up from 17 to suit the doubled map)
   depth: 1.6,           // how far below local ground the basin sinks
   slowFactor: 0.45,     // player speed multiplier while WADING (shallow edge)
   damagePerSec: 4,      // health drained per second while shallow-wading
@@ -423,6 +496,36 @@ export const WATER = {
   deepFraction: 0.6,    // 0..1 of the radius inside which water counts as deep (swim)
   swimSlowFactor: 0.55, // player speed multiplier while SWIMMING (slower than land, a touch quicker than the wade crawl)
   swimSurfaceOffset: -0.45, // how far the swimming human's root sits below the water surface (head/shoulders out)
+};
+
+// OCEAN / SEA on the EAST edge of the doubled map (owner: "adding an ocean").
+// Distinct from the inland WATER pond/wetland above: this is open sea — a large
+// water plane filling the eastern margin, a sloping sandy BEACH where the land
+// meets it, and gentle animated waves + reflection in keeping with the pond's
+// water style. It is the future home of a marine reptile (plesiosaur), so a
+// clear, navigable open-water region is left beyond the shore. Built in world.js.
+//
+// Geometry: the shoreline is a roughly north-south coast at world X = shoreX.
+// East of shoreX the terrain ramps DOWN through a beach band into the seabed,
+// and the sea surface sits at seaLevel. All values are art-direction choices for
+// the doubled arena (radius 180), eyeballed against the existing pond water.
+export const OCEAN = {
+  shoreX: 120,            // world X of the mean coastline (east of this = sea); inside the radius-180 disc so beach+water are reachable
+  beachWidth: 40,         // world units of sloping SAND from the dry dune line down to the waterline (a clearly visible beach)
+  seaLevel: -1.4,         // sea surface height (below the inland flats so the coast reads as a descent to the sea)
+  seabedDepth: 4.0,       // how far below seaLevel the seabed drops past the surf (deep, navigable open water for the future plesiosaur)
+  surfWidth: 10,          // width of the wet foreshore/surf band just seaward of the waterline (darker damp sand + foam line)
+  // The visible sea plane extends well past the play radius so the horizon reads
+  // as open ocean, not a pond with an edge. It is unlit + fogged like the sky.
+  planeSize: 900,         // edge length of the sea surface plane (>> arena so no visible far edge)
+  waveAmp: 0.18,          // metres of gentle vertical swell on the sea surface
+  waveLength: 22,         // world units between wave crests (long ocean swell)
+  waveSpeed: 0.6,         // crests/sec drift speed of the swell
+  deepColor: { r: 0.06, g: 0.22, b: 0.30 },   // open-sea teal (a touch deeper/bluer than the pond)
+  shallowColor: { r: 0.16, g: 0.42, b: 0.46 },// brighter shallow water near the surf
+  beachColor: { r: 0.80, g: 0.72, b: 0.54 },   // pale dune sand of the dry beach
+  wetSandColor: { r: 0.55, g: 0.48, b: 0.38 }, // darker damp sand of the foreshore/surf band
+  foamColor: { r: 0.92, g: 0.95, b: 0.96 },    // near-white foam line at the waterline
 };
 
 // AQUATIC PREDATOR (wishlist item 5). A plesiosaur-like lurker that lives in the
@@ -567,9 +670,9 @@ export const ENV = {
   cardsPerCanopy: 5,       // textured leaf cards crossed per tree (irregular, broken-up crown)
   windStrength: 0.06,      // radians of canopy/grass sway amplitude
   windSpeed: 1.3,          // sway frequency (rad/sec)
-  groundCoverCount: 1100,  // grass-card clump instances (instanced — cheap)
-  groundCoverFadeStart: 45, // world units from centre where ground cover starts thinning
-  groundCoverFadeEnd: 82,   // fully faded beyond this (keeps far ground uncluttered + fast)
+  groundCoverCount: 3200,  // grass-card clump instances (~3× for the doubled map; instanced — cheap)
+  groundCoverFadeStart: 70, // world units from centre where ground cover starts thinning
+  groundCoverFadeEnd: 150,  // fully faded beyond this (keeps far ground uncluttered + fast)
   // Per-instance desaturated green tints multiplied onto the leaf/grass cards
   // so no two plants share an exact colour — sage/moss/olive, never neon.
   foliageGreens: [
@@ -596,27 +699,30 @@ export const ENV = {
   // albedo TINTS multiplied onto the textures, so they read a touch lighter than
   // the raw hex once lit). Each numeric is annotated with its source.
   dryZone: {
-    centerX: 46, centerZ: -40,  // offset toward one corner of the arena (unchanged)
-    radius: 34,                 // world units of the arid patch (unchanged)
-    edgeFeather: 12,            // soft blend band so the biome edge isn't a hard ring (unchanged)
+    // Re-placed for the DOUBLED map: pushed out into the SOUTH-WEST quadrant,
+    // clear of the eastern ocean and the western pond, and grown so it reads as
+    // a real desert region on the big valley rather than a small patch.
+    centerX: -70, centerZ: -120, // south-west arid region
+    radius: 60,                  // world units of the arid region (up from 34 for the doubled map)
+    edgeFeather: 20,             // soft blend band so the biome edge isn't a hard ring
 
-    // --- Ground: warm sand ----------------------------------------------
-    // Headline golden sand #E8B96A from the game-aesthetics palette (the brief's
-    // "commit to golden sand, not beige"). Applied as a vertex-colour tint AND
-    // as the tint on the sand albedo blended in by the ground material plugin.
-    // Strong, saturated golden sand. This multiplies the (desaturated grey-tan)
-    // dryground albedo texture, so it is pushed well past #E8B96A in saturation
-    // to survive the texture's neutrality + the cool IBL fill and still read
-    // boldly gold (not pale beige) once lit. Verified by the headless top-down
-    // ground-colour probe (tools/desert_probe / desert_capture).
-    groundTint: [1.30, 0.86, 0.34],   // saturated warm gold (super-1.0 R to beat the cool IBL wash)
+    // --- Ground: warm NATURAL sand --------------------------------------
+    // OWNER FIX ("too yellow ... away from the neon saturated gold to a
+    // believable warm desert sand, natural tan, not highlighter-yellow"). The
+    // old gold (#E8B96A pushed to a super-1.0-R tint [1.30,0.86,0.34]) read as a
+    // neon highlighter once lit. Retuned to a believable warm SAND/khaki tan
+    // around #C7B083 — desaturated (R and B much closer together kills the gold
+    // cast), so it reads as real dune sand at eye level. groundTint multiplies
+    // the grey-tan dryground albedo (vertex-colour fallback); sandColor is the
+    // hue the in-shader plugin REPLACES the albedo toward (the actual eye-level
+    // read). Both pulled to the same natural tan family.
+    groundTint: [0.92, 0.80, 0.58],   // warm natural tan (kept just over the IBL wash, no longer super-gold)
     // Real SAND albedo the ground plugin LERPs the grass albedo TOWARD inside the
-    // zone (replacing it, not multiplying a tint over green — that yielded a murky
-    // yellow-green lawn). Warm tan #D9B679 (brief's eye-level sand target). The
-    // sand albedo TEXTURE's per-texel luminance modulates this base so the grain
-    // still reads (light/dark sand specks), but the HUE is locked to this tan.
-    sandColor: [0.85, 0.71, 0.47],    // #D9B679 warm tan — the eye-level sand read
-    sandColorVar: [0.10, 0.07, 0.05], // subtle per-texel warm/cool variation amplitude
+    // zone. Natural warm sand #C7B083 (believable tan, not gold). The sand albedo
+    // TEXTURE's per-texel luminance modulates this base so the grain still reads
+    // (light/dark sand specks), but the HUE is locked to this tan.
+    sandColor: [0.78, 0.69, 0.51],    // #C7B083 natural warm sand/khaki — the eye-level read (desaturated from the old gold)
+    sandColorVar: [0.08, 0.06, 0.05], // subtle per-texel warm/cool variation amplitude
     sandTextures: { albedo: "dryground_albedo.jpg" }, // warm sand albedo blended in by the ground plugin
     sandTiling: 26,             // tighter than the grass tiling (18) so sand grain reads finer/closer
     sandRoughness: 0.92,        // matte dry sand (near-fully rough; sand barely speculars)
@@ -629,13 +735,22 @@ export const ENV = {
     duneFreqA: 0.05,            // primary dune wavelength (~126u) — broad swells
     duneFreqB: 0.11,            // secondary cross-ripple wavelength (~57u) — breaks up the swells
 
-    // --- Sandstone rocks / mesas (the bold orange-red silhouettes) -------
-    rockDensityMul: 2.6,        // small sandstone boulders this much denser than baseline (unchanged)
-    sandstoneColor: [0.76, 0.42, 0.24], // #C2682E sunlit orange-terracotta sandstone (RDR2 mesa)
-    sandstoneBandColor: [0.62, 0.23, 0.12], // #9E3B1F iron-rich red strata band
-    mesaCount: 6,               // hero flat-topped mesas/buttes in-zone (sparse + deliberate skyline)
-    mesaMinHeight: 12, mesaMaxHeight: 22, // metres — tall enough to read as a butte skyline, not a lump
-    mesaMinRadius: 3.5, mesaMaxRadius: 8, // metres — buttes lean tall-ish, a couple broad mesas
+    // --- Sandstone mesas/buttes (the bold orange-red silhouettes) --------
+    // OWNER FIX ("huge weird towers in there ... reshape into believable
+    // buttes/mesas — broader bases, layered horizontal strata, wind-eroded
+    // tapered tops, VARIED heights/widths, not uniform tall cylinders"). The old
+    // mesas were tall + thin (h 12-22 vs r 3.5-8 → up to a ~6:1 tower) which read
+    // as pillars. Retuned to believable Monument-Valley proportions: BROAD bases,
+    // MODEST heights (height ≈ 0.6-1.4× the radius, so they're wider than tall or
+    // roughly square — buttes, not towers), and a much WIDER spread of sizes so
+    // no two match. Count kept low so they punctuate the skyline, not dominate.
+    rockDensityMul: 2.6,        // small sandstone boulders this much denser than baseline
+    sandstoneColor: [0.78, 0.50, 0.34],     // #C8805A sunlit warm terracotta sandstone (softened from the old neon orange)
+    sandstoneBandColor: [0.64, 0.34, 0.22], // #A45638 iron-rich red strata band
+    mesaCount: 7,               // hero buttes/mesas across the bigger zone (still sparse + deliberate)
+    mesaMinHeight: 7, mesaMaxHeight: 16,  // metres — varied, modest (no more 22m towers)
+    mesaMinRadius: 7, mesaMaxRadius: 18,  // metres — BROAD bases (so the silhouette is a butte/mesa, not a pillar)
+    mesaStrataBands: 4,         // horizontal sedimentary strata layers stacked up each mesa (the layered-rock read)
 
     // --- Drought vegetation (sparse, bleached — never emerald) -----------
     grassDensityMul: 0.25,      // green ground cover thins to this fraction (arid) — kills lush green (unchanged)
@@ -647,18 +762,21 @@ export const ENV = {
       [0.54, 0.55, 0.42],   // #8A8C6A dusty sage / saxaul
       [0.55, 0.51, 0.46],   // #8C8175 dead grey wood / skeletal shrub
     ],
-    tuftCount: 90,              // dry-grass tussocks scattered in-zone (sparse, <10% cover but denser than the old near-nothing)
-    shrubCount: 22,             // dead skeletal shrubs in-zone
+    tuftCount: 220,             // dry-grass tussocks scattered in-zone (scaled up for the bigger radius-60 zone)
+    shrubCount: 55,             // dead skeletal shrubs in-zone (scaled up)
     boneColor: [0.90, 0.87, 0.79],  // #E6DECB sun-bleached bone white (hero-prop pop)
-    boneClusterCount: 6,        // half-buried skeleton clusters (ribs/skull/vertebrae) for character
+    boneClusterCount: 9,        // half-buried bleached skeletons (ribcage arc + skull + vertebrae) for character
 
     // --- Warm desert air: fog + light tint, blended by camera proximity --
-    fogColor: [0.95, 0.74, 0.52],   // hot ochre horizon haze (warmer/more saturated than #E8C39E so
-                                    // the in-zone air reads as scorching dust, not grey murk)
-    sunWarmTint: [1.0, 0.75, 0.47], // #FFC078 warm amber sun key
-    hazeDensityBonus: 0.006,        // added to fogDensity (0.0085) when fully in-zone → enough to melt
-                                    // the green grassland beyond into ochre haze without washing out
-                                    // the hero mesas (a self-contained desert vista, not a sand patch)
+    // Softened from the old hot-ochre [0.95,0.74,0.52]: a dustier, less saturated
+    // warm haze so the air reads as desert heat-haze, not a yellow wash (part of
+    // the owner's "too yellow" fix — the fog tint bled gold over everything).
+    fogColor: [0.86, 0.78, 0.64],   // warm dusty haze (desaturated from the old hot ochre)
+    sunWarmTint: [1.0, 0.85, 0.66], // warm amber sun key (gentler than the old #FFC078)
+    hazeDensityBonus: 0.0035,       // added to fogDensity (0.0085) when fully in-zone → a warm dust
+                                    // haze that softens the far grassland edge without burying the
+                                    // hero mesas (reduced from 0.006: the old value over-murked the
+                                    // bigger radius-60 zone and read as a yellow wash)
   },
 
   // --- JUNGLE THICKET MICROCLIMATE (USER request: microclimates WITHIN the
@@ -669,9 +787,11 @@ export const ENV = {
   // distinct microclimates inside one grassland valley. Layout/gameplay
   // untouched. All values are art-direction choices mirroring dryZone's knobs.
   jungleZone: {
-    centerX: -42, centerZ: -38, // opposite corner from the dry zone (and away from the pond at -34,28)
-    radius: 30,                 // world units of the thicket
-    edgeFeather: 12,            // soft blend into the grassland
+    // Re-placed for the DOUBLED map: NORTH region, clear of the SW desert, the
+    // W pond and the E ocean. Grown to suit the big valley.
+    centerX: 10, centerZ: 120,  // north thicket
+    radius: 52,                 // world units of the thicket (up from 30 for the doubled map)
+    edgeFeather: 18,            // soft blend into the grassland
     groundTint: [0.42, 0.56, 0.36],  // deeper, wetter green blended into the ground here
     treeDensityMul: 2.2,        // extra trees clustered inside the thicket
     grassDensityMul: 2.0,       // understorey thickens (extra ground-cover cards)
@@ -739,8 +859,9 @@ export const ATMOSPHERE = {
   birdHeight: 34,        // altitude they cruise at
   birdRadius: 60,        // orbit radius around the arena centre
   birdSpeed: 0.12,       // radians/sec around the orbit
-  cloudCount: 9,
+  cloudCount: 14,        // more clouds for the bigger sky
   cloudHeight: 70,
+  birdOrbitMul: 0.55,    // bird orbit radius = ARENA.radius × this (tracks the doubled map; was a fixed 60)
 };
 
 // Pterosaur dive attack: occasionally a member of the flock peels off and
