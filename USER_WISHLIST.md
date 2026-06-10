@@ -168,6 +168,12 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
    - Ground decor EVERYWHERE (user: "all of the above"): bones/skeletons + old
      kill sites, fallen mossy logs + root tangles, mushroom + fern understory in
      groves, wildflowers in clearings.
+   - VALIDATION VIA MAP EDITOR (user request): ship the best-attempt varied map
+     AND a `map-editor.html` — a top-down layout view where the user can DRAG
+     the major features around (lakes, forest groves, jungle zone, rocky zone,
+     savanna, nest/spawn) and save. Layout persists (localStorage or a JSON file
+     they can commit) and the game builds the world from it. The user validates
+     by rearranging, not by reading descriptions.
 
 10. **TREE CLIMBING to evade the T-Rex (requested; design decided).** The human
    can climb suitable trees (interact near trunk → climb up; climb down or drop).
