@@ -151,12 +151,23 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
    should feel like it's shaking. Note: T-Rex has padded feet (user note) — no
    thud/shake from the rex; the shake belongs to the giants.
 
-9. **Bigger map + gentle hills (requested).** Grow the arena (ARENA.radius /
-   groundSize up) and add slight rolling hills to the terrain. Requires real
-   ground-height sampling everywhere (player, dinos, eggs, props all follow the
-   terrain — no floating/clipping), and AI pathing must stay sane on slopes.
-   Coordinate with the env realism pass (same world.js territory) — do AFTER the
-   env branch merges to avoid conflicts.
+9. **BIGGER BIOME-DIVERSE MAP + gentle hills (user-validated plan).** Do AFTER
+   the env branch merges (same world.js territory). Grow the arena and add slight
+   rolling hills (real ground-height sampling everywhere — player, dinos, eggs,
+   props follow terrain; AI sane on slopes). Then lay the world out as a MIXTURE
+   of biomes (user: "a mixture of all!"):
+   - Forest pockets + clearings (tactical cover vs sightlines)
+   - An open savanna stretch (long sightlines, long chases)
+   - A dense jungle zone (claustrophobic, surprise encounters)
+   - The dry rocky arid zone (already with env agent)
+   - MULTIPLE distinct water bodies, different styles per area (user wants
+     variety): a glassy reflective lake, a murky swamp (ominous, fits future
+     aquatic dinos), and a rippling pond with shore foam.
+   - VARIABLE WEATHER system: drifting mist banks, clear hazy spells, occasional
+     light rain passes — cycles over time.
+   - Ground decor EVERYWHERE (user: "all of the above"): bones/skeletons + old
+     kill sites, fallen mossy logs + root tangles, mushroom + fern understory in
+     groves, wildflowers in clearings.
 
 10. **TREE CLIMBING to evade the T-Rex (requested; design decided).** The human
    can climb suitable trees (interact near trunk → climb up; climb down or drop).
