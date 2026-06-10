@@ -81,7 +81,7 @@ export async function createPlayer(scene, shadow, input) {
     if (input.keys.has("a")) move.subtractInPlace(right);
 
     const moving = move.lengthSquared() > 0.001 && state.attacking <= 0;
-    const wantSprint = input.keys.has("shift");
+    const wantSprint = input.sprintHeld;
 
     // --- stamina: drain while sprinting, regen otherwise; lock out sprint
     // until stamina recovers past the floor once exhausted. ---

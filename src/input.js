@@ -5,6 +5,9 @@ export function createInput(canvas) {
   let jumpQueued = false;
   let attackQueued = false;
   let dashQueued = false;
+  let sprintToggled = false; // Caps Lock sprint-toggle (user request). macOS only
+                             // reports CapsLock keyup when the light turns OFF,
+                             // so hold-detection is unreliable — toggle instead.
 
   const norm = (e) => e.key.toLowerCase();
   window.addEventListener("keydown", (e) => {
@@ -13,6 +16,7 @@ export function createInput(canvas) {
     if (k === " ") { jumpQueued = true; e.preventDefault(); }
     if (k === "j") attackQueued = true;
     if (k === "f") dashQueued = true;
+    if (k === "capslock") sprintToggled = !sprintToggled;
   });
   window.addEventListener("keyup", (e) => keys.delete(norm(e)));
   // If the window loses focus (alt-tab, devtools, a peer stealing the tab) the
@@ -25,6 +29,9 @@ export function createInput(canvas) {
 
   return {
     keys,
+    // Sprint when Shift is held OR the Caps Lock toggle is on. Moving stops /
+    // exhaustion are handled by the player; this is purely the input intent.
+    get sprintHeld() { return keys.has("shift") || sprintToggled; },
     consumeJump() { const v = jumpQueued; jumpQueued = false; return v; },
     consumeAttack() { const v = attackQueued; attackQueued = false; return v; },
     consumeDash() { const v = dashQueued; dashQueued = false; return v; },

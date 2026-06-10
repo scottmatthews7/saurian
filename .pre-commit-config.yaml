@@ -1,0 +1,44 @@
+# Adapted from Scott's openai-project hook setup for this JS game.
+# Run `uvx pre-commit install` once; hooks then run on every commit.
+# assets/ (models/audio/textures binaries) and lib/ (vendored Babylon.js) are
+# excluded from text/size/secret hooks.
+
+exclude: '^(assets/|lib/)'
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-yaml
+        args: [--unsafe]
+      - id: check-json
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.2
+    hooks:
+      - id: codespell
+        # British spelling + domain terms we keep; extend as needed.
+        args: ["--ignore-words-list=nd,fo,iam"]
+
+  # JS sanity: every source module must parse.
+  - repo: local
+    hooks:
+      - id: node-check
+        name: node --check src
+        entry: bash -c 'for f in src/*.js; do node --check "$f" || exit 1; done'
+        language: system
+        files: '^src/.*\.js$'
+        pass_filenames: false
