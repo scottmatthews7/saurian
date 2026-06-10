@@ -585,19 +585,80 @@ export const ENV = {
   // toward gnarled/dead. (weights are relative; conifer + broadleaf dominate the
   // green areas, gnarled/palm add silhouette variety.)
   treeTypeWeights: { conifer: 4, broadleaf: 4, gnarled: 2, palm: 1.5 },
-  // DRY ROCKY BIOME ZONE — an arid patch of the map: drier ground tint, denser
-  // boulders, sparse dead/gnarled trees, thinner grass. A distinct biome beside
-  // the green valley. (Pairs with a future bigger-map + hills item; for now a
-  // convincing zone treatment via tint + placement density, not a heavy
-  // full-resolution ground-texture splat.)
+  // DESERT BIOME ZONE (the "dry zone") — a BOLD arid patch of the map. The
+  // previous treatment (a faint tan tint + denser boulders) read as too subtle:
+  // it shared the grassland's mid-value palette and had no colour cast, no dunes
+  // and no silhouette landmarks, so you couldn't tell you'd entered it. This
+  // block now commits to the Gobi/Djadokhta "Flaming Cliffs" look: warm golden
+  // sand ground, gentle dunes, reddish banded sandstone mesas/buttes, sparse
+  // bleached drought vegetation + bones, and a warm hazy desert air. Every
+  // colour below is the research palette converted to 0..1 RGB (these are
+  // albedo TINTS multiplied onto the textures, so they read a touch lighter than
+  // the raw hex once lit). Each numeric is annotated with its source.
   dryZone: {
-    centerX: 46, centerZ: -40,  // offset toward one corner of the arena
-    radius: 34,                 // world units of the arid patch
-    edgeFeather: 12,            // soft blend band so the biome edge isn't a hard ring
-    groundTint: [0.60, 0.54, 0.42], // drier earthy tint blended into the ground vertex colours here
-    rockDensityMul: 2.6,        // boulders are this much denser inside the zone
-    grassDensityMul: 0.25,      // ground cover thins to this fraction inside the zone (arid)
-    deadTreeBias: 0.85,         // probability a tree inside the zone is gnarled/dead
+    centerX: 46, centerZ: -40,  // offset toward one corner of the arena (unchanged)
+    radius: 34,                 // world units of the arid patch (unchanged)
+    edgeFeather: 12,            // soft blend band so the biome edge isn't a hard ring (unchanged)
+
+    // --- Ground: warm sand ----------------------------------------------
+    // Headline golden sand #E8B96A from the game-aesthetics palette (the brief's
+    // "commit to golden sand, not beige"). Applied as a vertex-colour tint AND
+    // as the tint on the sand albedo blended in by the ground material plugin.
+    // Strong, saturated golden sand. This multiplies the (desaturated grey-tan)
+    // dryground albedo texture, so it is pushed well past #E8B96A in saturation
+    // to survive the texture's neutrality + the cool IBL fill and still read
+    // boldly gold (not pale beige) once lit. Verified by the headless top-down
+    // ground-colour probe (tools/desert_probe / desert_capture).
+    groundTint: [1.30, 0.86, 0.34],   // saturated warm gold (super-1.0 R to beat the cool IBL wash)
+    // Real SAND albedo the ground plugin LERPs the grass albedo TOWARD inside the
+    // zone (replacing it, not multiplying a tint over green — that yielded a murky
+    // yellow-green lawn). Warm tan #D9B679 (brief's eye-level sand target). The
+    // sand albedo TEXTURE's per-texel luminance modulates this base so the grain
+    // still reads (light/dark sand specks), but the HUE is locked to this tan.
+    sandColor: [0.85, 0.71, 0.47],    // #D9B679 warm tan — the eye-level sand read
+    sandColorVar: [0.10, 0.07, 0.05], // subtle per-texel warm/cool variation amplitude
+    sandTextures: { albedo: "dryground_albedo.jpg" }, // warm sand albedo blended in by the ground plugin
+    sandTiling: 26,             // tighter than the grass tiling (18) so sand grain reads finer/closer
+    sandRoughness: 0.92,        // matte dry sand (near-fully rough; sand barely speculars)
+
+    // --- Dunes: gentle height undulation, in-zone only -------------------
+    // Low-frequency layered sines so a dune spans many ground quads (~1.8u/quad
+    // at subdivisions:120) — no stair-stepping, per the brief's crispness note.
+    // Amplitude kept modest so the flat play area stays traversable.
+    duneAmp: 2.2,               // metres of dune rise at zone centre (rolling relief, still traversable)
+    duneFreqA: 0.05,            // primary dune wavelength (~126u) — broad swells
+    duneFreqB: 0.11,            // secondary cross-ripple wavelength (~57u) — breaks up the swells
+
+    // --- Sandstone rocks / mesas (the bold orange-red silhouettes) -------
+    rockDensityMul: 2.6,        // small sandstone boulders this much denser than baseline (unchanged)
+    sandstoneColor: [0.76, 0.42, 0.24], // #C2682E sunlit orange-terracotta sandstone (RDR2 mesa)
+    sandstoneBandColor: [0.62, 0.23, 0.12], // #9E3B1F iron-rich red strata band
+    mesaCount: 6,               // hero flat-topped mesas/buttes in-zone (sparse + deliberate skyline)
+    mesaMinHeight: 12, mesaMaxHeight: 22, // metres — tall enough to read as a butte skyline, not a lump
+    mesaMinRadius: 3.5, mesaMaxRadius: 8, // metres — buttes lean tall-ish, a couple broad mesas
+
+    // --- Drought vegetation (sparse, bleached — never emerald) -----------
+    grassDensityMul: 0.25,      // green ground cover thins to this fraction (arid) — kills lush green (unchanged)
+    deadTreeBias: 0.95,         // nearly every in-zone tree is gnarled/dead deadwood (was 0.85)
+    // Straw/ochre/sage tints for the dry tussocks + dead shrubs (research veg palette).
+    dryPalette: [
+      [0.76, 0.66, 0.36],   // #C2A85C dry straw tussock
+      [0.85, 0.78, 0.56],   // #D8C68E bleached dead grass
+      [0.54, 0.55, 0.42],   // #8A8C6A dusty sage / saxaul
+      [0.55, 0.51, 0.46],   // #8C8175 dead grey wood / skeletal shrub
+    ],
+    tuftCount: 90,              // dry-grass tussocks scattered in-zone (sparse, <10% cover but denser than the old near-nothing)
+    shrubCount: 22,             // dead skeletal shrubs in-zone
+    boneColor: [0.90, 0.87, 0.79],  // #E6DECB sun-bleached bone white (hero-prop pop)
+    boneClusterCount: 6,        // half-buried skeleton clusters (ribs/skull/vertebrae) for character
+
+    // --- Warm desert air: fog + light tint, blended by camera proximity --
+    fogColor: [0.95, 0.74, 0.52],   // hot ochre horizon haze (warmer/more saturated than #E8C39E so
+                                    // the in-zone air reads as scorching dust, not grey murk)
+    sunWarmTint: [1.0, 0.75, 0.47], // #FFC078 warm amber sun key
+    hazeDensityBonus: 0.006,        // added to fogDensity (0.0085) when fully in-zone → enough to melt
+                                    // the green grassland beyond into ochre haze without washing out
+                                    // the hero mesas (a self-contained desert vista, not a sand patch)
   },
 
   // --- JUNGLE THICKET MICROCLIMATE (USER request: microclimates WITHIN the
