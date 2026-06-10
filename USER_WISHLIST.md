@@ -67,7 +67,16 @@ repeatedly; ship it first, standalone, before the bigger items.
    anims). If a good one can't be found, SKIP rather than ship a fake reskin —
    tell the user what you found either way.
 
-5. **Aquatic dinosaurs in the lake** — add lake-dwelling creatures (e.g. a
+4d. **Raptor PACKS as a predator (requested).** The raptor model is now free
+   (player is a human). Add raptors as a fast, pack-hunting predator: 2-4 hunting
+   together, flanking/surrounding the player, quicker but weaker than the T-Rex,
+   coordinating their attacks. Reuse the existing raptor.glb + predator brain.
+   Great threat variety vs the lone tank T-Rex. (Confirmed: this game, the human
+   survival one.)
+
+5. **Aquatic dinosaurs in the lake** (+ player SWIMMING, low priority: in deep
+   water the human swims instead of sinking — swim state/anim, slower than land,
+   vulnerable to aquatic predators; bundle with the lake work) — add lake-dwelling creatures (e.g. a
    long-necked plesiosaur / a surfacing predator) that lurk and surface; make the
    water's edge feel dangerous.
 

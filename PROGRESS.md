@@ -600,7 +600,49 @@
   hijack since it lives in my tab) + tiny single-shot evals guarded by a
   `location.href` `:8142` check; closed my own context page after probing.
 
-## Next (session 16)
+## Done (session 16) — PLAYER IS NOW A HUMAN + real-speed chase economy
+- **Replaced the player raptor with a rigged CC0 human** (`assets/models/
+  human.glb` — the Quaternius "Adventurer", same `static.poly.pizza` source as
+  the dinos, CC0). The DINOSAURS are untouched; only the player model changed.
+  - Generalised the clip lookup (`dino.js`): a per-kind `CLIP_ALIASES` table maps
+    the player's logical states onto the human's `CharacterArmature|<Clip>` scheme
+    (vs the dinos' `<Species>_<Key>`). The human has no Jump or bite clip, so
+    Jump→`Roll` (a leap), Attack→`Punch_Right`. Lookup now prefers an exact tail
+    match before a substring so `|Run` isn't shadowed by `|Run_Left`.
+  - `FACING_OFFSET.human` set to **0** (Adventurer authors forward +Z, like the
+    dinos). **A first PI guess made him run BACKWARDS** (backpack-first); caught
+    via a side-on screenshot, corrected to 0, re-verified facing in run/walk/dash.
+  - Player-facing copy updated (human survivor) in README, HUD label, load msg.
+- **Real-speed chase economy (config.js, with km/h provenance):** human sprint
+  `runSpeed` 14→**16.5** u/s = 1.5× the T-Rex's 11 u/s (≈30 vs 20 km/h). Walk 7
+  stays below the rex. Stamina re-tuned for cat-and-mouse: drain 30→25 (~4s
+  sprint, ~22u lead/burst), regen 24→18, `staminaSprintMin` 10→**35** (a real
+  post-exhaustion recovery walk where the rex closes ~4 u/s). `carrySlow`
+  0.18→0.22 preserves the carry risk tiering (1 egg outruns base/matched at dusk,
+  3 eggs run down); empty-handed sprint always escapes.
+
+## Verified (session 16)
+- All src modules pass `node --check`; all 4 headless tests
+  (`dusk`/`cursed_egg`/`beacons`/`herd_hunt`) still pass.
+- Live in-browser (isolated context `dinoa-human`, port 8155, **0 console
+  errors/warnings**, 660 meshes, 120 FPS):
+  - Human loads as the player; all 6 logical clips map to the right
+    CharacterArmature clips; scale ~1.1, feet on ground (footGap 0).
+  - **Facing fixed:** side-on screenshots show chest/face leading the heading
+    in run/walk/dash; backpack on his back.
+  - **Jump works:** Space → clean hop (peak velY 9, rises ~1.87u, falls, lands
+    grounded, Roll anim plays); a mid-air Space does NOT double-jump (the
+    `&& state.grounded` guard blocks it — velY keeps decaying through the press).
+  - **Full chase end-to-end:** sprint opens a ~23u lead → stamina empties → the
+    rex closes ~18u and bites a careless full-Shift player (HP 100→78). Genuine
+    cat-and-mouse; a player managing bursts escapes.
+- **Env gotcha (important):** several of my probes falsely read "jump/carry
+  broken" — the cause each time was the game sitting in the `over` (DEVOURED)
+  state, so the loop skips `player.update` and input is never consumed. Always
+  confirm `g.game.over === false` (and `elapsed` advancing) before probing a
+  player mechanic. Hard-restart via the `R` key, not just `g.resetGame()`.
+
+## Next (session 17)
 - A herbivore "stampede" when one of the herd is taken (the rest bolt as a flock);
   or a brief feeding-frenzy heal-steal: bite the feeding T-Rex AND grab the meat.
 - Beacon upkeep could feed a "warmth" meter that the raptor radiates while near a
