@@ -851,22 +851,44 @@ export const AUDIO = {
       "assets/audio/footstep_3.mp3",
     ],
     pant: "assets/audio/pant.mp3",
-    // Per-creature-kind vocalisation. Keyed by the dino `kind` string.
+    // Per-creature-kind vocalisation. Keyed by the dino `kind` string. All organic
+    // animal recordings sourced from Freesound (see CREDITS.md). Distinct samples so
+    // species sound different; predators get rate-deepened by `menace` at playback.
     creatures: {
-      trex: "assets/audio/trex.mp3",            // eerie low closed-mouth rumble
-      raptor: "assets/audio/raptor.mp3",        // user pick: raptor_screech_c
-      // Herbivores split across two user-picked bellows so species sound distinct.
+      trex: "assets/audio/trex.mp3",            // eerie low closed-mouth growl/rumble
+      raptor: "assets/audio/raptor.mp3",        // raptor screech (unflagged — kept)
+      // Herbivores: triceratops + parasaur share a bellow; stego/apato get distinct lows.
       triceratops: "assets/audio/herbivore_a.mp3",
       parasaur: "assets/audio/herbivore_a.mp3",
-      stegosaurus: "assets/audio/herbivore_b.mp3",
-      apatosaurus: "assets/audio/herbivore_b.mp3",
+      stegosaurus: "assets/audio/stegosaurus.mp3", // distinct bull bellow
+      apatosaurus: "assets/audio/apatosaurus.mp3", // deepest — real elephant low
     },
-    // Giant-sauropod footfall thud (user pick: herb_bellow_c repurposed),
-    // played on the step cadence of nearby big dinos.
+    // Giant-sauropod footfall thud — a real heavy organic ground impact (not a
+    // repurposed bellow), played on the step cadence of nearby big dinos.
     bigStep: "assets/audio/bigstep.mp3",
+    // Generic herbivore call (used by creatureCall() when no per-species sample).
+    herbivore: "assets/audio/creaturecall.mp3",
+    // One-shot event sounds. Each replaces a flagged procedural synth with an
+    // organic recording; the procedural recipe is kept as a fallback if a file
+    // fails to load. Played through playBuffer() so they keep the same
+    // click-free attack/release envelope as every other sample.
+    oneshots: {
+      splash: "assets/audio/splash.mp3",
+      hurt: "assets/audio/hurt.mp3",
+      bite: "assets/audio/bite.mp3",
+      screech: "assets/audio/screech.mp3",
+      pickup: "assets/audio/pickup.mp3",         // kalimba note (organic)
+      pickupGolden: "assets/audio/pickup_golden.mp3", // crystal bell
+      heal: "assets/audio/heal.mp3",             // temple/singing bowl swell
+      ui: "assets/audio/ui_tap.mp3",             // soft woody tap
+      lose: "assets/audio/lose.mp3",             // gong
+      win: "assets/audio/win.mp3",               // bright approval bell
+    },
   },
-  // User feedback: baked trex rumble was pitched down too far — lift at playback.
-  trexRumbleRate: 1.25,
+  // New trex sample is an organic low growl; play it slightly SLOWED to deepen it
+  // toward the eerie closed-mouth infrasound rumble (crocodilian/booming-bittern
+  // hypothesis, Julia Clarke et al.) rather than a Hollywood roar.
+  trexRumbleRate: 0.85,
   bigStepInterval: 1.2,   // sec between sauropod footfall thuds (amble cadence)
   bigStepRange: 50,       // thuds audible within this many world units
 };

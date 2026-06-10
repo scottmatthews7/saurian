@@ -18,6 +18,50 @@ Files live in `assets/audio/` (in-game defaults) and
 | Player panting | `pant_a` | [OpenGameArt — "Breathing tired"](https://opengameart.org/content/breathing-tired) | CC0 (public domain) |
 | Player panting (alts) | `pant_{b,c}` | [Mixkit Free SFX](https://mixkit.co/free-sound-effects/) — breath | Mixkit Free License (royalty-free) |
 
+### Audio pass — organic Freesound replacements
+
+The owner flagged the previous procedural-synth and repurposed sounds (splash, hurt,
+bite, screech, roar, creature call, big steps, stegosaurus/apatosaurus vocals, all UI
+and all pickups except tension) as too synthetic / "8-bit". They were replaced with
+real organic recordings from [Freesound](https://freesound.org). All picks below are
+**CC0 (public domain)** — no attribution legally required, credited here as good
+practice. HQ preview MP3s were used. The matching procedural recipe is kept in
+`src/audio.js` as a load-failure fallback for each. The runner-up A/B candidates live in
+`assets/audio/candidates/*_alt.mp3` and are auditionable in `audio-dashboard.html`.
+
+| Sound (engine method) | File | Freesound | Author | Licence |
+|---|---|---|---|---|
+| Splash (`splash`) | `splash.mp3` | "water splash 2" [#398039](https://freesound.org/s/398039/) | swordofkings128 | CC0 |
+| Splash — alt | `candidates/splash_alt.mp3` | "Water Splash" [#829676](https://freesound.org/s/829676/) | AardsReal | CC0 |
+| Hurt (`hurt`) | `hurt.mp3` | "AdultMale PainGrunt 18" [#547197](https://freesound.org/s/547197/) | MrFossy | CC0 |
+| Hurt — alt | `candidates/hurt_alt.mp3` | "AdultMale PainGrunt 07" [#547205](https://freesound.org/s/547205/) | MrFossy | CC0 |
+| Bite (`bite`) | `bite.mp3` | "Open Mouth Chomp" [#457475](https://freesound.org/s/457475/) | princessemilu | CC0 |
+| Bite — alt | `candidates/bite_alt.mp3` | "Crispy bite" [#718593](https://freesound.org/s/718593/) | JoMungus | CC0 |
+| Screech (`screech`) | `screech.mp3` | "Hawk Screech" [#804810](https://freesound.org/s/804810/) | designerschoice | CC0 |
+| Screech — alt | `candidates/screech_alt.mp3` | "Eagle Cry" [#381200](https://freesound.org/s/381200/) | kaydinhamby | CC0 |
+| T-Rex rumble / Roar (`vocalise("trex")`, `roar`) | `trex.mp3` | "ominous_growl" [#708960](https://freesound.org/s/708960/) | PJ_Bear | CC0 |
+| T-Rex — alt | `candidates/trex_alt.mp3` | "Monster Guttural Growl, Dry" [#734900](https://freesound.org/s/734900/) | DeqstersLab | CC0 |
+| Stegosaurus (`vocalise("stegosaurus")`) | `stegosaurus.mp3` | "Bull Bellowing" [#768389](https://freesound.org/s/768389/) | TheKingOfGeeks360 | CC0 |
+| Apatosaurus (`vocalise("apatosaurus")`) | `apatosaurus.mp3` | "Elephant sound" [#819668](https://freesound.org/s/819668/) | ikbenraar | CC0 |
+| Creature call (`creatureCall`) | `creaturecall.mp3` | "Moo 1" [#700378](https://freesound.org/s/700378/) | manofham | CC0 |
+| Big step (`bigStep`) | `bigstep.mp3` | "Giant step" [#721601](https://freesound.org/s/721601/) | DasWaff | CC0 |
+| Big step — alt | `candidates/bigstep_alt.mp3` | "Big robot footstep" [#813056](https://freesound.org/s/813056/) | AudioPapkin | CC0 |
+| Pickup — egg (`pickup(false)`) | `pickup.mp3` | "Kalimba C3" [#536549](https://freesound.org/s/536549/) | dvdfu | CC0 |
+| Pickup — golden (`pickup(true)`) | `pickup_golden.mp3` | "crystal bell" [#614832](https://freesound.org/s/614832/) | arseniiv | CC0 |
+| Heal (`heal`) | `heal.mp3` | "temple bowl" [#810426](https://freesound.org/s/810426/) | midge-f | CC0 |
+| UI tap (`ui`) | `ui_tap.mp3` | "wood_block" [#555545](https://freesound.org/s/555545/) | stwime | CC0 |
+| Win (`win`) | `win.mp3` | "Approval bell" [#625174](https://freesound.org/s/625174/) | GabFitzgerald | CC0 |
+| Lose (`lose`) | `lose.mp3` | "The Gong sound" [#717952](https://freesound.org/s/717952/) | grvmusic | CC0 |
+
+**Kept (not flagged / owner's pick):** Tension heartbeat (procedural), the dash Whoosh /
+melee Swing & Thud (procedural), the Kenney footsteps, OpenGameArt panting, the Raptor
+and Triceratops/Parasaur vocals.
+
+**T-Rex note:** `trex.mp3` is an organic low growl played back slowed
+(`AUDIO.trexRumbleRate = 0.85`, deepened further by `menace`) to approximate the eerie
+closed-mouth infrasound rumble hypothesised for tyrannosaurs (Julia Clarke et al. —
+crocodilian rumble + bittern boom), rather than a Hollywood open-mouth roar.
+
 Notes:
 - **Kenney** and the **OpenGameArt "Breathing tired"** assets are CC0 — no
   attribution required, credited here as courtesy.
