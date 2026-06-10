@@ -167,10 +167,23 @@ export function createEggs(scene, shadow, groundFn) {
       const idx = state.carried.pop();
       if (idx === undefined) return false;
       const e = eggs[idx];
-      const a = Math.random() * Math.PI * 2;
-      const x = position.x + Math.cos(a) * 3, z = position.z + Math.sin(a) * 3;
+      // Scatter it ~3u away, but keep the same invariants as a fresh spawn: never
+      // in the pond (it would drain health to retrieve) and never outside the
+      // playable circle. Try a few angles, then clamp inward as a fallback.
+      let x = position.x, z = position.z;
+      for (let t = 0; t < 8; t++) {
+        const a = Math.random() * Math.PI * 2;
+        x = position.x + Math.cos(a) * 3;
+        z = position.z + Math.sin(a) * 3;
+        const r = Math.hypot(x, z);
+        if (r > ARENA.radius - 2) { const k = (ARENA.radius - 2) / r; x *= k; z *= k; }
+        if (!inPond(x, z)) break;
+      }
       e.collected = false;
-      e.baseY = (groundY != null ? groundY : position.y) + 0.9;
+      // Sit on the ground at the actual drop point (not the bite point) so the
+      // egg doesn't float over uneven terrain. groundY is kept as a fallback.
+      const gy = groundFn ? groundFn(x, z) : (groundY != null ? groundY : position.y);
+      e.baseY = gy + 0.9;
       e.mesh.position.set(x, e.baseY, z);
       e.light.position.copyFrom(e.mesh.position);
       e.mesh.setEnabled(true);

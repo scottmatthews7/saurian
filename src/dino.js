@@ -105,7 +105,15 @@ export async function loadDino(scene, kind, targetHeight, shadow) {
       g.start(loop, speed, g.from, g.to, false);
       this.current = g;
     },
-    dispose() { res.meshes.forEach((m) => m.dispose()); root.dispose(); },
+    // Fully tear down a loaded dino. Disposing only the meshes leaks the
+    // animation groups and skeleton, which accumulate across soft restarts that
+    // dispose later-wave predators — so dispose those too.
+    dispose() {
+      res.animationGroups.forEach((g) => g.dispose());
+      res.skeletons.forEach((s) => s.dispose());
+      res.meshes.forEach((m) => m.dispose());
+      root.dispose();
+    },
   };
   dino.play("Idle");
   return dino;
