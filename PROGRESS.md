@@ -1,5 +1,65 @@
 # Progress
 
+## Done (session 17 — dinos-pass branch: roster + behaviour)
+Wishlist items 3, 4, 4c, 4d. Branch `dinos-pass` (isolated worktree; coordinator
+merges). Edited only: `dino.js`, `ai.js`, `config.js` (DINO section), new
+`flyer.js`, a localised mesh-swap in `world.js`, minimal spawn-wiring in
+`game.js`. Did NOT touch audio/player/the env.
+
+- **(4d) RAPTOR PACK predator** (`ai.js createRaptorPack`, `config RAPTOR`): a
+  3-5 raptor swarm spawns from difficulty wave 2. Each member holds a FIXED
+  evenly-spaced slot on a ring (`surroundRadius`) around the player + a small
+  per-member jitter, so the pack ENCIRCLES instead of stacking on one bearing;
+  inside `lungeRange` it drops the slot and darts straight in. Reuses raptor.glb
+  and exposes the same state shape as the T-Rex predator, so the game's predator
+  list / roar / minimap / HUD all work unchanged. **Turkey-sized** per user
+  feedback: `modelHeight 0.75u` (≈0.7m — verified ~37% of the human's 2.0u in
+  the browser), weak swarm tuning (5 dmg/nip, 24 HP = one player bite fells one,
+  1.8u reach). Distinctive vs the lone tank T-Rex.
+- **(4c) Wider animated roster** (`config DINO_VARIANTS`, `dino.js`, `ai.js`):
+  **HARD ASSET FINDING** — poly.pizza hosts exactly ONE animated CC0 dinosaur set
+  (the Quaternius bundle we already ship all 6 of); NO animated Spinosaurus/Anky/
+  Pachy/Brachio/Compso/Pteranodon exists there (verified by scraping the species
+  searches + Quaternius profile + Ultimate Monsters bundle and inspecting every
+  glb's animation list — the rest are static legacy meshes the wishlist forbids).
+  So the roster was widened by REUSING the 6 animated rigs under a tint +
+  body-stretch signature: each new species animates via the shared clip set but
+  reads distinct. Herd now spans 9 species (Spinosaurus, Ankylosaurus,
+  Pachycephalosaurus, Brachiosaurus, Compsognathus added), each with a
+  diet/behaviour. See CREDITS.md. No new model files. (Therizinosaurus: still no
+  rigged CC0 model — skipped per the wishlist.)
+- **(3) Triceratops locomotion** (`ai.js`, `config TRICERATOPS`): its own crisper
+  `turnLerp` 0.14 (vs herd 0.08), `walkClipSpeed` matched to ground speed (kills
+  foot-slide), and a post-charge `recover` settle so it no longer judders from a
+  flat-out charge into a reverse sprint. PLUS the **obstacle-avoidance JITTER fix**
+  (the "buzzing near a tree/rock" the coordinator flagged): rewrote
+  `avoidObstacles` to steer TANGENTIALLY around an obstacle on a COMMITTED side
+  (held `AI_AVOID.commitFrames`) with a small `radialKeep`, instead of the purely
+  radial away-push that flipped sign vs the goal-pull every frame. Verified
+  in-browser: a triceratops pinned against a tree (worst case, goal directly
+  behind it) holds a stable heading (avg Δ 0.03 rad/frame, no sign-flip
+  vibration) and skirts past calmly.
+- **(4) Pterosaur flyer** (new `src/flyer.js` + localised `world.js` swap): a
+  proper procedural winged pterosaur — tapered body spindle, long beak, swept
+  head crest, two flapping MEMBRANE wings (forearm spar + skinned triangle) —
+  replacing the old cone-body + box-wings bird. `buildFlyer(scene)` returns a
+  drop-in `{ root, setDiving, flap(dt) }`; the world flock + dive-attack FSM are
+  otherwise untouched (cruise vs frantic-dive flap rate; red dive material).
+
+### Verified (session 17)
+- All `src/*.js` pass `node --check`; all 4 headless tests
+  (`dusk`/`cursed_egg`/`beacons`/`herd_hunt`) still pass.
+- Live in-browser (isolated context on a private port 8177, separate from the
+  other worktrees' 8219/8181 — **note the shared Chrome is contended by 2 other
+  dino agents; pages get evicted/port-confused, so confirm `location.port` before
+  trusting a probe**): 0 console errors; herd loads all 9 species each animating
+  with its base rig's clips; raptor pack spawns in-game (measured world height
+  0.75u vs player 2.0u, HP 24); raptors converge to the surround ring; the flyer
+  flock builds (49 flyer/wing meshes); triceratops obstacle-jitter resolved.
+- **Audio note (coordinator, mid-session):** mute test pages immediately on load
+  (user on a call). My 8177 test pages are now closed; future pages should be
+  launched muted / M-key first.
+
 ## Done (session 1)
 - **Engine:** Babylon.js 8.x vendored in `lib/` (no build step). See `DECISIONS.md`.
 - **Assets:** 6 CC0 Quaternius animated dino glbs in `assets/models/`.
