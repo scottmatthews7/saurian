@@ -453,6 +453,7 @@ export async function startGame() {
     pickups.reset();
     beacons.reset();
     world.resetDusk();   // fresh run starts in full daylight again
+    world.resetThreats(); // abort any in-flight pterosaur dive from the old run
     setDusk(0); hud.setDusk(0); duskAnnounced = false;
     setLure(false);
     const c = world.heightAt(0, 0);

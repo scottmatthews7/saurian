@@ -174,6 +174,7 @@ export function buildWorld(scene) {
     getDusk: () => duskFactor,
     updateThreats: (dt, player, onScreech, onHit) =>
       atmosphere.updateThreats(dt, player, onScreech, onHit),
+    resetThreats: () => atmosphere.resetThreats(),
   };
 }
 
@@ -503,6 +504,12 @@ function buildAtmosphere(scene, heightAt) {
         }
         return;
       }
+    },
+    // Soft restart: abort any in-flight dive so the new run starts with the
+    // flock peacefully orbiting (no bird left nose-down with the dive glow on).
+    resetThreats() {
+      if (dive.state !== "idle") endDive(dive.bird);
+      dive.timer = randInterval();
     },
   };
 }
