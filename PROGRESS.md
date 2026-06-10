@@ -379,10 +379,47 @@
   within ~1-2s; verification used single-shot evals guarded by a `location.href`
   8124 check + the `window.__game` handle, then closed my own context tab.
 
-## Next (session 11)
-- Beacons could *gutter out* over time (relight to keep warding) for a tension
-  upkeep loop; or a beacon's ward could grow with dusk as a defensive mirror of
-  the dusk bank-bonus.
+## Done (session 11) — beacon UPKEEP loop + dusk-scaled ward
+- **Deepened the ward-beacon system** (`beacons.js`, `config.BEACONS`, `game.js`,
+  `hud.js`, `minimap.js`, `index.html`) — picked the two session-11 ideas and built
+  *both*, because they reinforce each other into one strategic loop:
+  - **Beacons burn down + relight (upkeep tension):** a lit beacon now holds
+    `burnSeconds` (45) of fuel, drains each frame, and **gutters back to dark** at
+    zero — so the ring is something to *maintain*, not light-once. Brushing a lit
+    beacon again tops its fuel to full (free, no key — touch-friendly). The flame +
+    point light **shrink with remaining fuel** (mapped to a 0.45..1 size band so a
+    dying beacon reads as dying, never a sliver). Guttering re-arms the sanctuary,
+    so you re-earn it by keeping the ring alive over a long run.
+  - **Ward grows with dusk (defensive mirror of the bank bonus):** the dusk-scaled
+    ward radius is `wardRadius * (1 + wardDuskBonus * dusk)` → 18 (day) to **27 at
+    deepest dusk**. Beacons matter most exactly when the predators are boldest;
+    the radar ward ring uses the same live radius so visuals match the gameplay.
+  - **Readability/juice:** HUD beacon counter pulses amber **"Beacon fading —
+    relight!"** when any lit beacon is low (`lowFuelFrac` 0.25); a grey dying-puff
+    burst + chime + "BEACON GUTTERED OUT" popup on gutter; radar ward-ring + dot
+    **fade with fuel** (dot greys when guttering); title screen now teaches the
+    burn-down + the wider-at-dusk ward. Reset snuffs all + zeroes fuel + dusk.
+- All new tunables in `config.BEACONS` with provenance notes tied to the chase/dusk
+  economy (burn outlasts an egg round-trip; ward dusk-bonus mirrors the bank bonus).
+
+## Verified (session 11)
+- All 15 src modules pass `node --check`; `dusk_test` + `cursed_egg_test` still
+  pass; `beacons_test.mjs` extended with an **upkeep section** (burn-down to gutter,
+  guttering low-fuel detection, brush-to-refuel, dusk-scaled ward = base/×1.5) —
+  all pass.
+- Live in-browser (isolated context `dinoa-s11`, port 8124, **0 console
+  errors/warnings**): touching a beacon lights it (fuel 45); draining past burn
+  gutters it (lit=false, fuel=0); brushing relights; ward 18→27 day→dusk; the
+  `anyGuttering` flag + amber HUD "Beacon fading — relight!" + `onGutter` callback
+  all fire at the low-fuel band; soft restart snuffs all (lit=0, fuel=0, dusk=0,
+  sanctuary re-armed). Tab closed after probing.
+- **Env note (unchanged):** parallel `dinob`/peer instances grab the selected tab
+  within ~1-2s; verification used single-shot evals guarded by a `location.href`
+  8124 check + the `window.__game` handle.
+
+## Next (session 12)
+- Beacon upkeep could feed a "warmth" meter that the raptor radiates while near a
+  lit beacon (regen?); or guttered beacons could be relit faster than first-light.
 - Original session-10 ideas still open below.
 
 ## Next (older ideas)

@@ -119,6 +119,13 @@ export async function startGame() {
     hud.setScore(score.points, score.combo);
     hud.popup(`SANCTUARY! +${BEACONS.sanctuaryScore} · +${BEACONS.sanctuaryHeal} HP`, "gold");
   };
+  // A lit beacon burned down: a soft dying puff + cue so the player knows the
+  // ring needs relighting (the upkeep loop).
+  beacons.onGutter = (pos) => {
+    audio.beacon();
+    fx.pickupBurst(pos, new B2.Color4(0.5, 0.5, 0.55, 1));
+    hud.popup("BEACON GUTTERED OUT", "warn");
+  };
   player.onAttack = () => audio.bite();
   // Splash + spray when the raptor wades into the pond.
   player.onSplash = (pos) => {
@@ -254,6 +261,7 @@ export async function startGame() {
       setDusk(dusk);
       // Cursed-egg lure: while carried, every T-Rex homes in on the raptor.
       setLure(eggs.carryingCursed);
+      beacons.setDusk(dusk);   // a lit beacon's ward grows with dusk (defensive mirror of the bank bonus)
       hud.setDusk(dusk);
       if (!duskAnnounced && dusk >= DUSK.duskThreshold) {
         duskAnnounced = true;
@@ -357,7 +365,7 @@ export async function startGame() {
       hud.setDash(1 - player.dashTimer / PLAYER.dashCooldown);
       hud.setTrex(primary ? primary.health : 0, TREX.maxHealth);
       hud.setEggs(eggs.banked, EGGS.targetToWin, eggs.carrying, eggs.remaining());
-      hud.setBeacons(beacons.litCount, BEACONS.count);
+      hud.setBeacons(beacons.litCount, BEACONS.count, beacons.anyGuttering);
 
       // win / lose
       if (eggs.banked >= EGGS.targetToWin) {

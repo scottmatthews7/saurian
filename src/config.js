@@ -193,6 +193,16 @@ export const BEACONS = {
   lightHeight: 6,          // warm point-light range (units) cast around a lit beacon to push back the dusk gloom
   sanctuaryHeal: 25,       // HP restored once all beacons are lit (reward for clearing the ring)
   sanctuaryScore: 500,     // bonus score for lighting the full ring (a tidy objective payoff)
+  // Upkeep loop: a lit beacon BURNS DOWN and gutters out, so the ring is something
+  // to maintain, not light-once-and-forget. Brushing a lit/guttering beacon again
+  // tops its fuel back to full. Tuned so a beacon comfortably outlasts a single
+  // egg round-trip but a full ring needs revisiting over a long run.
+  burnSeconds: 45,         // sec a freshly-lit beacon burns before guttering out (a generous round-trip's worth)
+  lowFuelFrac: 0.25,       // fuel fraction below which a beacon reads "guttering" (dimmer flame + radar warning)
+  // Defensive dusk mirror of the bank-bonus: a lit beacon's ward GROWS with dusk,
+  // so beacons matter most exactly when the predators are boldest. wardRadius is
+  // the daytime base; at deepest dusk it scales by (1 + wardDuskBonus).
+  wardDuskBonus: 0.5,      // +50% ward radius at deepest dusk (18 -> 27 units), a deliberate counter to the dusk speed/sight boldness
 };
 
 export const CAMERA = {

@@ -42,6 +42,8 @@
     #carryCount { font-size: 13px; opacity: 0.85; margin-top: 2px; }
     .beaconCount { font-size: 13px; margin-top: 3px; color: #ffb347; opacity: 0.9; }
     .beaconCount.all { color: #ffd95a; opacity: 1; text-shadow: 0 0 8px rgba(255,180,60,0.8); }
+    .beaconCount.guttering { color: #ff8a4a; opacity: 1; animation: beaconPulse 0.7s ease-in-out infinite; }
+    @keyframes beaconPulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; text-shadow: 0 0 8px rgba(255,120,60,0.9); } }
     #score { font-size: 20px; font-weight: bold; margin-top: 8px; }
     #combo { font-size: 13px; color: var(--good); opacity: 0.9; min-height: 16px; }
     #popups { position: relative; height: 0; }

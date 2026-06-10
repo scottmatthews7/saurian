@@ -56,14 +56,17 @@ export function createMinimap() {
       // ward beacons — a lit beacon shows its ward radius ring + a bright dot;
       // an unlit one is a dim hollow marker to seek out.
       if (beacons) {
+        const wardR = beacons.wardRadiusNow || BEACONS.wardRadius;
         for (const b of beacons.beacons) {
           const [bx, by] = toMap(b.x, b.z);
           if (b.lit) {
+            // Ward ring + dot fade with remaining fuel so a guttering beacon reads.
+            const frac = Math.max(0.15, b.fuel / BEACONS.burnSeconds);
             ctx.beginPath();
-            ctx.arc(bx, by, BEACONS.wardRadius * scale, 0, Math.PI * 2);
-            ctx.fillStyle = "rgba(255,170,60,0.18)";
+            ctx.arc(bx, by, wardR * scale, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255,170,60,${(0.18 * frac).toFixed(3)})`;
             ctx.fill();
-            dot(b.x, b.z, "#ffb347", 3.5);
+            dot(b.x, b.z, frac < BEACONS.lowFuelFrac ? "#aa8855" : "#ffb347", 3.5);
           } else {
             ctx.beginPath();
             ctx.arc(bx, by, 3, 0, Math.PI * 2);

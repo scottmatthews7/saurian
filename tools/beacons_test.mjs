@@ -63,6 +63,39 @@ console.log("sanctuary (all-lit, one-shot):");
   check("sanctuary fires exactly when all beacons are lit", fired === BEACONS.count);
 })();
 
+console.log("upkeep (burn down / relight / dusk ward — session 11):");
+(() => {
+  // Mirror beacons.js: a lit beacon holds `fuel` seconds, drains by dt, gutters
+  // out at <=0; brushing within lightRange tops fuel back to full.
+  const b = { lit: true, fuel: BEACONS.burnSeconds, x: 0, z: 0 };
+  const step = (dt, px, pz) => {
+    const inRange = Math.hypot(px - b.x, pz - b.z) < BEACONS.lightRange;
+    if (inRange) b.fuel = BEACONS.burnSeconds;
+    b.fuel -= dt;
+    if (b.fuel <= 0) { b.lit = false; b.fuel = 0; }
+  };
+  // Burn most of the way down without brushing.
+  for (let t = 0; t < BEACONS.burnSeconds - 1; t++) step(1, 999, 999);
+  check("a lit beacon is still lit just before its fuel runs out", b.lit, `fuel=${b.fuel.toFixed(1)}`);
+  check("the beacon reads as guttering on low fuel",
+    b.fuel < BEACONS.burnSeconds * BEACONS.lowFuelFrac);
+  // Brush it -> tops back to full.
+  step(0, b.x, b.z);
+  check("brushing a lit beacon refuels it to full", b.fuel === BEACONS.burnSeconds);
+  // Now let it run all the way out.
+  for (let t = 0; t < BEACONS.burnSeconds + 1; t++) step(1, 999, 999);
+  check("a beacon gutters out once fuel is exhausted", !b.lit && b.fuel === 0);
+})();
+
+(() => {
+  // Dusk-scaled ward: radius = base * (1 + wardDuskBonus * dusk).
+  const wardAt = (dusk) => BEACONS.wardRadius * (1 + BEACONS.wardDuskBonus * dusk);
+  check("ward radius equals the base in full daylight", wardAt(0) === BEACONS.wardRadius);
+  check("ward radius grows at dusk", wardAt(1) > wardAt(0));
+  check("deepest-dusk ward = base * (1 + wardDuskBonus)",
+    Math.abs(wardAt(1) - BEACONS.wardRadius * (1 + BEACONS.wardDuskBonus)) < 1e-9);
+})();
+
 console.log("config sanity:");
 check("ward radius is a local pocket, not arena-wide", BEACONS.wardRadius < ARENA.radius / 2,
   `ward=${BEACONS.wardRadius} arena/2=${ARENA.radius / 2}`);
@@ -70,6 +103,10 @@ check("ring sits between the nest and the rim",
   BEACONS.ringRadius > 10 && BEACONS.ringRadius < ARENA.radius);
 check("sanctuary heal + score are positive payoffs",
   BEACONS.sanctuaryHeal > 0 && BEACONS.sanctuaryScore > 0);
+check("burn time outlasts a generous round-trip but is finite",
+  BEACONS.burnSeconds > 10 && BEACONS.burnSeconds < 600);
+check("low-fuel fraction is a sensible warning band",
+  BEACONS.lowFuelFrac > 0 && BEACONS.lowFuelFrac < 0.5);
 
 console.log(failures === 0 ? "\nALL BEACON TESTS PASSED" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
