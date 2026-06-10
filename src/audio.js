@@ -54,6 +54,7 @@ export function createAudio() {
     buffers.footsteps = await Promise.all((s.footsteps || []).map(load));
     buffers.footsteps = buffers.footsteps.filter(Boolean);
     buffers.pant = await load(s.pant);
+    buffers.bigStep = await load(s.bigStep);
     for (const [kind, url] of Object.entries(s.creatures || {})) {
       buffers.creatures[kind] = await load(url);
     }
@@ -134,9 +135,11 @@ export function createAudio() {
       if (buf) {
         const m = Math.max(0, Math.min(1, menace));
         const predator = kind === "trex" || kind === "raptor";
+        // User feedback: the baked trex rumble was pitched down too far — lift it.
+        const baseRate = kind === "trex" ? AUDIO.trexRumbleRate : 1;
         playBuffer(buf, {
           gain: vol * (predator ? 0.9 : 0.7),
-          rate: predator ? (1 - m * 0.12) : 1,  // a closing predator sounds deeper
+          rate: baseRate * (predator ? (1 - m * 0.12) : 1), // closing predator sounds deeper
           jitter: 0.04,
           attack: 0.02, release: 0.12,           // smooth swell + tail, no click
         });
@@ -362,20 +365,20 @@ export function createAudio() {
       if (!ctx || muted) return;
       [330, 247, 196, 147].forEach((f, i) => setTimeout(() => tone(f, 0.5, "sawtooth", 0.35), i * 160));
     },
-    // Low evolving ambient drone bed, started once.
-    startAmbient() {
-      if (!ctx || ambientNodes) return;
-      const base = ctx.createOscillator();
-      base.type = "sine"; base.frequency.value = 55;
-      const fifth = ctx.createOscillator();
-      fifth.type = "sine"; fifth.frequency.value = 82.4;
-      const lfo = ctx.createOscillator();
-      lfo.type = "sine"; lfo.frequency.value = 0.08;
-      const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.04;
-      lfo.connect(lfoGain); lfoGain.connect(musicGain.gain);
-      base.connect(musicGain); fifth.connect(musicGain);
-      base.start(); fifth.start(); lfo.start();
-      ambientNodes = { base, fifth, lfo };
+    // Ambient drone removed — the user hated the constant sine hum. Kept as a
+    // no-op so call sites stay valid; if an ambient bed returns it should be a
+    // real sample (wind/jungle), never a pitched oscillator.
+    startAmbient() {},
+    // Giant-sauropod footfall thud (user-picked low sample), distance gain 0..1.
+    // T-Rex deliberately has NO footfall — padded feet (user note): it's silent
+    // underfoot, which is scarier.
+    bigStep(gain = 1) {
+      if (!ctx || muted || !buffers.bigStep) return;
+      playBuffer(buffers.bigStep, {
+        gain: Math.max(0, Math.min(1, gain)) * 0.8,
+        rate: 0.9, jitter: 0.06,
+        attack: 0.01, release: 0.15,
+      });
     },
     // Player breathing: a looping breath sample whose volume + rate track
     // exertion. Call every frame with `active` (sprinting/dashing) and

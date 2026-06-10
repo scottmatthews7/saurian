@@ -228,6 +228,7 @@ export async function startGame() {
   let stepTimer = 0;        // counts down to the next footfall SFX
   let tensionTimer = 0;
   let vocalTimer = AUDIO.vocalIntervalMax; // counts down to the next ambient creature call
+  let bigStepTimer = AUDIO.bigStepInterval; // counts down to the next sauropod footfall thud
   // Fires a one-shot "the predators grow bolder" cue the first time dusk deepens
   // past DUSK.duskThreshold in a run. A roar + popup so the player reads it.
   let duskAnnounced = false;
@@ -374,6 +375,23 @@ export async function startGame() {
       // bearing down on you calls MORE OFTEN and louder + more menacing the
       // nearer it gets; otherwise a random predator/herbivore calls on a relaxed
       // randomised cadence so the valley feels alive without being metronomic.
+      // Giant-sauropod footfalls: a low ground-thud on an amble cadence from the
+      // nearest live apatosaurus in earshot (T-Rex is silent — padded feet).
+      bigStepTimer -= dt;
+      if (bigStepTimer <= 0) {
+        bigStepTimer = AUDIO.bigStepInterval;
+        let nearest = Infinity;
+        for (const h of herd) {
+          if (h.dead || h.kind !== "apatosaurus") continue;
+          const hp = h.dino.root.position;
+          const d = Math.hypot(hp.x - pp0.x, hp.z - pp0.z);
+          if (d < nearest) nearest = d;
+        }
+        if (nearest < AUDIO.bigStepRange) {
+          audio.bigStep(1 - nearest / AUDIO.bigStepRange);
+        }
+      }
+
       vocalTimer -= dt;
       if (vocalTimer <= 0) {
         // Distance attenuation helper: full gain on top of you, fading to a

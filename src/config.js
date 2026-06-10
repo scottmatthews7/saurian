@@ -404,13 +404,21 @@ export const AUDIO = {
     // Per-creature-kind vocalisation. Keyed by the dino `kind` string.
     creatures: {
       trex: "assets/audio/trex.mp3",            // eerie low closed-mouth rumble
-      raptor: "assets/audio/raptor.mp3",        // higher fast screech (pack hunters)
-      triceratops: "assets/audio/herbivore.mp3",// low bellow / grunt
-      stegosaurus: "assets/audio/herbivore.mp3",
-      apatosaurus: "assets/audio/herbivore.mp3",
-      parasaur: "assets/audio/herbivore.mp3",
+      raptor: "assets/audio/raptor.mp3",        // user pick: raptor_screech_c
+      // Herbivores split across two user-picked bellows so species sound distinct.
+      triceratops: "assets/audio/herbivore_a.mp3",
+      parasaur: "assets/audio/herbivore_a.mp3",
+      stegosaurus: "assets/audio/herbivore_b.mp3",
+      apatosaurus: "assets/audio/herbivore_b.mp3",
     },
+    // Giant-sauropod footfall thud (user pick: herb_bellow_c repurposed),
+    // played on the step cadence of nearby big dinos.
+    bigStep: "assets/audio/bigstep.mp3",
   },
+  // User feedback: baked trex rumble was pitched down too far — lift at playback.
+  trexRumbleRate: 1.25,
+  bigStepInterval: 1.2,   // sec between sauropod footfall thuds (amble cadence)
+  bigStepRange: 50,       // thuds audible within this many world units
 };
 
 // On-screen touch controls (phones/tablets). The joystick maps to WASD so all

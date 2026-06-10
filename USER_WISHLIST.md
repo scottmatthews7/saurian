@@ -145,3 +145,8 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
      stamina, worse conditions (dusk/rain), heavier required loads.
    - Keep the great physics + chase feel intact. Merge items 6 (backpack/tools) and
      1b/7 here — backpack, cargo, pickups and A→B are ONE coherent loop.
+
+8. **Screen-shake near massive dinos (lower priority).** Camera trembles when a
+   giant sauropod is close (scaling with proximity / its footfalls) — the ground
+   should feel like it's shaking. Note: T-Rex has padded feet (user note) — no
+   thud/shake from the rex; the shake belongs to the giants.
