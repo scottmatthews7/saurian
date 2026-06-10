@@ -160,8 +160,21 @@ export function buildWorld(scene) {
   // A faint ring of reeds around the shoreline for readability.
   buildReeds(scene, shadow, heightAt);
 
-  // Water helpers consumed by the player controller and AI avoidance.
+  // Water helpers consumed by the player controller, the aquatic predator and
+  // the AI avoidance. `inWater` is the shallow-wading test (unchanged). The
+  // basin is a smoothstep bowl WATER.depth deep at the centre; `waterDepthAt`
+  // returns the local water column depth (0 at/over the rim) so the player can
+  // branch shallow-wade vs deep-swim, and `isDeepWater` is that branch.
   const inWater = (x, z) => Math.hypot(x - WATER.centerX, z - WATER.centerZ) < WATER.radius - 1;
+  const waterDepthAt = (x, z) => {
+    const d = Math.hypot(x - WATER.centerX, z - WATER.centerZ);
+    if (d >= WATER.radius) return 0;
+    // water surface (waterY) minus the carved basin floor at this point.
+    const floorY = heightAt(x, z);
+    return Math.max(0, waterY - floorY);
+  };
+  const isDeepWater = (x, z) =>
+    Math.hypot(x - WATER.centerX, z - WATER.centerZ) < WATER.radius * WATER.deepFraction;
   const waterCenter = { x: WATER.centerX, z: WATER.centerZ, radius: WATER.radius };
 
   const foliage = scatterFoliage(scene, shadow, heightAt);
@@ -230,7 +243,8 @@ export function buildWorld(scene) {
   const resetDusk = () => { runSeconds = 0; duskFactor = 0; t = DAY_START; };
 
   return {
-    ground, shadow, heightAt, update, inWater, waterCenter, waterSurfaceY: waterY,
+    ground, shadow, heightAt, update, inWater, waterDepthAt, isDeepWater,
+    waterCenter, waterSurfaceY: waterY,
     obstacles, resetDusk,
     getDusk: () => duskFactor,
     updateThreats: (dt, player, onScreech, onHit) =>

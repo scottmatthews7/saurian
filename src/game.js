@@ -2,6 +2,7 @@ import { buildWorld } from "./world.js";
 import { buildEnv } from "./env.js";
 import { createPlayer, createFollowCamera } from "./player.js";
 import { createTrex, createHerd, createRaptorPack, setObstacles, setDusk } from "./ai.js";
+import { createAquatic } from "./aquatic.js";
 import { createEggs } from "./eggs.js";
 import { createPickups } from "./pickups.js";
 import { createInput } from "./input.js";
@@ -55,6 +56,8 @@ export async function startGame() {
   const player = await createPlayer(scene, world.shadow, input);
   player.setGroundFn(world.heightAt);
   player.setWaterFn(world.inWater);
+  player.setDeepWaterFn(world.isDeepWater);            // deep water => the human SWIMS
+  player.setWaterSurfaceFn(() => world.waterSurfaceY); // float at the surface while swimming
   player.warpTo(0, world.heightAt(0, 0), 0);
 
   const camRig = createFollowCamera(scene, player);
@@ -64,6 +67,9 @@ export async function startGame() {
 
   setLoad("Releasing the herd…");
   const herd = await createHerd(scene, world.shadow, world.heightAt);
+
+  setLoad("Something stirs in the lake…");
+  const aquatic = createAquatic(scene, world.shadow, world);
 
   setLoad("Scattering eggs…");
   const eggs = createEggs(scene, world.shadow, world.heightAt);
@@ -122,6 +128,20 @@ export async function startGame() {
       pickups.spawn(pos.x, pos.z);
     };
   });
+
+  // Aquatic predator: a watery breach when it surfaces (a telegraph for the
+  // player at the bank), a chomp + shake on a bite, and a final splash as it
+  // sinks back under. Reuses the existing splash/bite SFX + spray bursts.
+  aquatic.onSurface = (pos) => {
+    audio.splash();
+    audio.roar();
+    fx.pickupBurst(pos, new B2.Color4(0.45, 0.7, 0.95, 1));
+  };
+  aquatic.onBite = () => { /* player.onHurt already fires audio.hurt + shake + flash */ };
+  aquatic.onSubmerge = (pos) => {
+    audio.splash();
+    fx.pickupBurst(pos, new B2.Color4(0.4, 0.62, 0.82, 1));
+  };
 
   // Predators are a list so later waves can add a second T-Rex.
   const predators = [];
@@ -270,6 +290,7 @@ export async function startGame() {
         if (d < primaryD) { primaryD = d; primary = p; }
       }
       herd.forEach((h) => h.update(dt, player, primary));
+      aquatic.update(dt, player);   // lake lurker: submerged patrol -> surface/lunge -> submerge
       eggs.update(dt, player);
       pickups.update(dt, player);
 
@@ -388,9 +409,11 @@ export async function startGame() {
       // swing lands exactly PLAYER.attackDamage once, no matter the frame rate.
       // Felled herbivores drop meat that heals the player.
       if (player.attacking > 0) {
+        // `t` may be a glb-backed dino (position at t.dino.root) or the
+        // procedural aquatic predator (position at t.root). Read whichever it has.
         const tryStrike = (t) => {
           if (t.dead || t.lastStrikeId === player.strikeId) return;
-          const tp = t.dino.root.position;
+          const tp = (t.dino ? t.dino.root : t.root).position;
           if (Math.hypot(pPos.x - tp.x, pPos.z - tp.z) < PLAYER.attackRange) {
             t.lastStrikeId = player.strikeId;
             // FEEDING FRENZY payoff: a T-Rex struck while head-down feeding takes
@@ -409,6 +432,7 @@ export async function startGame() {
         };
         for (const p of predators) tryStrike(p);
         for (const h of herd) tryStrike(h);
+        tryStrike(aquatic);   // you CAN fight the lake creature off from the bank
       }
 
       // HUD — show the most-threatening (nearest live) predator's health
@@ -456,7 +480,7 @@ export async function startGame() {
     }
 
     // radar — updated whenever the game is running (even after death)
-    minimap.update(player, predators, herd, eggs, pickups);
+    minimap.update(player, predators, herd, eggs, pickups, aquatic);
   });
 
   // Soft restart — re-rolls a fresh run in place without reloading the page
@@ -469,6 +493,7 @@ export async function startGame() {
     packSpawned = false;
     predators.forEach((p) => p.reset());
     herd.forEach((h) => h.reset());
+    aquatic.reset();
     eggs.reset();
     pickups.reset();
     world.resetDusk();   // fresh run starts in full daylight again
@@ -507,7 +532,7 @@ export async function startGame() {
   window.addEventListener("resize", () => engine.resize());
 
   // Debug handle for in-browser smoke tests (harmless to leave exposed).
-  window.__game = { engine, scene, game, score, player, predators, herd, eggs, pickups, world, hud, audio, resetGame };
+  window.__game = { engine, scene, game, score, player, predators, herd, aquatic, eggs, pickups, world, hud, audio, resetGame };
 
   return { engine, scene };
 }

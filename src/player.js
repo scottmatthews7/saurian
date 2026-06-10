@@ -44,7 +44,8 @@ export async function createPlayer(scene, shadow, input) {
     stamina: PLAYER.staminaMax,
     exhausted: false,    // true until stamina recovers past the sprint floor
     dead: false,
-    wading: false,       // true while standing in the pond
+    wading: false,       // true while standing in the shallow edge of the pond
+    swimming: false,     // true while in DEEP water (swim instead of wade/sink) — more vulnerable to aquatic predators
     onAttack: null,      // fired when a punch/kick starts (set by game for SFX)
     onHurt: null,        // fired whenever damage actually lands (any source)
     onSplash: null,      // fired on the frame we enter the water
@@ -98,13 +99,23 @@ export async function createPlayer(scene, shadow, input) {
     }
     const sprint = canSprint;
 
-    // wading through the pond: slow the raptor and tick gentle damage. A splash
-    // event fires on entry so the game can play SFX + a particle burst.
-    const wading = inWater(collider.position.x, collider.position.z);
-    if (wading && !state.wading && state.onSplash) state.onSplash(collider.position.clone());
+    // Water handling: the shoreline shallows are a WADING hazard (slow + a gentle
+    // continuous drain, unchanged), but the deep middle of the lake is a SWIM —
+    // the human floats and paddles slowly across instead of trudging the bottom.
+    // A splash event fires on entering the water either way (SFX + spray).
+    const inAnyWater = inWater(collider.position.x, collider.position.z);
+    const deep = inAnyWater && isDeepWater(collider.position.x, collider.position.z);
+    if (inAnyWater && !state.wading && !state.swimming && state.onSplash) {
+      state.onSplash(collider.position.clone());
+    }
+    const wading = inAnyWater && !deep;
+    const swimming = deep;
     state.wading = wading;
+    state.swimming = swimming;
     if (wading) {
       // bypasses i-frames intentionally: a slow continuous environmental drain.
+      // (Deep-water swimming does NOT drain — the danger there is the lake
+      // predator, not the water itself.)
       state.health = Math.max(0, state.health - WATER.damagePerSec * dt);
       if (state.health <= 0 && !state.dead) {
         state.dead = true;
@@ -113,7 +124,7 @@ export async function createPlayer(scene, shadow, input) {
       }
     }
 
-    const waterMul = wading ? WATER.slowFactor : 1;
+    const waterMul = swimming ? WATER.swimSlowFactor : wading ? WATER.slowFactor : 1;
     const speed = (sprint ? PLAYER.runSpeed : PLAYER.walkSpeed) * waterMul;
     state.moving = moving;
     state.sprinting = sprint;
@@ -185,6 +196,14 @@ export async function createPlayer(scene, shadow, input) {
       state.velY = 0;
       state.grounded = true;
     }
+    // Swimming: float at the water surface (head/shoulders out) rather than
+    // sinking to the carved basin floor. Overrides the ground snap above so the
+    // human bobs on the deep water instead of walking the bottom.
+    if (swimming) {
+      collider.position.y = waterSurfaceY() + WATER.swimSurfaceOffset;
+      state.velY = 0;
+      state.grounded = true;   // treat as grounded so jump/attack logic stays sane
+    }
 
     // keep inside arena
     const d = Math.hypot(collider.position.x, collider.position.z);
@@ -203,6 +222,11 @@ export async function createPlayer(scene, shadow, input) {
       // jump clip plays out
     } else if (state.dashActive > 0) {
       // mid-dash: the Roll one-shot is playing — don't stomp it with Run
+    } else if (swimming) {
+      // Swim pose: the human has no swim clip, so a slow Run stride reads as a
+      // paddle/breaststroke crawl through the water (matched to the slow swim
+      // speed so the limbs don't foot-slide), or a slow Idle tread when still.
+      dino.play(moving ? "Run" : "Idle", { speed: moving ? 0.6 : 0.5 });
     } else if (moving) {
       dino.play("Run", { speed: sprint ? 1.4 : 1.0 });
     } else {
@@ -265,6 +289,14 @@ export async function createPlayer(scene, shadow, input) {
   let inWater = () => false;
   state.setWaterFn = (fn) => { inWater = fn; };
 
+  // Deep-water test + surface height for the swim branch (matches
+  // world.isDeepWater / world.waterSurfaceY; injected at game wiring). Default
+  // to "never deep" so a player with no lake still behaves exactly as before.
+  let isDeepWater = () => false;
+  state.setDeepWaterFn = (fn) => { isDeepWater = fn; };
+  let waterSurfaceY = () => 0;
+  state.setWaterSurfaceFn = (fn) => { waterSurfaceY = fn; };
+
   // Place both collider and visual at a world position (avoids first-frame pop).
   state.warpTo = (x, y, z) => {
     collider.position.set(x, y, z);
@@ -289,6 +321,7 @@ export async function createPlayer(scene, shadow, input) {
     state.stamina = PLAYER.staminaMax;
     state.exhausted = false;
     state.wading = false;
+    state.swimming = false;
     state.dead = false;
     state.warpTo(x, y, z);
     dino.setYaw(0);

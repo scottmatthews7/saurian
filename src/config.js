@@ -350,9 +350,59 @@ export const WATER = {
   centerZ: 28,
   radius: 17,           // surface radius
   depth: 1.6,           // how far below local ground the basin sinks
-  slowFactor: 0.45,     // player speed multiplier while wading
-  damagePerSec: 4,      // health drained per second submerged
+  slowFactor: 0.45,     // player speed multiplier while WADING (shallow edge)
+  damagePerSec: 4,      // health drained per second while shallow-wading
   level: 0.2,           // water surface height above the pond-rim ground
+  // DEEP water: past this fraction of the radius (toward the centre) the basin
+  // is deep enough to swim rather than wade. The basin profile is a smoothstep
+  // bowl WATER.depth deep at the centre, easing to 0 at the rim, so the inner
+  // disc is where the human's feet leave the bottom. Design choice tuned so the
+  // shallow wading ring (where the old slow+drain hazard still applies) stays a
+  // readable band around a genuine swimmable middle.
+  deepFraction: 0.6,    // 0..1 of the radius inside which water counts as deep (swim)
+  swimSlowFactor: 0.55, // player speed multiplier while SWIMMING (slower than land, a touch quicker than the wade crawl)
+  swimSurfaceOffset: -0.45, // how far the swimming human's root sits below the water surface (head/shoulders out)
+};
+
+// AQUATIC PREDATOR (wishlist item 5). A plesiosaur-like lurker that lives in the
+// lake: it patrols SUBMERGED (only a faint wake shows), then SURFACES and LUNGES
+// at a player near the shoreline or in the water, before submerging again — so
+// the water's edge feels dangerous. Built procedurally in aquatic.js (a long
+// neck + head + humped body + flippers); no glb, animated by node transforms.
+// All values are arcade-feel design choices, tuned against the existing chase
+// economy (player walk 7 / sprint 16.5, T-Rex bite 22) and the pond geometry
+// (WATER.radius 17, centre at -34,28).
+export const AQUATIC = {
+  // --- Build proportions (world units) -----------------------------------
+  bodyLength: 4.8,        // humped torso spindle length
+  bodyRadius: 0.95,       // torso girth
+  neckLength: 4.2,        // long plesiosaur neck (rises out of the water on a surface)
+  neckSegments: 6,        // neck built as N tapering segments so it can arc/curl
+  headLength: 1.1,        // snout-tipped head
+  flipperLength: 1.8,     // paddle flippers either side
+  // --- Colours -----------------------------------------------------------
+  bodyColor: { r: 0.16, g: 0.28, b: 0.30 },     // dark wet slate-teal
+  bellyColor: { r: 0.42, g: 0.50, b: 0.46 },    // paler underside
+  eyeColor: { r: 0.95, g: 0.78, b: 0.20 },      // amber predator eye
+  // --- Lurk / surface geometry -------------------------------------------
+  submergedDepth: 1.4,    // how far the body sits below the water surface while lurking (only a wake shows)
+  surfacedRise: 2.6,      // how far the body rises (toward/above the surface) when it surfaces to strike
+  // --- AI state machine --------------------------------------------------
+  // submerged patrol -> (player near shore/in water) surface + lunge -> bite ->
+  // submerge -> cooldown. It stays inside the pond (it's a lake creature).
+  patrolSpeed: 2.4,       // slow submerged prowl toward roaming targets inside the lake
+  lungeSpeed: 16,         // fast surge during a surfacing lunge (beats a wading/swimming player)
+  shoreLureRange: 9,      // player within this of the WATER EDGE (or in the water) can trigger a surface ambush
+  surfaceSeconds: 0.9,    // telegraph: it breaches + rears the neck for this long before the strike commits (dodge window)
+  lungeSeconds: 1.1,      // duration of the committed lunge surge after the telegraph
+  attackRange: 4.5,       // contact range for the head-strike bite
+  attackDamage: 26,       // bite damage on the player (> T-Rex 22 — the ambush is punishing if you linger at the water)
+  swimVulnMultiplier: 1.6, // bite damage multiplier while the player is SWIMMING in deep water (you're in its element)
+  attackCooldown: 1.3,    // sec between bites if the player stays in reach
+  submergeSeconds: 5.0,   // sec it lurks submerged after a strike before it can ambush again (the safe window to get out)
+  reachBeyondShore: 2.0,  // world units past the shoreline the head can still strike (it lunges OUT of the water at the bank)
+  maxHealth: 90,          // tanky; you can fight it off from the bank but it's not a quick kill — better to leave the water
+  turnLerp: 0.05,         // slow, ponderous turning underwater
 };
 
 // ENVIRONMENT REALISM (wishlist item 2). Owns the photoreal world pass: PBR

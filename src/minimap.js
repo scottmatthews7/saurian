@@ -25,7 +25,7 @@ export function createMinimap() {
   }
 
   return {
-    update(player, predators, herd, eggs, pickups) {
+    update(player, predators, herd, eggs, pickups, aquatic) {
       ctx.clearRect(0, 0, size, size);
 
       // arena disc
@@ -88,6 +88,15 @@ export function createMinimap() {
             dot(p.x, p.z, col, 4);
           }
         }
+      }
+
+      // aquatic predator — hidden while submerged (it lurks unseen); a pulsing
+      // teal threat marker once it breaches/lunges so the player reads the lake
+      // erupting and can get clear of the water.
+      if (aquatic && !aquatic.dead && aquatic.mode !== "submerged") {
+        const p = aquatic.root.position;
+        const pulse = 4 + 2 * (0.5 + 0.5 * Math.sin(performance.now() / 110));
+        dot(p.x, p.z, "#39e0d6", pulse);
       }
 
       // player with facing wedge
