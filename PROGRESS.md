@@ -281,6 +281,9 @@
     T-Rex hunts you while you carry it").
 - All tunables in `config.EGGS` with provenance notes; lure cleared on bank
   (carrying empties) and on soft restart (`setLure(false)` in `resetGame`).
+- **Polish:** the guide/objective pill stays loud the whole carry — reads
+  "☠ CURSED — every T-Rex hunts you!" while a cursed egg is on you (the pickup
+  popup only flashes for ~1s, so the persistent danger needed a persistent cue).
 
 ## Verified (session 8)
 - All 14 src modules pass `node --check`; `node tools/dusk_test.mjs` passes;
