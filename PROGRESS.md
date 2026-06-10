@@ -297,7 +297,48 @@
   - Cursed bank windfall = 600 pts (6×100×combo1×dusk1) ✓; banked counts +1;
     `cursedEggMat` present in the scene; carry visual + radar blip render.
 
-## Next (session 9)
+## Done (session 9) — DASH / dodge roll (skill-based mobility)
+- **New ability — DASH (F)** (`config.PLAYER.dash*`, `input.js`, `player.js`,
+  `audio.js whoosh`, `fx.js dashTrail`, `hud.js setDash`, `game.js`, `touch.js`,
+  `index.html`): a short, fast forward burst (`dashSpeed` 30 u/s for
+  `dashSeconds` 0.28 → ~8.5u travelled) with a brief invulnerability window
+  (`dashIFrames` 0.32). The skill payoff: time it to **slip a T-Rex bite or a
+  pterosaur swoop**. It's a deliberately *different* tool from the two existing
+  actives — roar is AoE crowd-control on a 6s cooldown, sprint is sustained
+  stamina-gated travel; dash is a single reactive i-frame escape on a short 1.6s
+  cooldown. It **costs `dashCost` 35 stamina** and won't fire while exhausted or
+  below cost, so it trades directly against your escape sprint rather than being
+  free. Dashes toward held movement input, else straight ahead; snap-faces the
+  burst direction so it reads cleanly.
+  - Readability/juice: a HUD **Dash charge bar** + READY pulse (mirrors Roar);
+    a bright airy **whoosh** SFX (distinct from the watery splash); a cyan dust
+    kick at launch + a **trailing cyan after-image streak** for the burst; a
+    cyan hit-flash on the raptor; touch **DASH** button; title-screen control
+    row ("F · Dash") + the blurb now reads "Run, bite, roar, dash to survive".
+- All tunables in `config.PLAYER` with provenance notes tying each number to the
+  existing chase economy (T-Rex base 11, dusk peak 13.5, raptor sprint 14): the
+  burst always outpaces any chase to open a gap, but the stamina cost + cooldown
+  keep it a timed tool, not a constant glide.
+
+## Verified (session 9)
+- All 14 src modules pass `node --check`; `node tools/dusk_test.mjs` +
+  `node tools/cursed_egg_test.mjs` still pass.
+- Live in-browser (isolated context `dinoa-s9`, port 8124, reloaded
+  ignoreCache, **0 console errors/warnings**, 639 meshes, 89-120 FPS):
+  - Dash burst measured: travelled ~8.5u along the faced heading, ~33.8 stamina
+    spent (regen offsets the 35), i-frames raised to 0.27+ mid-dash, cooldown
+    engaged to 1.55s, dashActive 0.23→0 (clean end).
+  - **Gates A/B proven:** a second dash *during* cooldown does not re-fire; a
+    dash *after* the cooldown elapses fires again; dash blocked while exhausted
+    and blocked when stamina < cost (35).
+  - Trail confirmed: 0 particles idle → 70 mid-dash; disposed/idle after.
+- **Env note (unchanged):** parallel `dinob`/peer instances grab the selected
+  tab within ~1-2s; verification uses single-shot evals guarded by a
+  `location.href` 8124 check and the `window.__game` handle. (The raptor died
+  once mid-probe during a long `sleep` — `player.update` stops when `over`, so
+  later evals reset the run first; the mechanic itself verified clean.)
+
+## Next (session 10)
 - More biome variety (second pond / rocky mesa / tar pit); ambient grazing anims.
 - Egg variety beyond golden (e.g. a "cursed" egg that draws the T-Rex —
   especially nasty at dusk).
@@ -311,7 +352,7 @@
 cd /Users/scottmatthews/personal_repos/dino-arena-a
 python3 -m http.server 8124
 # open http://localhost:8124/
-# Controls: WASD move · Shift sprint · Space jump · Click/J bite · Q roar · M mute · P pause · R restart
+# Controls: WASD move · Shift sprint · Space jump · Click/J bite · Q roar · F dash · M mute · P pause · R restart
 # Touch (phones/tablets): left joystick to move (push full to sprint), ROAR/BITE/JUMP buttons; tap to start/restart
 ```
 
