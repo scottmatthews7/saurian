@@ -86,6 +86,7 @@ export const TREX = {
 
 export const HERBIVORE = {
   count: 9,
+  maxHealth: 60,         // bites to fell: 2 at PLAYER.attackDamage 34 (drops healing meat)
   wanderSpeed: 3.5,
   fleeSpeed: 9,
   fleeRange: 16,         // starts fleeing player/trex within this

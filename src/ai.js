@@ -213,7 +213,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     chargeCd: 0,
     chargeHitDone: false,
     dead: false,
-    health: 60,
+    health: HERBIVORE.maxHealth,
     lastBiteId: -1,     // last player swing id that hit this target (one hit per swing)
     panic: 0,           // sec of forced terror-flee directly away from the player (the roar)
     onCharge: null,     // (set by game) called when a charge starts
@@ -341,7 +341,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
   state.reset = function () {
     const p = randPointInArena();
     dino.root.position.set(p.x, groundFn(p.x, p.z), p.z);
-    state.health = 60;
+    state.health = HERBIVORE.maxHealth;
     state.dead = false;
     state.fleeing = false;
     state.charging = 0;
