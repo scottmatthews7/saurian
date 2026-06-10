@@ -228,7 +228,41 @@
   the `window.__game` handle; closed my own `dinoa-dusk` context tab. Left the
   peer's `dinob-*` context tabs alone.
 
-## Next (session 7)
+## Done (session 7) — cohesion / polish / stability pass
+- **Played a full win and a full death end-to-end** (scripted via `window.__game`):
+  win path banks 6 eggs → "YOU SURVIVED" banner + best-time/score saved; death
+  path 5×22 T-Rex bites (100→78→56→34→12→0) → "DEVOURED" banner. Both correct.
+- **BUG FIX — arena darkened run-on-run.** `resetGame()` rewound the dusk arc but
+  NOT the ambient day/night phase `t`, so each soft restart (R) left the cycle a
+  little later in the day; after several retries a fresh run opened in gloomy
+  twilight (caught on a screenshot: sun had drifted to 0.725 / floor instead of
+  the intended 1.7 noon). `world.resetDusk()` now also resets `t` to the bright
+  `DAY_START` (0.25). **Verified:** sun holds 1.7 across 15 consecutive resets.
+  This was the single biggest new-player cohesion win — first impression is now
+  a bright, readable, lush valley (screenshot-confirmed) instead of murk.
+- **No-magic-number cleanup:** herbivore HP (60, hardcoded twice in `ai.js`) lifted
+  to `HERBIVORE.maxHealth` with a provenance note (2 bites at attackDamage 34).
+- **Stability sweep, all green, 0 console errors throughout:** second T-Rex spawns
+  at wave 3 and is fully wired (`onBite`); reset drops predators back to 1 (no
+  leak); win→reset returns a clean winnable run (HP 100, banked 0, over=false);
+  pause (P) toggles on/off; golden-egg RNG verified live (~1.7 gold/run over 12
+  rolls, matches the 18% spawn chance).
+- **Difficulty reviewed, left as-is:** the session-6/7 tuning holds — T-Rex base
+  chase 11 vs raptor sprint 14 (escapable empty-handed), 1 egg = 11.9 (just
+  outruns), roar 6s cooldown as the on-chase counterplay, dusk doesn't bite until
+  25s and peaks at 150s. A ~5-min session escalates without overwhelming early.
+  No number churn — the documented playtesting rationale is sound.
+
+## Verified (session 7)
+- All src modules pass `node --check`; `node tools/dusk_test.mjs` passes.
+- Live in-browser (isolated context `dinoa-s7`, port 8124, reloaded ignoreCache):
+  639 meshes, 72 FPS foregrounded, **0 console errors/warnings** across a full win,
+  a full death, 15+ resets, second-spawn, and pause cycling.
+- **Env note (unchanged):** parallel `dinob` instances still grab the selected tab
+  within ~1-2s; verification uses single-shot evals guarded by a `location.href`
+  8124 check and the `window.__game` handle.
+
+## Next (session 8)
 - More biome variety (second pond / rocky mesa / tar pit); ambient grazing anims.
 - Egg variety beyond golden (e.g. a "cursed" egg that draws the T-Rex —
   especially nasty at dusk).
