@@ -420,10 +420,6 @@ function makeGroundPBR(scene) {
 function attachSandBlendPlugin(mat, scene) {
   const B = window.BABYLON;
   const D = ENV.dryZone;
-  const sandAlb = new B.Texture(ENV.texturePath + D.sandTextures.albedo, scene, null, false);
-  sandAlb.uScale = sandAlb.vScale = D.sandTiling;
-  sandAlb.anisotropicFilteringLevel = 8;
-  const tilingRatio = (D.sandTiling / ENV.groundTiling).toFixed(4);
 
   class SandBlendPlugin extends B.MaterialPluginBase {
     constructor(m) {
@@ -432,17 +428,18 @@ function attachSandBlendPlugin(mat, scene) {
     }
     prepareDefines(defines) { defines.SANDBLEND = true; }
     getClassName() { return "SandBlendPlugin"; }
-    getSamplers(samplers) { samplers.push("sandAlbedoSampler"); }
     getUniforms() {
       return {
         ubo: [
-          { name: "sandTint", size: 3, type: "vec3" },
+          { name: "sandColor", size: 3, type: "vec3" },     // warm tan base the albedo is REPLACED toward
+          { name: "sandColorVar", size: 3, type: "vec3" },  // per-texel variation amplitude
           { name: "sandRoughness", size: 1, type: "float" },
           { name: "dryCenter", size: 2, type: "vec2" },
           { name: "dryRadii", size: 2, type: "vec2" },  // x: radius, y: radius+feather
         ],
         fragment: `#ifdef SANDBLEND
-uniform vec3 sandTint;
+uniform vec3 sandColor;
+uniform vec3 sandColorVar;
 uniform float sandRoughness;
 uniform vec2 dryCenter;
 uniform vec2 dryRadii;
@@ -453,25 +450,55 @@ float dryZoneW(vec3 p) {
       };
     }
     bindForSubMesh(ubo) {
-      ubo.updateColor3("sandTint", new B.Color3(D.groundTint[0], D.groundTint[1], D.groundTint[2]));
+      ubo.updateColor3("sandColor", new B.Color3(D.sandColor[0], D.sandColor[1], D.sandColor[2]));
+      ubo.updateColor3("sandColorVar", new B.Color3(D.sandColorVar[0], D.sandColorVar[1], D.sandColorVar[2]));
       ubo.updateFloat("sandRoughness", D.sandRoughness);
       ubo.updateFloat2("dryCenter", D.centerX, D.centerZ);
       ubo.updateFloat2("dryRadii", D.radius, D.radius + D.edgeFeather);
-      ubo.setTexture("sandAlbedoSampler", sandAlb);
     }
     getCustomCode(shaderType) {
       if (shaderType !== "fragment") return null;
       return {
-        CUSTOM_FRAGMENT_UPDATE_METALLICROUGHNESS: `
+        // ALBEDO override — REPLACE (not multiply) the grass albedo with a warm
+        // SAND albedo inside the dry zone. Injected at CUSTOM_FRAGMENT_UPDATE_ALBEDO,
+        // which sits inside albedoOpacityBlock right after surfaceAlbedo has been
+        // built from (albedoTexture × vColor vertex tint) and whose result flows on
+        // to the lighting. The OLD code injected at UPDATE_METALLICROUGHNESS and
+        // wrote a local surfaceAlbedo that this build DISCARDS — so the sand swap
+        // never reached the lit surface and the ground stayed green grass at eye
+        // level (verified: an unconditional write there had zero visible effect).
+        //
+        // surfaceAlbedo here is in LINEAR space (the texture was toLinearSpace'd),
+        // so the sRGB-authored sandColor is converted with toLinearSpace before the
+        // mix. The hue is locked to the warm tan; only the sand texture's LUMINANCE
+        // DEVIATION adds subtle light/dark grain. Sampled by WORLD position so we
+        // don't depend on the build-specific albedo UV varying name. LERP grass->
+        // sand by the dry-zone weight so the biome edge still feathers.
+        CUSTOM_FRAGMENT_UPDATE_ALBEDO: `
 #ifdef SANDBLEND
-  #ifdef ALBEDOTEXTURE
     float dryW = dryZoneW(vPositionW);
     if (dryW > 0.001) {
-      vec3 sandCol = texture2D(sandAlbedoSampler, vAlbedoUV * ${tilingRatio}).rgb * sandTint;
-      surfaceAlbedo = mix(surfaceAlbedo, sandCol, dryW);
-      metallicRoughness.g = mix(metallicRoughness.g, sandRoughness, dryW);
+      // Subtle dune-grain variation from world XZ (procedural, no sampler — a
+      // texture2D inside this inlined block fails to compile in this build). Two
+      // octaves of value-noise via sines give light/dark sand patches so the floor
+      // isn't a flat fill, without ever introducing green.
+      vec2 wp = vPositionW.xz;
+      float grain = 0.6 * sin(wp.x * 0.9 + wp.y * 0.7)
+                  + 0.4 * sin(wp.x * 0.31 - wp.y * 0.43 + 1.7);
+      vec3 sandCol = clamp(sandColor + sandColorVar * grain, 0.0, 1.0);
+      surfaceAlbedo = mix(surfaceAlbedo, toLinearSpace(sandCol), dryW);
     }
-  #endif
+#endif
+`,
+        // Roughness lift to matte dry sand. This DOES take effect at
+        // UPDATE_METALLICROUGHNESS (the reflectivity block's metallicRoughness flows
+        // to reflectivityOut, which the main scope consumes), unlike its albedo.
+        CUSTOM_FRAGMENT_UPDATE_METALLICROUGHNESS: `
+#ifdef SANDBLEND
+    float dryWr = dryZoneW(vPositionW);
+    if (dryWr > 0.001) {
+      metallicRoughness.g = mix(metallicRoughness.g, sandRoughness, dryWr);
+    }
 #endif
 `,
       };
@@ -1047,12 +1074,13 @@ function scatterFoliage(scene, shadow, heightAt) {
     coverSwayers.push({ mesh: g, base: 0, phase: rng() * Math.PI * 2, amp: ENV.windStrength * rand(1.0, 1.8) });
     return g;
   };
-  // Dry zone keeps grass sparse (arid). Returns true if this spot should be
-  // skipped given the zone's grassDensityMul.
-  const dryThins = (x, z) => {
-    const dz = dryZoneFactor(x, z);
-    return dz > 0 && rng() > (1 - dz) + dz * ENV.dryZone.grassDensityMul;
-  };
+  // Dry zone suppresses the GREEN grass-blade cards entirely: ANY dry-zone
+  // membership (core OR feather band) skips the lush green scatter, so no green
+  // blades appear on the sand — the desert grows its OWN dry tufts/shrubs/bones
+  // via scatterDesertFeatures. The ground albedo itself still feathers smoothly
+  // grass->sand across the edge band, so dropping the green cards out to the full
+  // feather radius reads as a clean sand transition, not a hard ring.
+  const dryThins = (x, z) => dryZoneFactor(x, z) > 0;
   // Mid-field scatter (uniform, like the old grassPatches).
   for (let i = 0; i < ARENA.grassPatches; i++) {
     const x = rand(-ARENA.radius, ARENA.radius), z = rand(-ARENA.radius, ARENA.radius);

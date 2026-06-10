@@ -610,6 +610,13 @@ export const ENV = {
     // boldly gold (not pale beige) once lit. Verified by the headless top-down
     // ground-colour probe (tools/desert_probe / desert_capture).
     groundTint: [1.30, 0.86, 0.34],   // saturated warm gold (super-1.0 R to beat the cool IBL wash)
+    // Real SAND albedo the ground plugin LERPs the grass albedo TOWARD inside the
+    // zone (replacing it, not multiplying a tint over green — that yielded a murky
+    // yellow-green lawn). Warm tan #D9B679 (brief's eye-level sand target). The
+    // sand albedo TEXTURE's per-texel luminance modulates this base so the grain
+    // still reads (light/dark sand specks), but the HUE is locked to this tan.
+    sandColor: [0.85, 0.71, 0.47],    // #D9B679 warm tan — the eye-level sand read
+    sandColorVar: [0.10, 0.07, 0.05], // subtle per-texel warm/cool variation amplitude
     sandTextures: { albedo: "dryground_albedo.jpg" }, // warm sand albedo blended in by the ground plugin
     sandTiling: 26,             // tighter than the grass tiling (18) so sand grain reads finer/closer
     sandRoughness: 0.92,        // matte dry sand (near-fully rough; sand barely speculars)
