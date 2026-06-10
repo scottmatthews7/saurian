@@ -664,10 +664,12 @@ export const AUDIO = {
   pantMaxRate: 1.5,             // playbackRate (fast panting) at/near exhaustion
   pantFadeGlide: 0.25,          // sec time-constant for the breath fade in/out
 
-  // Real CC0/royalty-free sample files (Kenney CC0 footsteps; Mixkit + OpenGameArt
-  // for creatures/breath — see CREDITS.md). Loaded as WebAudio buffers and played
-  // per event with slight pitch randomisation. Swap a default by repointing a path
-  // here to a file in assets/audio/candidates/ after the user auditions the picker.
+  // Real CC0 sample files (Kenney CC0 footsteps/impacts; OpenGameArt CC0 creature/
+  // water/breath packs — see CREDITS.md). Loaded as WebAudio buffers and played per
+  // event with slight pitch randomisation. Swap a default by repointing a path here
+  // to a file in assets/audio/candidates/ after auditioning in audio-dashboard.html.
+  // After the audit re-write every flagged sound is a REAL sample (the procedural
+  // recipes remain only as a never-throws fallback if a file fails to load).
   samples: {
     footsteps: [
       "assets/audio/footstep_0.mp3",
@@ -675,19 +677,38 @@ export const AUDIO = {
       "assets/audio/footstep_2.mp3",
       "assets/audio/footstep_3.mp3",
     ],
-    pant: "assets/audio/pant.mp3",
-    // Per-creature-kind vocalisation. Keyed by the dino `kind` string.
+    // Wet footstep variants (Kenney grass step + OGA water splash, baked) — a real
+    // water-slosh per step while wading, replacing the old synth spray layer.
+    wadeSteps: [
+      "assets/audio/wade_0.mp3",
+      "assets/audio/wade_1.mp3",
+      "assets/audio/wade_2.mp3",
+      "assets/audio/wade_3.mp3",
+    ],
+    pant: "assets/audio/pant.mp3",        // clean breath loop, rumble high-passed out
+    // Per-creature-kind vocalisation — each species now points at its OWN file so
+    // they read as distinct animals (was: two shared herbivore bellows).
     creatures: {
-      trex: "assets/audio/trex.mp3",            // eerie low closed-mouth rumble
-      raptor: "assets/audio/raptor.mp3",        // user pick: raptor_screech_c
-      // Herbivores split across two user-picked bellows so species sound distinct.
-      triceratops: "assets/audio/herbivore_a.mp3",
-      parasaur: "assets/audio/herbivore_a.mp3",
-      stegosaurus: "assets/audio/herbivore_b.mp3",
-      apatosaurus: "assets/audio/herbivore_b.mp3",
+      trex: "assets/audio/trex.mp3",                 // eerie low closed-mouth rumble (kept)
+      raptor: "assets/audio/raptor.mp3",             // shrieky raptor call (kept)
+      triceratops: "assets/audio/triceratops.mp3",   // deep bellow/snort
+      parasaur: "assets/audio/parasaur.mp3",         // brassy tubular foghorn crest call
+      stegosaurus: "assets/audio/stegosaurus.mp3",   // low grunt/groan
+      apatosaurus: "assets/audio/apatosaurus.mp3",   // deepest, longest sauropod moan
     },
-    // Giant-sauropod footfall thud (user pick: herb_bellow_c repurposed),
-    // played on the step cadence of nearby big dinos.
+    // One-shot event samples (replacing the flagged procedural synths).
+    swing: "assets/audio/swing.mp3",         // melee punch/kick air whoosh
+    whoosh: "assets/audio/whoosh.mp3",       // dash — stronger/longer air gust
+    splash: "assets/audio/splash.mp3",       // entering the pond
+    hurt: "assets/audio/hurt.mp3",           // player takes damage (male pain grunt)
+    bite: "assets/audio/bite.mp3",           // predator wet flesh chomp/snap
+    screech: "assets/audio/screech.mp3",     // pterosaur dive screech/shriek
+    roar: "assets/audio/roar.mp3",           // generic predator roar / feed cue
+    creatureCall: "assets/audio/creaturecall.mp3", // distant ambient call fallback
+    win: "assets/audio/win.mp3",             // positive new-best chime
+    lose: "assets/audio/lose.mp3",           // ominous DEVOURED death sting
+    // Giant-sauropod footfall thud — now a real heavy impact boom (Kenney slam +
+    // baked sub-bass), replacing the repurposed bellow that read as "bricks".
     bigStep: "assets/audio/bigstep.mp3",
   },
   // User feedback: baked trex rumble was pitched down too far — lift at playback.
