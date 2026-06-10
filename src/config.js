@@ -485,6 +485,27 @@ export const ENV = {
     grassDensityMul: 0.25,      // ground cover thins to this fraction inside the zone (arid)
     deadTreeBias: 0.85,         // probability a tree inside the zone is gnarled/dead
   },
+
+  // --- JUNGLE THICKET MICROCLIMATE (USER request: microclimates WITHIN the
+  // one world, not separate worlds). A second zone beside the dry rocky patch:
+  // a dense, humid pocket of the valley — deeper lush ground tint, thick
+  // broadleaf/palm canopy, heavy understorey. With the dry zone (arid corner)
+  // and the pond + reed ring (wetland), the single map now reads as three
+  // distinct microclimates inside one grassland valley. Layout/gameplay
+  // untouched. All values are art-direction choices mirroring dryZone's knobs.
+  jungleZone: {
+    centerX: -42, centerZ: -38, // opposite corner from the dry zone (and away from the pond at -34,28)
+    radius: 30,                 // world units of the thicket
+    edgeFeather: 12,            // soft blend into the grassland
+    groundTint: [0.42, 0.56, 0.36],  // deeper, wetter green blended into the ground here
+    treeDensityMul: 2.2,        // extra trees clustered inside the thicket
+    grassDensityMul: 2.0,       // understorey thickens (extra ground-cover cards)
+    junglePalette: [            // deeper jungle greens for trees/grass INSIDE the zone
+      [0.36, 0.56, 0.32], [0.30, 0.48, 0.28], [0.44, 0.62, 0.36], [0.26, 0.42, 0.26],
+    ],
+    // species mix inside the thicket: broadleaf + palm dominate, no dead trees
+    treeTypeWeights: { conifer: 0.5, broadleaf: 5, gnarled: 0, palm: 3 },
+  },
 };
 
 export const CAMERA = {

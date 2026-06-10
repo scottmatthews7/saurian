@@ -10,16 +10,19 @@ function basinFactor(x, z) {
   return t * t * (3 - 2 * t); // smoothstep
 }
 
-// Dry rocky biome membership: 1 at the zone centre, feathering to 0 across
-// edgeFeather just outside the radius, so the arid patch blends into the green.
-function dryZoneFactor(x, z) {
-  const Z = ENV.dryZone;
+// Microclimate zone membership: 1 at the zone centre, feathering to 0 across
+// edgeFeather just outside the radius, so each patch blends into the grassland.
+// Used by the dry rocky corner and the jungle thicket (the pond + reeds is the
+// third, wetland, microclimate) — all pockets WITHIN the one world.
+function zoneFactor(Z, x, z) {
   const d = Math.hypot(x - Z.centerX, z - Z.centerZ);
   if (d <= Z.radius) return 1;
   if (d >= Z.radius + Z.edgeFeather) return 0;
   const t = 1 - (d - Z.radius) / Z.edgeFeather;
   return t * t * (3 - 2 * t);
 }
+const dryZoneFactor = (x, z) => zoneFactor(ENV.dryZone, x, z);
+const jungleZoneFactor = (x, z) => zoneFactor(ENV.jungleZone, x, z);
 
 // Builds terrain, sky, lighting, fog, foliage and the day/night cycle.
 // Returns handles the rest of the game needs (ground mesh for collisions,
@@ -99,13 +102,21 @@ export function buildWorld(scene) {
     let r = gT[0] * (1 - soil) + sT[0] * soil;
     let g = gT[1] * (1 - soil) + sT[1] * soil;
     let b = gT[2] * (1 - soil) + sT[2] * soil;
-    // Dry rocky biome: blend toward the arid ground tint inside the zone.
+    // Microclimates: blend toward the arid tint in the dry rocky corner and
+    // the deeper wet green in the jungle thicket.
     const dz = dryZoneFactor(x, z);
     if (dz > 0) {
       const dGT = ENV.dryZone.groundTint;
       r = r * (1 - dz) + dGT[0] * dz;
       g = g * (1 - dz) + dGT[1] * dz;
       b = b * (1 - dz) + dGT[2] * dz;
+    }
+    const jz = jungleZoneFactor(x, z);
+    if (jz > 0) {
+      const jGT = ENV.jungleZone.groundTint;
+      r = r * (1 - jz) + jGT[0] * jz;
+      g = g * (1 - jz) + jGT[1] * jz;
+      b = b * (1 - jz) + jGT[2] * jz;
     }
     const ci = (i / 3) * 4;
     colors[ci] = r; colors[ci + 1] = g; colors[ci + 2] = b; colors[ci + 3] = 1;
@@ -660,7 +671,16 @@ function scatterFoliage(scene, shadow, heightAt) {
   const frondSources = ENV.foliageGreens.map((tint, k) =>
     makeCardClusterSource(scene, "frondClu" + k, makeCardMaterial(scene, "frondMat" + k, ENV.leafCardAlbedo, ENV.leafCardOpacity, tint),
       2, 6.5, 3.0, [0.02, 0.98], leafRows[k % leafRows.length], -0.15));
-  const pickGreen = (base) => leafSources[(base + (rng() < 0.4 ? 1 + (rng() < 0.5 ? 1 : 0) : 0)) % leafSources.length];
+  // Deeper jungle-green sources for trees INSIDE the jungle thicket zone.
+  const jungleLeafSources = ENV.jungleZone.junglePalette.map((tint, k) =>
+    makeCardClusterSource(scene, "jLeafClu" + k, makeCardMaterial(scene, "jLeafMat" + k, ENV.leafCardAlbedo, ENV.leafCardOpacity, tint),
+      3, 5.5, 2.4, [0.02, 0.98], leafRows[k % leafRows.length], -0.45));
+  const jungleFrondSources = ENV.jungleZone.junglePalette.map((tint, k) =>
+    makeCardClusterSource(scene, "jFrondClu" + k, makeCardMaterial(scene, "jFrondMat" + k, ENV.leafCardAlbedo, ENV.leafCardOpacity, tint),
+      2, 6.5, 3.0, [0.02, 0.98], leafRows[k % leafRows.length], -0.15));
+  // The active palette swaps to the jungle set while building thicket trees.
+  let activePalette = { leaf: leafSources, frond: frondSources };
+  const pickGreen = (base) => activePalette.leaf[(base + (rng() < 0.4 ? 1 + (rng() < 0.5 ? 1 : 0) : 0)) % activePalette.leaf.length];
 
   // Per-species crown builders. Each gets the trunk-top + scale and stacks
   // textured cards (or bare branches) into a distinct silhouette.
@@ -709,7 +729,7 @@ function scatterFoliage(scene, shadow, heightAt) {
       const top = y + 5.2 * s, n = 6;
       for (let c = 0; c < n; c++) {
         const a = (c / n) * 6.283 + rng() * 0.4;
-        const f = frondSources[(base + c) % frondSources.length].createInstance("leaves" + i + "_" + c);
+        const f = activePalette.frond[(base + c) % activePalette.frond.length].createInstance("leaves" + i + "_" + c);
         f.position.set(x + Math.cos(a) * 1.1 * s, top + rand(-0.2, 0.3) * s, z + Math.sin(a) * 1.1 * s);
         f.scaling.setAll(s * rand(0.85, 1.1));
         f.rotation.y = a; f.rotation.x = -0.5 - rng() * 0.3; // arch outward+down
@@ -718,23 +738,30 @@ function scatterFoliage(scene, shadow, heightAt) {
       }
     },
   };
-  // weighted species roll
-  const wEntries = Object.entries(ENV.treeTypeWeights);
-  const wTotal = wEntries.reduce((a, [, w]) => a + w, 0);
-  const rollSpecies = () => {
-    let r = rng() * wTotal;
-    for (const [k, w] of wEntries) { if ((r -= w) <= 0) return k; }
-    return wEntries[0][0];
+  // weighted species roll (per-weight-table so each microclimate has its own mix)
+  const rollFrom = (weights) => {
+    const entries = Object.entries(weights);
+    const total = entries.reduce((a, [, w]) => a + w, 0);
+    let r = rng() * total;
+    for (const [k, w] of entries) { if ((r -= w) <= 0) return k; }
+    return entries[0][0];
   };
 
-  for (let i = 0; i < ARENA.treeCount; i++) {
-    let x, z;
-    do { x = rand(-ARENA.radius, ARENA.radius); z = rand(-ARENA.radius, ARENA.radius); }
-    while (!inArena(x, z) || Math.sqrt(x * x + z * z) < 18);
+  // Plants one tree at (x,z): rolls a species from the local microclimate
+  // (dry corner → mostly gnarled/dead; jungle thicket → broadleaf/palm in the
+  // deeper jungle palette; open grassland → the baseline mix).
+  const buildTree = (x, z, i) => {
     const y = heightAt(x, z);
     const dz = dryZoneFactor(x, z);
-    // Dry zone biases toward gnarled/dead trees; green areas use the weighted mix.
-    const species = (dz > 0.4 && rng() < ENV.dryZone.deadTreeBias) ? "gnarled" : rollSpecies();
+    const jz = jungleZoneFactor(x, z);
+    let species;
+    if (dz > 0.4 && rng() < ENV.dryZone.deadTreeBias) species = "gnarled";
+    else if (jz > 0.4) species = rollFrom(ENV.jungleZone.treeTypeWeights);
+    else species = rollFrom(ENV.treeTypeWeights);
+    const inJungle = jz > 0.4;
+    activePalette = inJungle
+      ? { leaf: jungleLeafSources, frond: jungleFrondSources }
+      : { leaf: leafSources, frond: frondSources };
     // palms a touch taller/thinner; gnarled a touch shorter; others varied
     const s = rand(0.7, 1.9) * (species === "palm" ? 1.15 : species === "gnarled" ? 0.9 : 1);
     const t = (species === "gnarled" ? deadTrunk : trunk).createInstance("trunk" + i);
@@ -744,7 +771,30 @@ function scatterFoliage(scene, shadow, heightAt) {
     t.checkCollisions = true;
     shadow.addShadowCaster(t);
     obstacles.push({ x, z, r: 1.1 * s });
-    SPECIES[species](x, y, z, s, i % leafSources.length, i);
+    SPECIES[species](x, y, z, s, i % activePalette.leaf.length, i);
+    activePalette = { leaf: leafSources, frond: frondSources };
+  };
+
+  // Base scatter across the arena.
+  for (let i = 0; i < ARENA.treeCount; i++) {
+    let x, z;
+    do { x = rand(-ARENA.radius, ARENA.radius); z = rand(-ARENA.radius, ARENA.radius); }
+    while (!inArena(x, z) || Math.sqrt(x * x + z * z) < 18);
+    buildTree(x, z, i);
+  }
+  // Jungle thicket densification: extra trees clustered inside the zone so the
+  // thicket reads as a genuinely denser canopy than the open grassland. Count
+  // derives from the zone's share of the arena area × (treeDensityMul − 1), so
+  // density inside the zone lands at ~treeDensityMul × the baseline.
+  const jzArea = (ENV.jungleZone.radius / ARENA.radius) ** 2;
+  const jzExtraTrees = Math.round(ARENA.treeCount * jzArea * (ENV.jungleZone.treeDensityMul - 1));
+  for (let i = 0; i < jzExtraTrees; i++) {
+    let x, z, tries = 0;
+    do {
+      const a = rng() * Math.PI * 2, rr = Math.sqrt(rng()) * ENV.jungleZone.radius;
+      x = ENV.jungleZone.centerX + Math.cos(a) * rr; z = ENV.jungleZone.centerZ + Math.sin(a) * rr;
+    } while ((!inArena(x, z) || Math.sqrt(x * x + z * z) < 18) && ++tries < 8);
+    if (inArena(x, z) && Math.sqrt(x * x + z * z) >= 18) buildTree(x, z, ARENA.treeCount + i);
   }
 
   // --- Rocks: real CC0 ROCK PBR on IRREGULAR displaced geometry ------------
@@ -824,9 +874,16 @@ function scatterFoliage(scene, shadow, heightAt) {
     const col = grassCols[k % grassCols.length];
     grassSources.push(makeCardClusterSource(scene, "grassClu" + k, mat, 2, 1.6, 1.3, col, [0.0, 1.0], 0));
   });
+  // Deeper jungle-green understorey sources for the thicket zone.
+  const jungleGrassSources = ENV.jungleZone.junglePalette.map((tint, k) =>
+    makeCardClusterSource(scene, "jGrassClu" + k,
+      makeCardMaterial(scene, "jGrassMat" + k, ENV.grassCardAlbedo, ENV.grassCardOpacity, tint),
+      2, 1.6, 1.3, grassCols[k % grassCols.length], [0.0, 1.0], 0));
   const coverSwayers = [];
   const placeGrassCard = (x, z, sMin, sMax, idx, tag) => {
-    const src = grassSources[Math.floor(rng() * grassSources.length)];
+    // inside the jungle thicket the understorey uses the deeper jungle greens
+    const pool = jungleZoneFactor(x, z) > 0.4 ? jungleGrassSources : grassSources;
+    const src = pool[Math.floor(rng() * pool.length)];
     const s = rand(sMin, sMax);
     const g = src.createInstance(tag + idx);
     g.position.set(x, heightAt(x, z) + s * 0.55, z);
@@ -857,6 +914,18 @@ function scatterFoliage(scene, shadow, heightAt) {
       (d - ENV.groundCoverFadeStart) / (ENV.groundCoverFadeEnd - ENV.groundCoverFadeStart)));
     if (rng() > fade) continue;            // probabilistic thinning with distance
     placeGrassCard(x, z, 0.5, 1.1, i, "cover");
+  }
+  // Jungle thicket understorey: extra ground cover clustered inside the zone
+  // (count from the zone's area share × (grassDensityMul − 1), same derivation
+  // as the thicket's extra trees) — the floor in there reads thick and humid.
+  const jzAreaG = (ENV.jungleZone.radius / ARENA.radius) ** 2;
+  const jzExtraGrass = Math.round(ENV.groundCoverCount * jzAreaG * (ENV.jungleZone.grassDensityMul - 1));
+  for (let i = 0; i < jzExtraGrass; i++) {
+    const a = rng() * Math.PI * 2, rr = Math.sqrt(rng()) * ENV.jungleZone.radius;
+    const x = ENV.jungleZone.centerX + Math.cos(a) * rr;
+    const z = ENV.jungleZone.centerZ + Math.sin(a) * rr;
+    if (!inArena(x, z)) continue;
+    placeGrassCard(x, z, 0.6, 1.4, i, "jcover");
   }
 
   // Wind sway: ease each registered card's tilt with a phase-offset sine so the

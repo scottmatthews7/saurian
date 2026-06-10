@@ -996,6 +996,31 @@ Killed the smooth solid-colour primitives; everything is now real CC0 textures.
 - **Audio:** every test page muted immediately via an init-script force-mute
   (game M-toggle + `audioEngine.setGlobalVolume(0)`) per the in-call note.
 
+## Done (session 17 cont. 2) — MICROCLIMATES within the one world (USER pick)
+User clarified: NOT separate per-load worlds — **microclimates inside the single
+map**. (A per-load biome-preset approach was started and deliberately scrapped.)
+The one grassland valley now holds three distinct pockets, layout untouched:
+- **Dry rocky corner** (already built): arid tint, 2.6× boulders, gnarled/dead
+  trees, thin scrub. (`ENV.dryZone`)
+- **NEW — jungle thicket** (`ENV.jungleZone`, opposite corner at −42,−38 r30):
+  deeper wet-green ground tint blended into the vertex colours; **extra trees
+  clustered in-zone** (density ~2.2× baseline — verified 22 trunks in-zone vs ~8
+  uniform expectation); species mix forced to broadleaf+palm (no dead trees);
+  trees + understorey inside the zone use a **deeper jungle-green palette**
+  (own card materials `jLeafMat*/jFrondMat*/jGrassMat*`); **extra ground cover**
+  (~2.8× verified) so the floor reads thick and humid.
+- **Wetland** (pre-existing): the pond basin + reed ring.
+- Shared `zoneFactor` helper generalises the smoothstep-feathered zone membership
+  (dry + jungle both use it). Extra-instance counts derive from each zone's area
+  share × (densityMul − 1) — documented in-code, no bare magic counts.
+- **Verified live** (port 8219, isolated context, muted-first, ignoreCache):
+  0 console errors; 1536 meshes; 120 FPS; jungle materials present; in-zone
+  density counts above; screenshot from inside the thicket shows genuinely dense
+  layered canopy + lush understorey vs the open grassland.
+- **Polish note:** the follow camera can sit visually inside crown cards in the
+  thicket (no collision/gameplay impact — reads as pushing through jungle). If
+  it annoys, a camera-foliage fade or sparser crown cores would fix it.
+
 ## Next (session 17)
 - A herbivore "stampede" when one of the herd is taken (the rest bolt as a flock);
   or a brief feeding-frenzy heal-steal: bite the feeding T-Rex AND grab the meat.
