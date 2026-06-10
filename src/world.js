@@ -117,7 +117,8 @@ export function buildWorld(scene) {
   const atmosphere = buildAtmosphere(scene, heightAt);
 
   // --- Day/night cycle + run-scoped dusk arc -------------------------------
-  let t = 0.25; // start mid-morning (ambient cycle, mood only)
+  const DAY_START = 0.25; // mid-morning phase — the bright noon look the run opens on
+  let t = DAY_START;      // ambient cycle phase (mood only)
   let t_water = 0;
   let runSeconds = 0;     // live run time driving the dusk arc
   let duskFactor = 0;     // 0 full day .. 1 deepest dusk (the gameplay knob)
@@ -162,7 +163,10 @@ export function buildWorld(scene) {
     scene.clearColor.set(skyR, skyG, skyB, 1);
   };
 
-  const resetDusk = () => { runSeconds = 0; duskFactor = 0; };
+  // Soft restart must also rewind the ambient day clock, else repeated retries
+  // drift `t` toward evening and the arena darkens run-on-run (the dusk arc is
+  // the only intended darkening; the ambient cycle should reopen bright).
+  const resetDusk = () => { runSeconds = 0; duskFactor = 0; t = DAY_START; };
 
   return {
     ground, shadow, heightAt, update, inWater, waterCenter, waterSurfaceY: waterY,

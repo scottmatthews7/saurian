@@ -31,16 +31,37 @@ export const PLAYER = {
   // the T-Rex stays threatening. Values chosen for ~3.3s of sprint then a
   // recovery window; a deliberate arcade-feel design choice.
   staminaMax: 100,
-  staminaDrain: 30,     // per second while sprinting
-  staminaRegen: 18,     // per second while not sprinting
+  staminaDrain: 30,     // per second while sprinting (~3.3s of full sprint)
+  // Regen raised 18->24 in session 7. Playtesting (steering bot + frame traces)
+  // showed a sustained T-Rex chase was inescapable: the exhaustion lockout pinned
+  // the raptor at walk speed (7) while the T-Rex sustains 11 u/s, so it stayed in
+  // attack range biting every 1.4s with no way to open a gap. Faster regen
+  // (~4.2s to refill) lets a player who buys a moment with a ROAR actually sprint
+  // home, without removing the drain pressure that keeps infinite-sprint off.
+  staminaRegen: 24,     // per second while not sprinting
   staminaSprintMin: 10, // need at least this much to start sprinting again
-  carrySlow: 0.6,       // speed multiplier per egg carried, applied as 1/(1+n*x)
+  // Carry weight, applied as speed *= 1/(1+n*carrySlow). Tuned in session 7
+  // playtesting: at 0.6 a single carried egg dropped sprint to 8.75 u/s — below
+  // the T-Rex's 11 u/s base chase — so the moment you grabbed ANY egg while
+  // hunted you could never reach the nest (verified unwinnable via a steering
+  // bot). At 0.18: 1 egg = 11.9 u/s (just outruns the base T-Rex — escapable
+  // with skill), 2 eggs = 10.3 (tense, roughly matched), 3 = 9.1 (greedy = you
+  // can't escape). Keeps the risk/reward weight; restores a winnable run. At
+  // full dusk the T-Rex chase reaches 13.5, so even 1 egg can't be outrun then —
+  // roar becomes the intended late-game counterplay.
+  carrySlow: 0.18,      // speed multiplier per egg carried, applied as 1/(1+n*x)
   // Intimidating ROAR (Q) — an active panic/utility tool. On a cooldown the
   // raptor bellows: a chasing T-Rex inside the radius is briefly staggered
   // (its pursuit broken), and nearby herbivores bolt in terror. Costs nothing
   // but the cooldown, so it's a tactical "get off me" button, not spammable.
   // All values are arcade-feel design choices.
-  roarCooldown: 8,      // sec between roars
+  // Cooldown lowered 8->6 in session 7. The roar is the *designed* escape from a
+  // sustained chase (you can't simply outrun the T-Rex once it's on you), so it
+  // needs to come round often enough to chain: roar -> sprint in the stagger
+  // window -> roar again as it re-closes. At 8s with a 1.4s stagger it was usable
+  // only ~17% of the time and a chase from across the arena was a death sentence.
+  // 6s still leaves a clear vulnerable window, so it's a tool, not a panic button.
+  roarCooldown: 6,      // sec between roars
   roarRadius: 22,       // world units of effect
   roarStagger: 1.4,     // sec a caught T-Rex is frozen/dazed
 };
