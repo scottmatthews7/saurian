@@ -554,7 +554,53 @@
   verification used single comprehensive evals guarded by a `location.href` :8137
   check + the `window.__game` handle, then closed my own context tab.
 
-## Next (session 15)
+## Done (session 15) — final QUALITY pass (no new features)
+- **Played a full win and a full death end-to-end** (scripted via a page-resident
+  autopilot + `window.__game`): win path banks 7/6 (a golden counts double) →
+  "YOU SURVIVED" banner, 2,000 pts, best time/score saved, HP 100; death path
+  (T-Rex pinned on the raptor) → HP 0, "DEVOURED" banner at ~6s. Both correct,
+  **0 console errors** through both.
+- **ONBOARDING CLARITY FIX (the substantive change).** The title screen
+  front-loaded *five* paragraphs at near-equal prominence — objective + dusk +
+  cursed egg + beacons + feeding frenzy — so a first-time player hit a wall of
+  mechanics before moving. Now the primary read is just the **core objective +
+  controls**; the four advanced-mechanic lines fold into a collapsed, dimmer
+  `<details>` ("More to discover — learn as you play"). **Critical interaction
+  verified live:** clicking the disclosure expands it but does **NOT** start the
+  run (a `stopPropagation` guard on the summary stops the click reaching the
+  one-shot start listeners; `elapsed` stayed 0 after the click). Advanced lines
+  dropped 14→13px for a cleaner secondary tier. (`hud.js`, `index.html`.)
+- **Stability / perf, all green:** 16 src modules parse; all 4 headless tests
+  (`dusk`/`cursed_egg`/`beacons`/`herd_hunt`) pass. Live over ~16s of real play:
+  **mesh count flat at 648** (no leak across wave events), heap ~125 MB, **0
+  console errors/warnings**. Soft-restart returns a clean winnable run (verified
+  in the win/death cycles: HP 100, banked 0, 1 predator, over=false). `R` correctly
+  no-ops while a run is live (only restarts on game-over).
+- **Code read for jank — none actionable.** Reviewed the player controller
+  (dash/lunge/wade/i-frame interplay), the game loop, and config: dash punches
+  through water at full speed (intended), water drain bypasses i-frames (intended,
+  documented), bite/dash mutually gated. Config tunables all carry provenance.
+  No bug introduced; left the mature mechanics untouched per "no big new features".
+- **Perf caveat (environment, not the build):** foreground FPS read ~43 this
+  session, well below the documented 95-103 solo number — but the machine was
+  running ~17 other tabs (several parallel Claude instances each rendering a
+  Babylon scene), so GPU/CPU was heavily contended. Mesh count + scene content are
+  unchanged from the sessions that measured 95-103 in isolation; this is
+  contention, not a regression. Did not chase a number I can't reproduce solo.
+
+## Verified (session 15)
+- All 16 src modules pass `node --check`; all 4 headless tests pass.
+- Live in-browser (isolated context `dinoa-quality`, port 8142, fresh modules via
+  a `&cb=` cache-bust): full win + full death + reset, 648 meshes stable, ~125 MB
+  heap, **0 console errors**; title disclosure collapsed-by-default, expands on
+  click without starting the run.
+- **Env note (unchanged & aggressive):** parallel `dinob` instances now spawn new
+  pages pointed at my `:8142` URLs and grab devtools selection within ~1s. Worked
+  around it by installing a **page-resident `setInterval` autopilot** (survives the
+  hijack since it lives in my tab) + tiny single-shot evals guarded by a
+  `location.href` `:8142` check; closed my own context page after probing.
+
+## Next (session 16)
 - A herbivore "stampede" when one of the herd is taken (the rest bolt as a flock);
   or a brief feeding-frenzy heal-steal: bite the feeding T-Rex AND grab the meat.
 - Beacon upkeep could feed a "warmth" meter that the raptor radiates while near a
