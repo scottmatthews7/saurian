@@ -215,3 +215,8 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
      sprint/dash/tree-climbing). Remove beacon code, HUD, spawns.
    - Interim win/lose: survival time + score until the A→B porter campaign
      becomes the objective.
+
+12. **Dino health bars (engaged only).** A small health bar floating above each
+   dinosaur, shown ONLY when engaged — i.e. while it's chasing/attacking the
+   player or has recently taken damage from the player; hidden otherwise. Billboard
+   to the camera, colour by fraction, fade in/out. (Predator + herbivore.)
