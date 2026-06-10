@@ -1,4 +1,4 @@
-import { TREX, HERBIVORE, TRICERATOPS, RAPTOR, ARENA, JUICE, WATER, AI_AVOID, DUSK, EGGS, DINO_VARIANTS } from "./config.js";
+import { TREX, HERBIVORE, TRICERATOPS, RAPTOR, ARENA, JUICE, WATER, AI_AVOID, DUSK, DINO_VARIANTS } from "./config.js";
 import { loadDino } from "./dino.js";
 
 // Solid obstacle footprints ({x, z, r}) the AI steers around. Injected from the
@@ -12,12 +12,6 @@ export function setObstacles(list) {
 // from the world clock; predators read it to grow bolder as dusk falls.
 let DUSK_FACTOR = 0;
 export function setDusk(f) { DUSK_FACTOR = f; }
-
-// Cursed-egg lure: while the player carries a cursed egg every T-Rex homes in
-// regardless of sight range and chases a little faster. Pushed each frame from
-// the game (true while eggs.carryingCursed). A ward-beacon stagger still overrides it.
-let LURE_ACTIVE = false;
-export function setLure(active) { LURE_ACTIVE = active; }
 
 // Steer a move (unit dir dx,dz) away from nearby obstacle footprints. Adds an
 // outward push from each footprint within its clearance band, then renormalises.
@@ -149,7 +143,6 @@ export async function createTrex(scene, shadow, groundFn) {
     enraged: false,    // true once wounded past the enrage threshold
     enrageGlow: 0,     // re-flash timer for the sustained angry glow
     lastStrikeId: -1,  // last player swing id that hit this target (one hit per swing)
-    staggered: 0,      // sec remaining frozen/dazed by a ward beacon
     steer: { side: 1, commit: 0 },  // committed obstacle-skirt side (anti-jitter)
     prey: null,        // herbivore currently hunted instead of the player (or null)
     preyAttackTimer: 0,// cooldown between bites on the hunted herbivore
@@ -193,15 +186,6 @@ export async function createTrex(scene, shadow, groundFn) {
       }
     }
 
-    // Staggered by a ward beacon: dazed in place (pursuit broken) until the
-    // timer lapses, then it resumes hunting. Keeps the ground animation idle.
-    if (state.staggered > 0) {
-      state.staggered = Math.max(0, state.staggered - dt);
-      pos.y = groundFn(pos.x, pos.z);
-      dino.play("Idle");
-      return;
-    }
-
     // Enrage when wounded: faster, with a sustained angry glow + a roar on the
     // transition. A comeback threat right when you think you've won.
     const enraged = state.health <= TREX.maxHealth * TREX.enrageThreshold;
@@ -223,19 +207,17 @@ export async function createTrex(scene, shadow, groundFn) {
     const loseRange = TREX.loseInterestRange + DUSK.trexLoseBonus * DUSK_FACTOR;
     const duskSpeed = DUSK.trexSpeedBonus * DUSK_FACTOR;
 
-    // The T-Rex is a true apex predator: when it is NOT locked onto the raptor
-    // it hunts the herd. The raptor stays the priority — the cursed lure or the
-    // raptor being close (playerPriorityRange) forces a player chase; otherwise
-    // a clearly-nearer herbivore (preyCloserBy nearer than the player, within
-    // preySightRange) pulls aggro. A hunted herbivore is a living decoy the
-    // player can exploit (or whose meat they can steal).
-    const lockedToPlayer = LURE_ACTIVE || distP < TREX.playerPriorityRange;
+    // The T-Rex is a true apex predator: when it is NOT locked onto the player
+    // it hunts the herd. The player stays the priority — being close
+    // (playerPriorityRange) forces a player chase; otherwise a clearly-nearer
+    // herbivore (preyCloserBy nearer than the player, within preySightRange)
+    // pulls aggro. A hunted herbivore is a living decoy the player can exploit
+    // (or whose meat they can steal).
+    const lockedToPlayer = distP < TREX.playerPriorityRange;
     state.prey = pickPrey(state, pos, distP, herd, sightRange, loseRange, lockedToPlayer);
 
-    // FSM. The cursed-egg lure forces chase regardless of distance — the egg
-    // rings the dinner bell, so sight/lose-interest ranges no longer apply.
     const wasChasing = state.mode === "chase";
-    const seesPlayer = !player.dead && (LURE_ACTIVE || distP < sightRange);
+    const seesPlayer = !player.dead && distP < sightRange;
     if (state.prey || seesPlayer) state.mode = "chase";
     else if (state.mode === "chase" && distP > loseRange) state.mode = "patrol";
     if (!wasChasing && state.mode === "chase" && state.onRoar) state.onRoar();
@@ -268,8 +250,7 @@ export async function createTrex(scene, shadow, groundFn) {
     } else if (state.mode === "chase") {
       goal = { x: pp.x, z: pp.z };
       speed = TREX.chaseSpeed + state.speedBonus + duskSpeed
-        + (enraged ? TREX.enrageSpeedBonus : 0)
-        + (LURE_ACTIVE ? EGGS.cursedLureSpeed : 0);
+        + (enraged ? TREX.enrageSpeedBonus : 0);
       if (distP < TREX.attackRange) {
         speed = 0;
         if (state.attackTimer <= 0) {
@@ -313,18 +294,6 @@ export async function createTrex(scene, shadow, groundFn) {
     if (state.health <= 0) { state.dead = true; dino.play("Death", { loop: false }); }
   };
 
-  // Break the chase (a ward beacon's repel): stagger (pursuit broken) and drop
-  // back to patrol so the chase resets. A dazed-blue flash reads the daze.
-  state.breakChase = function (seconds) {
-    if (state.dead) return;
-    state.staggered = Math.max(state.staggered, seconds);
-    state.mode = "patrol";
-    state.target = randPointInArena();
-    state.prey = null;
-    state.feeding = 0;
-    dino.flash(0.3, new window.BABYLON.Color3(0.3, 0.4, 0.9));
-  };
-
   // Soft restart: revive at a fresh spot, full health, back on patrol.
   state.reset = function () {
     const p = randPointInArena();
@@ -337,7 +306,6 @@ export async function createTrex(scene, shadow, groundFn) {
     state.enraged = false;
     state.enrageGlow = 0;
     state.lastStrikeId = -1;
-    state.staggered = 0;
     state.prey = null;
     state.preyAttackTimer = 0;
     state.feeding = 0;
@@ -355,8 +323,8 @@ export async function createTrex(scene, shadow, groundFn) {
 // converges on its flank, so the pack ENCIRCLES rather than stacking on one
 // point. Fast, fragile, weak per bite — the threat is the net, not a lone
 // chaser. Each member exposes the same shape as the T-Rex predator state
-// (`update`/`dead`/`mode`/`prey`/`feeding`/`breakChase`/`reset`/`speedBonus`/
-// `dino`) so the game's predator list, roar, minimap and HUD all just work.
+// (`update`/`dead`/`mode`/`prey`/`feeding`/`reset`/`speedBonus`/`dino`) so the
+// game's predator list, roar, minimap and HUD all just work.
 export async function createRaptorPack(scene, shadow, groundFn, count) {
   const n = Math.max(RAPTOR.packMin, Math.min(RAPTOR.packMax, count || RAPTOR.packSize));
   // Shared pack object: a spawn anchor + a "locked on" flag so the pack yips
@@ -398,7 +366,6 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
     enraged: false,
     prey: null,
     feeding: 0,
-    staggered: 0,
     steer: { side: 1, commit: 0 },  // committed obstacle-skirt side (anti-jitter)
     lastStrikeId: -1,
     slot, packCount,
@@ -417,20 +384,12 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
     const pp = player.dino.root.position;
     const distP = Math.hypot(pp.x - pos.x, pp.z - pos.z);
 
-    // Staggered by the player's roar: dazed in place, pursuit broken.
-    if (state.staggered > 0) {
-      state.staggered = Math.max(0, state.staggered - dt);
-      pos.y = groundFn(pos.x, pos.z);
-      dino.play("Idle");
-      return;
-    }
-
     const sightRange = RAPTOR.sightRange + DUSK.trexSightBonus * DUSK_FACTOR;
     const loseRange = RAPTOR.loseInterestRange + DUSK.trexLoseBonus * DUSK_FACTOR;
     const duskSpeed = DUSK.trexSpeedBonus * DUSK_FACTOR;
 
     const wasChasing = state.mode === "chase";
-    const seesPlayer = !player.dead && (LURE_ACTIVE || distP < sightRange);
+    const seesPlayer = !player.dead && distP < sightRange;
     if (seesPlayer) state.mode = "chase";
     else if (state.mode === "chase" && distP > loseRange) state.mode = "patrol";
     // The pack yips once as a group the first time any member locks on.
@@ -502,14 +461,6 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
     if (state.health <= 0) { state.dead = true; dino.play("Death", { loop: false }); }
   };
 
-  state.breakChase = function (seconds) {
-    if (state.dead) return;
-    state.staggered = Math.max(state.staggered, seconds);
-    state.mode = "patrol";
-    state.target = randPointInArena();
-    dino.flash(0.3, new window.BABYLON.Color3(0.3, 0.4, 0.9));
-  };
-
   state.reset = function () {
     const p = randPointInArena();
     dino.root.position.set(p.x, groundFn(p.x, p.z), p.z);
@@ -518,7 +469,6 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
     state.target = randPointInArena();
     state.attackTimer = 0;
     state.speedBonus = 0;
-    state.staggered = 0;
     state.lastStrikeId = -1;
     state.dead = false;
     pack.calledOut = false;

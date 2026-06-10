@@ -31,7 +31,8 @@ repos:
     hooks:
       - id: codespell
         # British spelling + domain terms we keep; extend as needed.
-        args: ["--ignore-words-list=nd,fo,iam"]
+        # panting/bellow: real words here (sprint breathing, herbivore calls).
+        args: ["--ignore-words-list=nd,fo,iam,panting,bellow"]
 
   # JS sanity: every source module must parse.
   - repo: local

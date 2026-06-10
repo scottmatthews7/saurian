@@ -52,18 +52,8 @@ export const PLAYER = {
   staminaDrain: 25,     // per second while sprinting (~4s of full sprint)
   staminaRegen: 18,     // per second while not sprinting (~5.5s to a full refill)
   staminaSprintMin: 35, // must rebuild stamina past this after exhaustion before sprinting again — the recovery window where the rex closes
-  // Carry weight, applied as speed *= 1/(1+n*carrySlow). Re-tuned for the human's
-  // 16.5 u/s sprint (was 0.18 against the raptor's 14) to preserve the original
-  // risk tiering against the unchanged chase economy (T-Rex base 11, dusk peak
-  // 13.5): at 0.22, 1 egg = 16.5/1.22 = 13.5 u/s (outruns the base rex by day,
-  // matched at deepest dusk — escapable with skill, dash the late counter),
-  // 2 eggs = 16.5/1.44 = 11.5 (just above base, tense), 3 eggs = 16.5/1.66 = 9.9
-  // (below base — greedy and you get run down). Empty-handed sprint (16.5) always
-  // beats any chase, so sprinting unburdened outruns the rex; carrying slows you.
-  carrySlow: 0.22,      // speed multiplier per egg carried, applied as 1/(1+n*x)
   // (The raptor-era ROAR (Q) was removed when the player became a human — a
-  // human can't bellow a T-Rex into a stagger. Its chase-breaking role now
-  // belongs to the ward beacons; dash is the personal escape tool.)
+  // human can't bellow a T-Rex into a stagger; dash is the personal escape tool.)
   // DASH / dodge roll (F) — a skill-based reactive escape distinct from
   // sprint (sustained, stamina-gated travel). A
   // short, fast forward burst with brief invulnerability: time it to slip a
@@ -95,13 +85,13 @@ export const TREX = {
   enrageThreshold: 0.4,
   enrageSpeedBonus: 3,
   // HERD PREDATION — the T-Rex is a true apex predator: it hunts the herd, not
-  // just the raptor. This delivers the stated design ("a T-Rex hunts you and the
+  // just the player. This delivers the stated design ("a T-Rex hunts you and the
   // herd") and creates emergent strategy — herbivores are living decoys. While
-  // NOT locked onto the player (no cursed lure, player out of close range), a
-  // T-Rex that sees a closer herbivore peels off to hunt it: bites it down,
-  // which drops meat the raptor can then scavenge. Lure the predator onto a
-  // stegosaurus to buy yourself a breather, or steal its kill. All arcade-feel
-  // choices, tuned against the existing chase economy.
+  // NOT locked onto the player (player out of close range), a T-Rex that sees a
+  // closer herbivore peels off to hunt it: bites it down, which drops meat the
+  // player can then scavenge. Lure the predator onto a stegosaurus to buy
+  // yourself a breather, or steal its kill. All arcade-feel choices, tuned
+  // against the existing chase economy.
   preySightRange: 30,      // < player sightRange (38): the herd must be clearly nearer than a distant raptor to pull aggro
   preyCloserBy: 8,         // world units the herd must be NEARER than the player before the T-Rex switches off the raptor — keeps the player the priority when both are close
   preyBite: 30,            // damage per bite to a herbivore (herbivore maxHealth 60 = ~2 bites, same economy as the player's strike)
@@ -112,9 +102,9 @@ export const TREX = {
   // prey it stops to FEED on the carcass: head-down, planted, distracted. This
   // closes the herd-predation loop into a skill play — a brave player can rush
   // in and punish the exposed flank for bonus damage. The predator drops feeding
-  // only if the player crowds it at point-blank (it whirls to defend) or a ward
-  // beacon forces a break. Provenance: design choice, tuned so one full
-  // feeding window roughly equals a one-strike-saved comeback, not a free kill.
+  // only if the player crowds it at point-blank (it whirls to defend).
+  // Provenance: design choice, tuned so one full feeding window roughly equals
+  // a one-strike-saved comeback, not a free kill.
   feedSeconds: 3.5,         // how long the T-Rex feeds on a fresh kill, planted at the carcass
   feedVulnMultiplier: 2,    // player strike damage is doubled while the T-Rex feeds (head-down, exposed) — the payoff for a brave punish
   feedBreakRange: 2.5,      // point-blank: only if the player crowds RIGHT on top of it (< PLAYER.attackRange 4.5) does it whirl off the meal to defend — so you CAN land a flank strike from the edge of your reach, but stacking on it loses the window
@@ -288,32 +278,46 @@ export const FLYER = {
   membraneColor: { r: 0.34, g: 0.26, b: 0.28 }, // slightly warmer wing skin
 };
 
+// CONSUMABLE eggs (objectives simplified — wishlist item 11). The old
+// return-to-nest/banking loop is gone: an egg is now eaten the moment you walk
+// over it, restoring health + stamina on the spot. Rare golden eggs are a
+// bigger boost. Amounts are tuned against the existing pickup economy:
 export const EGGS = {
-  count: 8,
-  targetToWin: 6,
-  pickupRange: 2.8,
+  count: 8,              // eggs in the arena at once (carried over from the banking era)
+  pickupRange: 2.8,      // walk-over radius (matches PICKUPS.meatRange)
   bobHeight: 0.4,
   glowIntensity: 0.8,
-  baseValue: 100,        // score per egg banked
-  comboWindow: 8,        // sec — bank again within this to grow the combo
-  comboStep: 0.5,        // +0.5x multiplier per chained bank
-  comboMax: 4,           // multiplier cap
-  // A rare golden egg glows brighter, is worth more, and counts double toward
-  // the win target — a risk/reward beacon, usually scattered far out.
-  goldenChance: 0.18,    // probability an egg spawns golden
-  goldenValueMul: 3,     // score multiplier vs a normal egg
-  goldenCounts: 2,       // counts as this many toward the win target
-  // A rare CURSED egg: a dark, eerie prize. While it is carried EVERY T-Rex
-  // homes in on the raptor (its FSM target is forced onto you regardless of
-  // sight range) and chases a touch faster — you've rung the dinner bell. It is
-  // worth a big score bonus but counts as only 1 toward the win target, so it's
-  // a bravado play: grab it, sprint home with the whole arena hunting you, bank
-  // it for a windfall. Especially deadly at dusk when predators are already
-  // bold. Rolled mutually-exclusive with golden (golden wins the tie). Arcade.
-  cursedChance: 0.12,    // probability an egg spawns cursed (rolled after golden)
-  cursedValueMul: 6,     // score multiplier vs a normal egg (the windfall)
-  cursedCounts: 1,       // counts as this many toward the win target
-  cursedLureSpeed: 1.5,  // +chase units/sec a T-Rex gains while you carry a cursed egg
+  goldenChance: 0.18,    // probability an egg spawns golden (unchanged)
+  // Ordinary egg: half a meat's heal (PICKUPS.meatHeal 30) — eggs are plentiful
+  // (8 up at once + respawn) and free to grab, where meat needs a kill. The
+  // stamina sip is just under a dash's cost (PLAYER.dashCost 35, ~1.2s of
+  // sprint at drain 25): a meaningful escape top-up that doesn't make stamina
+  // management moot.
+  heal: 15,              // health restored by an ordinary egg
+  stamina: 30,           // stamina restored by an ordinary egg
+  // Golden egg: the premium pickup — out-heals meat (30) and refills stamina to
+  // full (PLAYER.staminaMax 100), a genuine get-out-of-trouble find. Spawns far
+  // out, so it stays a risk/reward run.
+  goldenHeal: 40,        // health restored by a golden egg (> meat's 30)
+  goldenStamina: 100,    // stamina restored by a golden egg (a full refill)
+  // Endless survival needs a sustained pickup economy: a consumed egg respawns
+  // somewhere fresh after this long. One difficulty wave (30s) per egg keeps the
+  // valley stocked without making heals constant.
+  respawnSeconds: 30,
+};
+
+// SURVIVAL SCORING (the interim objective until the A→B porter campaign):
+// survive as long as possible. Score accrues from time survived, pickups
+// grabbed, and close calls. All values anchor on the old banking economy where
+// one ordinary egg was worth 100 points:
+export const SCORE = {
+  survivalPerSec: 10,    // base score per second alive (10s survived = one old egg)
+  eggPickup: 100,        // ordinary egg (the old per-egg baseValue retained)
+  goldenPickup: 300,     // golden egg (the old 3x golden multiplier retained)
+  meatPickup: 50,        // meat scores half an egg — it already pays in a bigger heal
+  // A CLOSE CALL is a predator attack negated by dash i-frames (a perfect
+  // dodge). Worth more than a routine egg, less than a golden find — skill pays.
+  closeCall: 150,
 };
 
 // Meat pickups: a fleeing herbivore the raptor bites drops meat that heals on
@@ -335,38 +339,6 @@ export const WATER = {
   slowFactor: 0.45,     // player speed multiplier while wading
   damagePerSec: 4,      // health drained per second submerged
   level: 0.2,           // water surface height above the pond-rim ground
-};
-
-// WARD BEACONS — unlit braziers ringed around the arena. Run up to one to
-// light it (proximity, no key — touch-friendly). A lit beacon does two things:
-// (1) casts a warding glow that breaks any T-Rex chase inside `wardRadius` and
-//     shoves it back to patrol (a short stagger), refreshed while in
-//     range — so a lit beacon is a moving-but-safe pocket to route a chase
-//     through, especially valuable once dusk emboldens the predators;
-// (2) literally lights the dusk gloom near it (a warm point light) so the
-//     beacon mechanic and the dusk-readability payoff are the same object.
-// Lighting all three in a run fires a one-shot SANCTUARY bonus (heal + score).
-// They re-arm (snuff out) on a soft restart. All values arcade-feel choices,
-// tuned against the chase economy (T-Rex base chase 11):
-export const BEACONS = {
-  count: 3,                // braziers ringed around the arena
-  ringRadius: 56,          // world units from centre they sit on (mid-field, between nest and rim)
-  lightRange: 11,          // proximity to ignite an unlit beacon (a touch wider than the egg pickup so it's easy to brush)
-  wardRadius: 18,          // world units a lit beacon repels predators within (deliberately local — a pocket, not arena-wide)
-  wardStagger: 0.6,        // sec of stagger refreshed each tick a T-Rex sits in the ward (short; re-applied while in range)
-  lightHeight: 6,          // warm point-light range (units) cast around a lit beacon to push back the dusk gloom
-  sanctuaryHeal: 25,       // HP restored once all beacons are lit (reward for clearing the ring)
-  sanctuaryScore: 500,     // bonus score for lighting the full ring (a tidy objective payoff)
-  // Upkeep loop: a lit beacon BURNS DOWN and gutters out, so the ring is something
-  // to maintain, not light-once-and-forget. Brushing a lit/guttering beacon again
-  // tops its fuel back to full. Tuned so a beacon comfortably outlasts a single
-  // egg round-trip but a full ring needs revisiting over a long run.
-  burnSeconds: 45,         // sec a freshly-lit beacon burns before guttering out (a generous round-trip's worth)
-  lowFuelFrac: 0.25,       // fuel fraction below which a beacon reads "guttering" (dimmer flame + radar warning)
-  // Defensive dusk mirror of the bank-bonus: a lit beacon's ward GROWS with dusk,
-  // so beacons matter most exactly when the predators are boldest. wardRadius is
-  // the daytime base; at deepest dusk it scales by (1 + wardDuskBonus).
-  wardDuskBonus: 0.5,      // +50% ward radius at deepest dusk (18 -> 27 units), a deliberate counter to the dusk speed/sight boldness
 };
 
 // ENVIRONMENT REALISM (wishlist item 2). Owns the photoreal world pass: PBR
@@ -542,10 +514,11 @@ export const DUSK = {
   // duskFactor at which the run flips to a visible "dusk" presentation (icon/label)
   // AND fires the one-shot "predators grow bolder" cue. Shared so HUD + game agree.
   duskThreshold: 0.5,
-  // Risk/reward payoff: banking eggs as dusk deepens is worth more. The score
-  // multiplier scales from 1x (full day) to 1 + bankBonus at deepest dusk, so
-  // brave late play pays off — dusk is exciting, not only punishing. Arcade.
-  bankBonus: 1.0,         // +100% bank value at deepest dusk (so up to 2x)
+  // Risk/reward payoff: every second survived as dusk deepens is worth more.
+  // The time-score multiplier scales from 1x (full day) to 1 + survivalBonus at
+  // deepest dusk, so holding out into the dangerous hours pays — dusk is
+  // exciting, not only punishing. (Replaces the banking era's bank bonus.)
+  survivalBonus: 1.0,     // +100% time score at deepest dusk (so up to 2x)
 };
 
 // Atmosphere: stylised non-gameplay set dressing. A pterosaur flock circles
@@ -613,7 +586,6 @@ export const JUICE = {
   chargeShake: 0.3,         // camera shake when a triceratops charges
   strikeConnectShake: 0.22, // small kick when the player's punch/kick lands (tactile confirmation; < a hit-taken)
   feedHitShake: 0.33,       // bigger kick when the player lands a strike on a FEEDING T-Rex (the bonus-damage flank hit reads heavier)
-  sanctuaryShake: 0.45,     // strong brief kick selling the full-ring sanctuary payoff
 };
 
 export const AUDIO = {

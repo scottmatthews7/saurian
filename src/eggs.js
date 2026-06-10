@@ -2,20 +2,14 @@ import { EGGS, ARENA, WATER } from "./config.js";
 
 const inPond = (x, z) => Math.hypot(x - WATER.centerX, z - WATER.centerZ) < WATER.radius + 2;
 
-// Glowing collectible eggs scattered in the arena, plus the home nest.
-// Player walks over an egg to carry it; returning to the nest banks it.
+// CONSUMABLE egg pickups scattered in the arena (the old return-to-nest
+// banking loop is gone). Walking over an egg eats it on the spot: health +
+// stamina restored (golden eggs are a bigger boost; see config.EGGS). A
+// consumed egg respawns somewhere fresh after EGGS.respawnSeconds so a long
+// survival run never empties the valley.
 
 export function createEggs(scene, shadow, groundFn) {
   const B = window.BABYLON;
-
-  // Nest at centre
-  const nest = B.MeshBuilder.CreateTorus("nest", { diameter: 6, thickness: 1.4, tessellation: 18 }, scene);
-  nest.position.set(0, groundFn(0, 0) + 0.3, 0);
-  const nestMat = new B.StandardMaterial("nestMat", scene);
-  nestMat.diffuseColor = new B.Color3(0.4, 0.28, 0.12);
-  nestMat.emissiveColor = new B.Color3(0.15, 0.1, 0.03);
-  nest.material = nestMat;
-  shadow.addShadowCaster(nest);
 
   const eggMat = new B.StandardMaterial("eggMat", scene);
   eggMat.diffuseColor = new B.Color3(0.95, 0.9, 0.75);
@@ -28,35 +22,14 @@ export function createEggs(scene, shadow, groundFn) {
   goldMat.emissiveColor = new B.Color3(1.0, 0.75, 0.15).scale(EGGS.glowIntensity);
   goldMat.specularColor = new B.Color3(1.0, 0.9, 0.5);
 
-  // Cursed egg material — dark violet shell with an eerie magenta glow that
-  // reads "do not touch". Carrying it summons every T-Rex.
-  const cursedMat = new B.StandardMaterial("cursedEggMat", scene);
-  cursedMat.diffuseColor = new B.Color3(0.28, 0.1, 0.36);
-  cursedMat.emissiveColor = new B.Color3(0.7, 0.12, 0.85).scale(EGGS.glowIntensity);
-  cursedMat.specularColor = new B.Color3(0.8, 0.4, 0.9);
-
-  const matFor = (e) => (e.cursed ? cursedMat : e.golden ? goldMat : eggMat);
-
-  // Carried-egg visuals: a small pool of glowing eggs that hover above the
-  // raptor's back while carrying, so the load is visible, not just a HUD count.
-  const carriedVisuals = [];
-  for (let i = 0; i < EGGS.count; i++) {
-    const cv = B.MeshBuilder.CreateSphere("carry" + i, { diameterX: 0.6, diameterY: 0.85, diameterZ: 0.6 }, scene);
-    cv.material = eggMat;
-    cv.isPickable = false;
-    cv.setEnabled(false);
-    carriedVisuals.push(cv);
-  }
-
   // Roll a fresh spawn for an egg slot: golden-ness, position, material, light.
-  // Used at creation and on a soft restart so each run scatters anew.
+  // Used at creation, on respawn, and on a soft restart.
   const rollEgg = (e) => {
     const golden = Math.random() < EGGS.goldenChance;
-    // Cursed is rolled only if not golden (golden wins the tie), so the two
-    // rare types stay mutually exclusive.
-    const cursed = !golden && Math.random() < EGGS.cursedChance;
     let x, z;
     do {
+      // Golden eggs scatter far out (a risk/reward run); ordinary ones anywhere
+      // in the mid-field. Never in the pond.
       const r = golden
         ? ARENA.radius - 20 + Math.random() * 12
         : 20 + Math.random() * (ARENA.radius - 26);
@@ -64,19 +37,16 @@ export function createEggs(scene, shadow, groundFn) {
       x = Math.cos(a) * r; z = Math.sin(a) * r;
     } while (inPond(x, z));
     e.golden = golden;
-    e.cursed = cursed;
-    e.counts = golden ? EGGS.goldenCounts : cursed ? EGGS.cursedCounts : 1;
-    e.value = golden ? EGGS.goldenValueMul : cursed ? EGGS.cursedValueMul : 1;
     e.collected = false;
-    e.banked = false;
+    e.respawnT = 0;
     e.baseY = groundFn(x, z) + 0.9;
-    e.mesh.material = matFor(e);
-    e.mesh.scaling.setAll(golden || cursed ? 1.25 : 1);
+    e.mesh.material = golden ? goldMat : eggMat;
+    e.mesh.scaling.setAll(golden ? 1.25 : 1);
     e.mesh.position.set(x, e.baseY, z);
     e.mesh.setEnabled(true);
-    e.light.diffuse = cursed ? new B.Color3(0.85, 0.2, 1) : golden ? new B.Color3(1, 0.8, 0.3) : new B.Color3(1, 0.9, 0.5);
-    e.light.intensity = golden || cursed ? 1.0 : 0.6;
-    e.light.range = golden || cursed ? 14 : 10;
+    e.light.diffuse = golden ? new B.Color3(1, 0.8, 0.3) : new B.Color3(1, 0.9, 0.5);
+    e.light.intensity = golden ? 1.0 : 0.6;
+    e.light.range = golden ? 14 : 10;
     e.light.position.copyFrom(e.mesh.position);
     e.light.setEnabled(true);
   };
@@ -86,118 +56,48 @@ export function createEggs(scene, shadow, groundFn) {
     const mesh = B.MeshBuilder.CreateSphere("egg" + i, { diameterX: 1, diameterY: 1.4, diameterZ: 1 }, scene);
     shadow.addShadowCaster(mesh);
     const light = new B.PointLight("eggLight" + i, B.Vector3.Zero(), scene);
-    const e = { mesh, light, baseY: 0, golden: false, cursed: false, counts: 1, value: 1, collected: false, banked: false };
+    const e = { mesh, light, baseY: 0, golden: false, collected: false, respawnT: 0 };
     rollEgg(e);
     eggs.push(e);
   }
 
   const state = {
-    nest, eggs,
-    carried: [],      // stack of carried egg indices (length === carrying)
-    get carrying() { return state.carried.length; },
-    // True while any carried egg is cursed — the game reads this to summon every
-    // T-Rex onto the player. Cheap recompute over the small carried stack.
-    get carryingCursed() { return state.carried.some((idx) => eggs[idx].cursed); },
-    banked: 0,        // counts toward the win target (golden eggs count double)
+    eggs,
     bobT: 0,
-    onPickup: null,   // (position, golden) -> void, set by game for SFX/FX
-    onBank: null,     // ({ count, value }) -> void  count=eggs, value=score units
-    onDrop: null,     // (position) -> void
+    onPickup: null,   // (position, golden) -> void, set by game for SFX/FX/score
     update(dt, player) {
       state.bobT += dt;
       const pp = player.dino.root.position;
       for (let i = 0; i < eggs.length; i++) {
         const e = eggs[i];
-        if (e.banked || e.collected) continue;
-        const bob = (e.golden || e.cursed) ? EGGS.bobHeight * 1.5 : EGGS.bobHeight;
+        if (e.collected) {
+          // Respawn countdown: re-roll the slot somewhere fresh when it lapses.
+          e.respawnT -= dt;
+          if (e.respawnT <= 0) rollEgg(e);
+          continue;
+        }
+        const bob = e.golden ? EGGS.bobHeight * 1.5 : EGGS.bobHeight;
         e.mesh.position.y = e.baseY + Math.sin(state.bobT * 2 + i) * bob;
-        e.mesh.rotation.y += dt * ((e.golden || e.cursed) ? 1.6 : 1);
+        e.mesh.rotation.y += dt * (e.golden ? 1.6 : 1);
         e.light.position.copyFrom(e.mesh.position);
         if (e.golden) e.light.intensity = 0.85 + 0.35 * Math.sin(state.bobT * 4 + i);
-        else if (e.cursed) e.light.intensity = 0.7 + 0.5 * Math.sin(state.bobT * 5 + i); // eerier, faster throb
         const d = Math.hypot(pp.x - e.mesh.position.x, pp.z - e.mesh.position.z);
         if (d < EGGS.pickupRange && !player.dead) {
           e.collected = true;
+          e.respawnT = EGGS.respawnSeconds;
           e.mesh.setEnabled(false);
           e.light.setEnabled(false);
-          state.carried.push(i);
-          if (state.onPickup) state.onPickup(e.mesh.position.clone(), e.golden, e.cursed);
+          // Eat it on the spot: health + stamina back (golden = bigger boost).
+          player.heal(e.golden ? EGGS.goldenHeal : EGGS.heal);
+          player.restoreStamina(e.golden ? EGGS.goldenStamina : EGGS.stamina);
+          if (state.onPickup) state.onPickup(e.mesh.position.clone(), e.golden);
         }
       }
-      // bank when near nest
-      if (state.carried.length > 0) {
-        const dn = Math.hypot(pp.x, pp.z);
-        if (dn < 5) {
-          const idxs = state.carried;
-          const count = idxs.length;
-          let target = 0, value = 0, cursed = false;
-          idxs.forEach((idx) => {
-            eggs[idx].banked = true;
-            target += eggs[idx].counts;
-            value += eggs[idx].value;
-            if (eggs[idx].cursed) cursed = true;
-          });
-          state.banked += target;
-          state.carried = [];
-          if (state.onBank) state.onBank({ count, value, cursed });
-        }
-      }
-
-      // position the carried-egg visuals hovering over the raptor's back
-      const n = state.carried.length;
-      const yaw = player.facing || 0;
-      const backX = -Math.sin(yaw), backZ = -Math.cos(yaw); // behind the dino
-      for (let k = 0; k < carriedVisuals.length; k++) {
-        const cv = carriedVisuals[k];
-        if (k >= n) { if (cv.isEnabled()) cv.setEnabled(false); continue; }
-        if (!cv.isEnabled()) cv.setEnabled(true);
-        cv.material = matFor(eggs[state.carried[k]]);
-        const tier = Math.floor(k / 2);
-        const side = (k % 2 === 0 ? -0.35 : 0.35);
-        cv.position.set(
-          pp.x + backX * (0.4 + tier * 0.45) + Math.cos(yaw) * side,
-          pp.y + 1.6 + tier * 0.5 + Math.sin(state.bobT * 4 + k) * 0.08,
-          pp.z + backZ * (0.4 + tier * 0.45) - Math.sin(yaw) * side,
-        );
-        cv.rotation.y += dt * 1.5;
-      }
     },
-    // Drop one carried egg back into the world near a position (on a hit).
-    dropCarried(position, groundY) {
-      const idx = state.carried.pop();
-      if (idx === undefined) return false;
-      const e = eggs[idx];
-      // Scatter it ~3u away, but keep the same invariants as a fresh spawn: never
-      // in the pond (it would drain health to retrieve) and never outside the
-      // playable circle. Try a few angles, then clamp inward as a fallback.
-      let x = position.x, z = position.z;
-      for (let t = 0; t < 8; t++) {
-        const a = Math.random() * Math.PI * 2;
-        x = position.x + Math.cos(a) * 3;
-        z = position.z + Math.sin(a) * 3;
-        const r = Math.hypot(x, z);
-        if (r > ARENA.radius - 2) { const k = (ARENA.radius - 2) / r; x *= k; z *= k; }
-        if (!inPond(x, z)) break;
-      }
-      e.collected = false;
-      // Sit on the ground at the actual drop point (not the bite point) so the
-      // egg doesn't float over uneven terrain. groundY is kept as a fallback.
-      const gy = groundFn ? groundFn(x, z) : (groundY != null ? groundY : position.y);
-      e.baseY = gy + 0.9;
-      e.mesh.position.set(x, e.baseY, z);
-      e.light.position.copyFrom(e.mesh.position);
-      e.mesh.setEnabled(true);
-      e.light.setEnabled(true);
-      if (state.onDrop) state.onDrop(e.mesh.position.clone());
-      return true;
-    },
-    remaining() { return eggs.filter((e) => !e.collected && !e.banked).length; },
-    // Soft restart: re-roll every egg and clear carried/banked state.
+    remaining() { return eggs.filter((e) => !e.collected).length; },
+    // Soft restart: re-roll every egg so each run scatters anew.
     reset() {
-      state.carried = [];
-      state.banked = 0;
       eggs.forEach(rollEgg);
-      carriedVisuals.forEach((cv) => cv.setEnabled(false));
     },
   };
   return state;

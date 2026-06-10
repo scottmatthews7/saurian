@@ -1,5 +1,38 @@
 # Progress
 
+## Done (session 19) — SIMPLIFY OBJECTIVES (wishlist item 11) + rename to SAURIAN
+The user-decided objective simplification: the game is now a pure SURVIVAL run.
+- **Eggs → consumables.** The whole return-to-nest/banking loop is gone: nest
+  mesh, banking, carry mechanic + carry-slow, combo multiplier, cursed egg +
+  its every-T-Rex lure (`setLure`/`LURE_ACTIVE` removed from `ai.js`), and the
+  bank-based win. Walking over an egg now EATS it on the spot: `EGGS.heal` 15 HP
+  (half a meat's 30 — eggs are plentiful and free) + `EGGS.stamina` 30 (just
+  under a dash's 35 cost); golden eggs are the premium find: 40 HP (out-heals
+  meat) + a full stamina refill. Consumed eggs **respawn after 30s** (one
+  difficulty wave) so an endless run never empties the valley. Pickup FX/SFX
+  kept; `player.restoreStamina()` added (clears exhaustion past the sprint
+  floor, same as natural regen).
+- **Beacons CUT entirely** (user: confused by them): `beacons.js`, all game/HUD/
+  minimap/title wiring, `config.BEACONS`, `audio.beacon()`, the beacons test.
+  `breakChase`/`staggered` on the predators existed only for the ward — removed
+  (nothing else used them since the player roar went in session 18).
+- **Interim goal: SURVIVAL.** Score = time survived (`SCORE.survivalPerSec` 10,
+  ×2 at deepest dusk via `DUSK.survivalBonus`, replacing the bank bonus) +
+  pickups (egg 100 / golden 300 / meat 50 — anchored on the old 100-per-egg
+  economy) + **CLOSE CALLS** (150): a predator attack negated by dash i-frames
+  (a perfect dodge; one credit per dash via `player.dashGuard`). Death ends the
+  run: DEVOURED banner shows survival time + score + bests; longest survival +
+  best score persist under fresh keys (`saurianBestSurvival`/`saurianBestScore`
+  — the old fastest-win time is meaningless as a survival best, not migrated).
+  HUD: "Eggs Banked"/beacon counter replaced by a big "Time Survived" readout +
+  score; compass now points at the nearest egg; minimap dropped nest/beacons.
+- **Renamed to SAURIAN** (title screen, `<title>`, loading card, README) — the
+  public repo name; the wishlist explicitly allows the rename.
+- **Tests:** `cursed_egg_test` + `beacons_test` deleted (mechanics gone);
+  `dusk_test` updated (bank→survival bonus); `herd_hunt_test` wording updated;
+  new `tools/survival_test.mjs` covers the consumable/score economy + the
+  time-score accrual maths. All 3 suites pass; all src modules `node --check`.
+
 ## Done (session 17 — dinos-pass branch: roster + behaviour)
 Wishlist items 3, 4, 4c, 4d. Branch `dinos-pass` (isolated worktree; coordinator
 merges). Edited only: `dino.js`, `ai.js`, `config.js` (DINO section), new

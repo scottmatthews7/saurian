@@ -23,7 +23,7 @@ console.log("acquisition:");
 check("hunts a nearby herbivore when the raptor is far",
   pickPrey({ prey: null }, trexPos, 60, [herb(10, 0)], SIGHT, LOSE, false) !== null);
 
-check("ignores the herd entirely while locked onto the player (cursed lure / point-blank)",
+check("ignores the herd entirely while locked onto the player (point-blank priority)",
   pickPrey({ prey: null }, trexPos, 60, [herb(10, 0)], SIGHT, LOSE, true) === null);
 
 check("won't acquire a herbivore beyond preySightRange",

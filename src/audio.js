@@ -266,17 +266,6 @@ export function createAudio() {
       tone(330, 0.3, "sine", 0.3, 495);
       tone(495, 0.35, "sine", 0.2, 660);
     },
-    // Warm chord when an egg is banked at the nest.
-    bank() {
-      if (!ctx || muted) return;
-      [440, 554, 660].forEach((f, i) => setTimeout(() => tone(f, 0.4, "sine", 0.3), i * 60));
-    },
-    // Ward beacon ignites: a warm bright rising chime (a major arpeggio) that
-    // reads "this is safe", distinct from the egg-bank chord.
-    beacon() {
-      if (!ctx || muted) return;
-      [523, 659, 784].forEach((f, i) => setTimeout(() => tone(f, 0.45, "triangle", 0.28), i * 70));
-    },
     // A grounded footfall for the human. Two layers: a low body thud (the
     // weight landing) plus a short filtered-noise scuff (foot on dirt). The
     // sprint variant hits harder + brighter so a run reads as heavier/faster
@@ -388,10 +377,6 @@ export function createAudio() {
       g.gain.exponentialRampToValueAtTime(0.0001, now() + 0.22);
       o.connect(g); g.connect(master);
       o.start(); o.stop(now() + 0.25);
-    },
-    win() {
-      if (!ctx || muted) return;
-      [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.5, "triangle", 0.35), i * 140));
     },
     lose() {
       if (!ctx || muted) return;

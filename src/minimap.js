@@ -1,7 +1,7 @@
-import { ARENA, MINIMAP, WATER, BEACONS } from "./config.js";
+import { ARENA, MINIMAP, WATER } from "./config.js";
 
 // Top-down radar drawn on a 2D canvas overlay. Shows the arena disc, the
-// player (with facing wedge), the T-Rex, the herd, eggs, and the nest.
+// player (with facing wedge), the T-Rex, the herd, eggs, and meat.
 
 export function createMinimap() {
   const canvas = document.getElementById("minimap");
@@ -25,7 +25,7 @@ export function createMinimap() {
   }
 
   return {
-    update(player, predators, herd, eggs, pickups, beacons) {
+    update(player, predators, herd, eggs, pickups) {
       ctx.clearRect(0, 0, size, size);
 
       // arena disc
@@ -46,43 +46,11 @@ export function createMinimap() {
         ctx.fill();
       }
 
-      // nest ring at centre
-      ctx.beginPath();
-      ctx.arc(c, c, 5 * scale, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(255,205,88,0.9)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // ward beacons — a lit beacon shows its ward radius ring + a bright dot;
-      // an unlit one is a dim hollow marker to seek out.
-      if (beacons) {
-        const wardR = beacons.wardRadiusNow || BEACONS.wardRadius;
-        for (const b of beacons.beacons) {
-          const [bx, by] = toMap(b.x, b.z);
-          if (b.lit) {
-            // Ward ring + dot fade with remaining fuel so a guttering beacon reads.
-            const frac = Math.max(0.15, b.fuel / BEACONS.burnSeconds);
-            ctx.beginPath();
-            ctx.arc(bx, by, wardR * scale, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(255,170,60,${(0.18 * frac).toFixed(3)})`;
-            ctx.fill();
-            dot(b.x, b.z, frac < BEACONS.lowFuelFrac ? "#aa8855" : "#ffb347", 3.5);
-          } else {
-            ctx.beginPath();
-            ctx.arc(bx, by, 3, 0, Math.PI * 2);
-            ctx.strokeStyle = "rgba(255,180,90,0.7)";
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-          }
-        }
-      }
-
       // eggs (uncollected) — golden eggs render larger and brighter
       if (eggs) {
         for (const e of eggs.eggs) {
-          if (e.collected || e.banked) continue;
-          if (e.cursed) dot(e.mesh.position.x, e.mesh.position.z, "#c14dff", 4);
-          else if (e.golden) dot(e.mesh.position.x, e.mesh.position.z, "#ffb31a", 4);
+          if (e.collected) continue;
+          if (e.golden) dot(e.mesh.position.x, e.mesh.position.z, "#ffb31a", 4);
           else dot(e.mesh.position.x, e.mesh.position.z, "#ffd95a", 2.5);
         }
       }

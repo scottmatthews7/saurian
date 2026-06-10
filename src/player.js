@@ -35,12 +35,14 @@ export async function createPlayer(scene, shadow, input) {
     dashTimer: 0,        // dash cooldown remaining (sec)
     dashActive: 0,       // remaining dash-burst duration (sec); >0 means mid-dash
     dashDir: { x: 0, z: 1 }, // unit heading the current dash drives along
+    dashGuard: 0,        // dash i-frame window remaining; an attack landing inside it is a CLOSE CALL
+    closeCallCredited: false, // one close call max per dash (multi-hit swarms don't multi-score)
     onDash: null,        // fired when a dash triggers (game applies FX/SFX)
+    onCloseCall: null,   // fired when dash i-frames negate an actual attack (game scores it)
     moving: false,
     sprinting: false,
     stamina: PLAYER.staminaMax,
     exhausted: false,    // true until stamina recovers past the sprint floor
-    carrying: 0,         // eggs carried (set by game each frame, drives carrySlow)
     dead: false,
     wading: false,       // true while standing in the pond
     onAttack: null,      // fired when a punch/kick starts (set by game for SFX)
@@ -70,6 +72,7 @@ export async function createPlayer(scene, shadow, input) {
     state.attacking = Math.max(0, state.attacking - dt);
     state.dashTimer = Math.max(0, state.dashTimer - dt);
     state.dashActive = Math.max(0, state.dashActive - dt);
+    state.dashGuard = Math.max(0, state.dashGuard - dt);
 
     // --- movement input (camera-relative) ---
     const fwd = camForward();
@@ -110,10 +113,8 @@ export async function createPlayer(scene, shadow, input) {
       }
     }
 
-    // carrying eggs slows you down — a risk/reward weight on the return trip.
-    const carryMul = 1 / (1 + state.carrying * PLAYER.carrySlow);
     const waterMul = wading ? WATER.slowFactor : 1;
-    const speed = (sprint ? PLAYER.runSpeed : PLAYER.walkSpeed) * carryMul * waterMul;
+    const speed = (sprint ? PLAYER.runSpeed : PLAYER.walkSpeed) * waterMul;
     state.moving = moving;
     state.sprinting = sprint;
 
@@ -134,6 +135,10 @@ export async function createPlayer(scene, shadow, input) {
       state.dashActive = PLAYER.dashSeconds;
       state.stamina = Math.max(0, state.stamina - PLAYER.dashCost);
       state.invuln = Math.max(state.invuln, PLAYER.dashIFrames);
+      // The dash guard mirrors the i-frame window but is dash-specific: an
+      // attack landing inside it scores a CLOSE CALL (a perfect dodge).
+      state.dashGuard = PLAYER.dashIFrames;
+      state.closeCallCredited = false;
       const dx = moving ? move.x : Math.sin(state.facing);
       const dz = moving ? move.z : Math.cos(state.facing);
       const dl = Math.hypot(dx, dz) || 1;
@@ -217,7 +222,17 @@ export async function createPlayer(scene, shadow, input) {
   };
 
   state.takeDamage = function (amount) {
-    if (state.invuln > 0 || state.dead) return;
+    if (state.dead) return;
+    // A perfect dodge: the attack landed inside the dash's i-frame window.
+    // Negate it and credit one CLOSE CALL per dash (the game scores it).
+    if (state.dashGuard > 0) {
+      if (!state.closeCallCredited) {
+        state.closeCallCredited = true;
+        if (state.onCloseCall) state.onCloseCall(collider.position.clone());
+      }
+      return;
+    }
+    if (state.invuln > 0) return;
     state.health = Math.max(0, state.health - amount);
     state.invuln = PLAYER.invulnAfterHit;
     dino.flash(0.25, new B.Color3(0.9, 0.05, 0.05));
@@ -232,6 +247,14 @@ export async function createPlayer(scene, shadow, input) {
     if (state.dead) return;
     state.health = Math.min(state.maxHealthValue, state.health + amount);
     dino.flash(0.2, new B.Color3(0.1, 0.7, 0.2));
+  };
+
+  // Restore stamina (an egg's pick-me-up). Clears exhaustion the same way the
+  // natural regen does once the sprint floor is recovered.
+  state.restoreStamina = function (amount) {
+    if (state.dead) return;
+    state.stamina = Math.min(PLAYER.staminaMax, state.stamina + amount);
+    if (state.exhausted && state.stamina >= PLAYER.staminaSprintMin) state.exhausted = false;
   };
 
   // ground height helper (matches world.heightAt; injected at game wiring)
@@ -261,9 +284,10 @@ export async function createPlayer(scene, shadow, input) {
     state.strikeConnected = false;
     state.dashTimer = 0;
     state.dashActive = 0;
+    state.dashGuard = 0;
+    state.closeCallCredited = false;
     state.stamina = PLAYER.staminaMax;
     state.exhausted = false;
-    state.carrying = 0;
     state.wading = false;
     state.dead = false;
     state.warpTo(x, y, z);

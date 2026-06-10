@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dino Arena: Survival</title>
+  <title>Saurian — Dino Survival</title>
   <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'&gt;&lt;text y='26' font-size='26'&gt;🦖&lt;/text&gt;&lt;/svg&gt;" />
   <style>
     :root { --accent: #ffcd58; --danger: #e8533f; --good: #6fe06f; }
@@ -37,14 +37,8 @@
     @keyframes readyPulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
 
     #topRight { top: 16px; right: 16px; text-align: right; }
-    #eggCount { font-size: 30px; font-weight: bold; color: var(--accent); }
-    #carryCount { font-size: 13px; opacity: 0.85; margin-top: 2px; }
-    .beaconCount { font-size: 13px; margin-top: 3px; color: #ffb347; opacity: 0.9; }
-    .beaconCount.all { color: #ffd95a; opacity: 1; text-shadow: 0 0 8px rgba(255,180,60,0.8); }
-    .beaconCount.guttering { color: #ff8a4a; opacity: 1; animation: beaconPulse 0.7s ease-in-out infinite; }
-    @keyframes beaconPulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; text-shadow: 0 0 8px rgba(255,120,60,0.9); } }
-    #score { font-size: 20px; font-weight: bold; margin-top: 8px; }
-    #combo { font-size: 13px; color: var(--good); opacity: 0.9; min-height: 16px; }
+    #survTime { font-size: 30px; font-weight: bold; color: var(--accent); }
+    #score { font-size: 20px; font-weight: bold; }
     #popups { position: relative; height: 0; }
     .popup { position: absolute; right: 0; top: 0; font-size: 22px; font-weight: 800;
       white-space: nowrap; text-shadow: 0 2px 8px rgba(0,0,0,0.6);
@@ -110,10 +104,8 @@
     .titleMore > span:first-of-type { margin-top: 0 !important; }
     .titleDusk { display: inline-block; margin-top: 8px; font-size: 13px; color: #ff9a5b; opacity: 0.95; }
     .titleDusk b { color: #ffb877; }
-    .titleCursed { display: inline-block; margin-top: 6px; font-size: 13px; color: #c98bff; opacity: 0.95; }
-    .titleCursed b { color: #d9a6ff; }
-    .titleBeacon { display: inline-block; margin-top: 6px; font-size: 13px; color: #ffc078; opacity: 0.95; }
-    .titleBeacon b { color: #ffd9a0; }
+    .titleGold { display: inline-block; margin-top: 6px; font-size: 13px; color: #ffd24a; opacity: 0.95; }
+    .titleGold b { color: #ffe28a; }
     .titleFeed { display: inline-block; margin-top: 6px; font-size: 13px; color: #8fd97f; opacity: 0.95; }
     .titleFeed b { color: #b6f0a8; }
     .controls { display: grid; grid-template-columns: repeat(3, auto); gap: 8px 26px;
@@ -195,12 +187,10 @@
       <div class="bar"><div id="duskFill" class="barFill"></div></div>
     </div>
     <div id="topRight" class="panel">
-      <div class="label">Eggs Banked</div>
-      <div id="eggCount">0 / 0</div>
-      <div id="carryCount"></div>
-      <div id="beaconCount" class="beaconCount"></div>
+      <div class="label">Time Survived</div>
+      <div id="survTime">0s</div>
+      <div class="label" style="margin-top: 8px;">Score</div>
       <div id="score">0</div>
-      <div id="combo"></div>
       <div id="popups"></div>
     </div>
     <div id="minimapWrap">
@@ -216,7 +206,7 @@
   </div>
 
   <div id="loading">
-    <div class="title">DINO ARENA</div>
+    <div class="title">SAURIAN</div>
     <div class="loadMsg">Loading…</div>
     <div class="spinner"></div>
   </div>

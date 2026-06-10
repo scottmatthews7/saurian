@@ -207,7 +207,7 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
    climbable-tree flagging, climb state/anim on the player, rex tree-shake AI +
    shake impulse, fall-off, HUD grip cue.
 
-11. **SIMPLIFY OBJECTIVES (user-decided, do right after the three-branch merge).**
+11. **[DONE — session 19] SIMPLIFY OBJECTIVES (user-decided, do right after the three-branch merge).**
    - EGGS: remove the return-to-nest/banking mechanic entirely (nest, banking,
      combo, cursed-egg lure, bank-based win). Eggs become CONSUMABLE pickups:
      walk over one → +health and +some stamina. Golden egg = bigger boost.

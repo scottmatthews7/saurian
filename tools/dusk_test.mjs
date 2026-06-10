@@ -61,13 +61,13 @@ let sightOk = true;
 for (let f = 0; f <= 1.0001; f += 0.05) if (trexSight(f) >= trexLose(f)) sightOk = false;
 check("sight range stays below lose-interest at all dusk levels", sightOk);
 
-console.log("bank bonus (risk/reward payoff):");
-const bankMul = (f) => 1 + DUSK.bankBonus * f;
-check("no bank bonus in full daylight", approx(bankMul(0), 1));
-check("bank bonus grows with dusk", bankMul(1) > bankMul(0),
-  `${bankMul(0)} -> ${bankMul(1)}`);
-check("deepest-dusk bank multiplier = 1 + bankBonus",
-  approx(bankMul(1), 1 + DUSK.bankBonus));
+console.log("survival bonus (risk/reward payoff):");
+const survMul = (f) => 1 + DUSK.survivalBonus * f;
+check("no survival bonus in full daylight", approx(survMul(0), 1));
+check("time score grows with dusk", survMul(1) > survMul(0),
+  `${survMul(0)} -> ${survMul(1)}`);
+check("deepest-dusk time multiplier = 1 + survivalBonus",
+  approx(survMul(1), 1 + DUSK.survivalBonus));
 
 console.log("light floor:");
 const lightAt = (f) => 1 * (1 - (1 - DUSK.minLight) * f); // ambientDay=1 (noon)

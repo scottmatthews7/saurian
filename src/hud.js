@@ -1,14 +1,12 @@
-// DOM-based HUD overlay: health bar, egg counter, objective, messages.
+// DOM-based HUD overlay: health bar, survival readout, objective, messages.
 import { JUICE } from "./config.js";
 
 export function createHUD() {
   const el = (id) => document.getElementById(id);
   const healthFill = el("healthFill");
-  const eggCount = el("eggCount");
-  const carryCount = el("carryCount");
+  const survTime = el("survTime");
   const objective = el("objective");
   const scoreEl = el("score");
-  const comboEl = el("combo");
   const banner = el("banner");
   const trexBar = el("trexFill");
   const staminaBar = el("staminaFill");
@@ -22,7 +20,6 @@ export function createHUD() {
   const hitFlashEl = el("hitFlash");
   const popups = el("popups");
   const muteBtn = el("muteBtn");
-  const beaconCount = el("beaconCount");
 
   return {
     setHealth(v, max) {
@@ -79,27 +76,12 @@ export function createHUD() {
       staminaBar.style.width = `${Math.max(0, (v / max) * 100)}%`;
       staminaBar.classList.toggle("exhausted", !!exhausted);
     },
-    setEggs(banked, target, carrying, remaining) {
-      eggCount.textContent = `${banked} / ${target}`;
-      carryCount.textContent = carrying > 0 ? `Carrying ${carrying} — get to the nest!` :
-        (remaining > 0 ? `${remaining} eggs out there` : "All eggs found");
+    // Big survival-time readout (pre-formatted by the game: "47s" / "2:07").
+    setSurvival(text) {
+      if (survTime) survTime.textContent = text;
     },
-    // Ward-beacon ring progress. Shows a flame per beacon (lit vs unlit) and
-    // glows once the whole ring is lit (sanctuary).
-    setBeacons(lit, total, guttering) {
-      if (!beaconCount) return;
-      const all = lit >= total;
-      beaconCount.textContent = guttering
-        ? `${"🔥".repeat(lit)}${"·".repeat(total - lit)} Beacon fading — relight!`
-        : all
-          ? `${"🔥".repeat(total)} Sanctuary lit`
-          : `${"🔥".repeat(lit)}${"·".repeat(total - lit)} Beacons ${lit}/${total}`;
-      beaconCount.classList.toggle("all", all && !guttering);
-      beaconCount.classList.toggle("guttering", !!guttering);
-    },
-    setScore(points, combo) {
+    setScore(points) {
       if (scoreEl) scoreEl.textContent = points.toLocaleString();
-      if (comboEl) comboEl.textContent = combo > 1 ? `Combo x${combo}` : "";
     },
     setObjective(text) { objective.textContent = text; },
     // Objective pill with a compass arrow rotated toward a screen-space heading
@@ -115,16 +97,16 @@ export function createHUD() {
     },
     // Rich title screen: animated title, objective, a controls grid, best stats,
     // and a pulsing prompt. Shown before the first input starts the run.
-    showTitle(target, bestLine) {
+    showTitle(bestLine) {
       const ctrl = (k, label) => `<div class="ctrlRow"><span class="key">${k}</span><span>${label}</span></div>`;
       banner.innerHTML = `
         <div class="titleCard">
-          <div class="bannerTitle start titleBig">DINO ARENA</div>
+          <div class="bannerTitle start titleBig">SAURIAN</div>
           <div class="titleTag">SURVIVAL</div>
-          <div class="titleObjective">Collect <b>${target}</b> glowing eggs and bank them at your nest.<br/>A roaming T-Rex wants you dead. Run, <b>punch</b>, <b>kick</b>, <b>dash</b> to survive.</div>
+          <div class="titleObjective"><b>Survive</b> the primeval valley as long as you can — the predators want you dead.<br/>Run, <b>punch</b>, <b>kick</b>, <b>dash</b>; eat <b>eggs</b> and <b>meat</b> to restore health and stamina.</div>
           <details class="titleMore">
             <summary>More to discover &nbsp;(optional — learn as you play)</summary>
-            <span class="titleDusk">As <b>dusk</b> falls the predators grow bolder — but late banks pay double.</span><br/><span class="titleCursed">Grab a <b>cursed egg</b> ☠ for a huge score — but every T-Rex hunts you while you carry it.</span><br/><span class="titleBeacon">Run through the <b>🔥 ward beacons</b> to light them — a lit beacon repels the T-Rex (and wards <b>wider at dusk</b>); light all three for a <b>sanctuary</b> bonus. They <b>burn down</b> — brush one again to relight it.</span><br/><span class="titleFeed">The T-Rex hunts the <b>herd</b> too — lead it onto a herbivore and it'll peel off. When it makes a kill it stops to <b>feed</b> (it glows <b>green</b> on the radar): rush in and strike its exposed flank for <b>double damage</b>.</span>
+            <span class="titleDusk">As <b>dusk</b> falls the predators grow bolder — but every second survived pays <b>double</b>.</span><br/><span class="titleGold"><b>Golden eggs</b> glow far out in the wilds — a big heal, a full stamina refill, and triple score.</span><br/><span class="titleFeed">The T-Rex hunts the <b>herd</b> too — lead it onto a herbivore and it'll peel off. When it makes a kill it stops to <b>feed</b> (it glows <b>green</b> on the radar): rush in and strike its exposed flank for <b>double damage</b>.</span>
           </details>
           <div class="controls">
             ${ctrl("WASD", "Move")}

@@ -1,9 +1,8 @@
 import { buildWorld } from "./world.js";
 import { buildEnv } from "./env.js";
 import { createPlayer, createFollowCamera } from "./player.js";
-import { createTrex, createHerd, createRaptorPack, setObstacles, setDusk, setLure } from "./ai.js";
+import { createTrex, createHerd, createRaptorPack, setObstacles, setDusk } from "./ai.js";
 import { createEggs } from "./eggs.js";
-import { createBeacons } from "./beacons.js";
 import { createPickups } from "./pickups.js";
 import { createInput } from "./input.js";
 import { createTouchControls } from "./touch.js";
@@ -11,17 +10,23 @@ import { createHUD } from "./hud.js";
 import { createAudio } from "./audio.js";
 import { createFx } from "./fx.js";
 import { createMinimap } from "./minimap.js";
-import { PLAYER, TREX, EGGS, JUICE, AUDIO, PICKUPS, DUSK, BEACONS, RAPTOR } from "./config.js";
+import { PLAYER, TREX, EGGS, JUICE, AUDIO, PICKUPS, DUSK, RAPTOR, SCORE } from "./config.js";
 
 // Nearest uncollected egg to a position, or null if none remain.
 function nearestEgg(eggs, pos) {
   let best = null, bd = Infinity;
   for (const e of eggs.eggs) {
-    if (e.collected || e.banked) continue;
+    if (e.collected) continue;
     const d = Math.hypot(e.mesh.position.x - pos.x, e.mesh.position.z - pos.z);
     if (d < bd) { bd = d; best = e.mesh.position; }
   }
   return best;
+}
+
+// Survival time, formatted for the HUD/banner: "47s" under a minute, "2:07" after.
+function formatTime(seconds) {
+  const s = Math.floor(seconds);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 export async function startGame() {
@@ -63,69 +68,36 @@ export async function startGame() {
   setLoad("Scattering eggs…");
   const eggs = createEggs(scene, world.shadow, world.heightAt);
   const pickups = createPickups(scene, world.shadow, world.heightAt);
-  const beacons = createBeacons(scene, world.shadow, world.heightAt);
 
   // --- wire feedback callbacks (audio + particles + screen shake) ---
   const B2 = window.BABYLON;
-  // scoring + combo: chained banks within comboWindow grow a multiplier
-  const score = { points: 0, combo: 1, lastBankAt: -999 };
-  eggs.onPickup = (pos, golden, cursed) => {
-    audio.pickup(golden || cursed);
-    const col = cursed ? new B2.Color4(0.8, 0.2, 1, 1)
-      : golden ? new B2.Color4(1, 0.82, 0.25, 1)
-      : new B2.Color4(1, 0.9, 0.5, 1);
-    fx.pickupBurst(pos, col);
-    if (cursed) { hud.popup("CURSED EGG — they're coming!", "warn"); audio.roar(); }
-    else if (golden) hud.popup("GOLDEN EGG!", "gold");
-  };
-  eggs.onBank = ({ count, value, cursed }) => {
-    audio.bank();
-    fx.pickupBurst(eggs.nest.position, cursed ? new B2.Color4(0.8, 0.3, 1, 1) : new B2.Color4(0.5, 1, 0.6, 1));
-    const sinceLast = game.elapsed - score.lastBankAt;
-    score.combo = sinceLast <= EGGS.comboWindow
-      ? Math.min(EGGS.comboMax, score.combo + EGGS.comboStep)
-      : 1;
-    score.lastBankAt = game.elapsed;
-    // Dusk bank bonus: banking as dusk deepens is worth more (risk/reward).
-    const dusk = world.getDusk();
-    const duskMul = 1 + DUSK.bankBonus * dusk;
-    // value is in "egg units" (golden eggs are worth goldenValueMul each)
-    const gained = Math.round(value * EGGS.baseValue * score.combo * duskMul);
+  // Survival scoring: points accrue from time alive (faster at dusk), pickups,
+  // and close calls. Kept as a float internally; floored for display.
+  const score = { points: 0 };
+  const addScore = (gained) => {
     score.points += gained;
-    hud.setScore(score.points, score.combo);
-    const duskTag = dusk >= DUSK.duskThreshold ? " 🌆" : "";
-    const cursedTag = cursed ? " ☠" : "";
-    hud.popup(`+${gained.toLocaleString()}${score.combo > 1 ? ` ×${score.combo}` : ""}${cursedTag}${duskTag}`, cursed ? "gold" : "score");
+    hud.setScore(Math.floor(score.points));
   };
-  eggs.onDrop = (pos) => fx.pickupBurst(pos, new B2.Color4(1, 0.5, 0.3, 1));
+  // Eggs are consumables: the heal/stamina lands inside eggs.update; here the
+  // FX/SFX/score read the find.
+  eggs.onPickup = (pos, golden) => {
+    audio.pickup(golden);
+    fx.pickupBurst(pos, golden ? new B2.Color4(1, 0.82, 0.25, 1) : new B2.Color4(1, 0.9, 0.5, 1));
+    addScore(golden ? SCORE.goldenPickup : SCORE.eggPickup);
+    if (golden) hud.popup(`GOLDEN EGG! +${SCORE.goldenPickup} · +${EGGS.goldenHeal} HP`, "gold");
+    else hud.popup(`+${SCORE.eggPickup} · +${EGGS.heal} HP`, "score");
+  };
   pickups.onHeal = (pos) => {
     audio.heal();
     fx.pickupBurst(pos, new B2.Color4(0.3, 1, 0.4, 1));
-    hud.popup(`+${PICKUPS.meatHeal} HP`, "heal");
+    addScore(SCORE.meatPickup);
+    hud.popup(`+${SCORE.meatPickup} · +${PICKUPS.meatHeal} HP`, "heal");
   };
-  // Ward beacons: a warm chime + amber burst when one ignites; a bigger payoff
-  // (heal + score + flourish) when the full ring is lit.
-  beacons.onLight = (pos) => {
-    audio.beacon();
-    fx.pickupBurst(pos, new B2.Color4(1, 0.6, 0.2, 1));
-    const lit = beacons.litCount;
-    if (lit < BEACONS.count) hud.popup(`BEACON LIT ${lit}/${BEACONS.count}`, "heal");
-  };
-  beacons.onSanctuary = (pos) => {
-    audio.win();
-    fx.pickupBurst(pos, new B2.Color4(1, 0.85, 0.4, 1));
-    fx.addShake(JUICE.sanctuaryShake);
-    player.heal(BEACONS.sanctuaryHeal);
-    score.points += BEACONS.sanctuaryScore;
-    hud.setScore(score.points, score.combo);
-    hud.popup(`SANCTUARY! +${BEACONS.sanctuaryScore} · +${BEACONS.sanctuaryHeal} HP`, "gold");
-  };
-  // A lit beacon burned down: a soft dying puff + cue so the player knows the
-  // ring needs relighting (the upkeep loop).
-  beacons.onGutter = (pos) => {
-    audio.beacon();
-    fx.pickupBurst(pos, new B2.Color4(0.5, 0.5, 0.55, 1));
-    hud.popup("BEACON GUTTERED OUT", "warn");
+  // A perfect dodge: dash i-frames negated a predator's attack. Skill pays.
+  player.onCloseCall = (pos) => {
+    fx.pickupBurst(pos, new B2.Color4(0.45, 0.85, 1, 1));
+    addScore(SCORE.closeCall);
+    hud.popup(`CLOSE CALL! +${SCORE.closeCall}`, "good");
   };
   // A punch/kick swing: an airy whoosh (the impact thud lands separately when
   // a strike actually connects, in the strike resolution below).
@@ -154,12 +126,6 @@ export async function startGame() {
   // Predators are a list so later waves can add a second T-Rex.
   const predators = [];
   const wirePredator = (p) => {
-    p.onBite = () => {
-      // hurt audio/shake/flash come from player.onHurt; here a bite also
-      // fumbles a carried egg back into the valley.
-      const pp = player.dino.root.position;
-      eggs.dropCarried(pp, world.heightAt(pp.x, pp.z));
-    };
     p.onRoar = () => audio.roar();
     // The T-Rex bit a herbivore (herd predation): a chomp SFX + a red spray so
     // the player reads the predator culling the herd elsewhere on the field.
@@ -196,13 +162,15 @@ export async function startGame() {
   // --- game state ---
   const game = {
     over: false,
-    won: false,
     paused: false,
     elapsed: 0,
     wave: 0,
   };
-  const BEST_TIME_KEY = "dinoArenaBestTime";
-  const BEST_SCORE_KEY = "dinoArenaBestScore";
+  // Fresh keys for the survival era: the old dinoArenaBestTime was a FASTEST
+  // win (banking game) — meaningless as a longest-survival best, so it is not
+  // migrated. Best survival time = LONGEST run.
+  const BEST_TIME_KEY = "saurianBestSurvival";
+  const BEST_SCORE_KEY = "saurianBestScore";
   const readBest = () => { const v = +localStorage.getItem(BEST_TIME_KEY); return v > 0 ? v : null; };
   const readBestScore = () => { const v = +localStorage.getItem(BEST_SCORE_KEY); return v > 0 ? v : null; };
   let stepTimer = 0;        // counts down to the next footfall SFX
@@ -213,13 +181,13 @@ export async function startGame() {
   // past DUSK.duskThreshold in a run. A roar + popup so the player reads it.
   let duskAnnounced = false;
 
-  hud.setObjective(`Bank ${EGGS.targetToWin} eggs at your nest. Don't get eaten.`);
+  hud.setObjective("Survive as long as you can. Don't get eaten.");
   {
     const bt = readBest(), bs = readBestScore();
     const bestLine = (bt || bs)
-      ? `Best: ${bt ? bt.toFixed(0) + "s" : "—"}${bs ? " · " + bs.toLocaleString() + " pts" : ""}`
+      ? `Best: ${bt ? formatTime(bt) + " survived" : "—"}${bs ? " · " + bs.toLocaleString() + " pts" : ""}`
       : "";
-    hud.showTitle(EGGS.targetToWin, bestLine);
+    hud.showTitle(bestLine);
   }
   let started = false;
   const startGameLoop = () => {
@@ -252,10 +220,11 @@ export async function startGame() {
       // grow bolder) and the HUD time-of-day bar. One-shot cue when dusk deepens.
       const dusk = world.getDusk();
       setDusk(dusk);
-      // Cursed-egg lure: while carried, every T-Rex homes in on the raptor.
-      setLure(eggs.carryingCursed);
-      beacons.setDusk(dusk);   // a lit beacon's ward grows with dusk (defensive mirror of the bank bonus)
       hud.setDusk(dusk);
+
+      // Survival score: every second alive pays, and seconds survived at dusk
+      // pay up to double (the risk/reward mirror of the bolder predators).
+      addScore(SCORE.survivalPerSec * (1 + DUSK.survivalBonus * dusk) * dt);
       if (!duskAnnounced && dusk >= DUSK.duskThreshold) {
         duskAnnounced = true;
         hud.popup("DUSK FALLS — predators grow bolder", "warn");
@@ -290,7 +259,6 @@ export async function startGame() {
         }
       }
 
-      player.carrying = eggs.carrying;   // drives carry-slow in the controller
       player.update(dt);
       // the nearest live predator is what the herd flees and the HUD tracks
       let primary = null, primaryD = Infinity;
@@ -304,11 +272,6 @@ export async function startGame() {
       herd.forEach((h) => h.update(dt, player, primary));
       eggs.update(dt, player);
       pickups.update(dt, player);
-      // Ward beacons: light on proximity, then repel any predator inside a lit
-      // beacon's ward (breaks the chase). Warded after the predators moved so a
-      // T-Rex that steps into the ward is staggered out of it next frame.
-      beacons.update(dt, player);
-      beacons.wardPredators(predators);
 
       // pterosaur dive attack — a telegraphed screech then a swoop from above
       world.updateThreats(dt, player,
@@ -448,70 +411,52 @@ export async function startGame() {
         for (const h of herd) tryStrike(h);
       }
 
-      // expire the combo display once the chain window lapses
-      if (score.combo > 1 && game.elapsed - score.lastBankAt > EGGS.comboWindow) {
-        score.combo = 1;
-        hud.setScore(score.points, score.combo);
-      }
-
       // HUD — show the most-threatening (nearest live) predator's health
       hud.setHealth(player.health, PLAYER.maxHealth);
       hud.setStamina(player.stamina, PLAYER.staminaMax, player.exhausted);
       hud.setDash(1 - player.dashTimer / PLAYER.dashCooldown);
       hud.setTrex(primary ? primary.health : 0, TREX.maxHealth);
-      hud.setEggs(eggs.banked, EGGS.targetToWin, eggs.carrying, eggs.remaining());
-      hud.setBeacons(beacons.litCount, BEACONS.count, beacons.anyGuttering);
+      hud.setSurvival(formatTime(game.elapsed));
 
-      // win / lose
-      if (eggs.banked >= EGGS.targetToWin) {
-        game.over = true; game.won = true;
-        audio.stopPanting();
-        audio.win();
-        const t = game.elapsed;
-        const prev = readBest();
-        const isBest = prev == null || t < prev;
-        if (isBest) localStorage.setItem(BEST_TIME_KEY, t.toFixed(1));
-        const prevScore = readBestScore();
-        const bestScore = prevScore == null || score.points > prevScore;
-        if (bestScore) localStorage.setItem(BEST_SCORE_KEY, String(score.points));
-        const bestLine = isBest ? "New best time! " : `Best: ${prev.toFixed(0)}s. `;
-        // Acknowledge a brave finish: winning once dusk has fallen earns a flourish.
-        const duskWin = world.getDusk() >= DUSK.duskThreshold ? "🌆 You held out into dusk! " : "";
-        hud.showBanner("YOU SURVIVED",
-          `${duskWin}${bestLine}Score ${score.points.toLocaleString()}${bestScore ? " (best!)" : ""} · ${t.toFixed(0)}s · ${eggs.banked} eggs. Press R to play again.`,
-          "win");
-      } else if (player.dead) {
+      // Death ends the run: show the survival time + score and persist bests
+      // (longest survival, highest score).
+      if (player.dead) {
         game.over = true;
         audio.stopPanting();
         audio.lose();
-        hud.showBanner("DEVOURED", `You lasted ${game.elapsed.toFixed(0)}s · score ${score.points.toLocaleString()} · ${eggs.banked} eggs banked. Press R to retry.`, "lose");
+        const t = game.elapsed;
+        const points = Math.floor(score.points);
+        const prev = readBest();
+        const isBest = prev == null || t > prev;
+        if (isBest) localStorage.setItem(BEST_TIME_KEY, t.toFixed(1));
+        const prevScore = readBestScore();
+        const bestScore = prevScore == null || points > prevScore;
+        if (bestScore) localStorage.setItem(BEST_SCORE_KEY, String(points));
+        const bestLine = isBest ? "New best survival! " : `Best: ${formatTime(prev)}. `;
+        // Acknowledge a brave run: surviving into dusk earns a flourish.
+        const duskTag = world.getDusk() >= DUSK.duskThreshold ? "🌆 You held out into dusk! " : "";
+        hud.showBanner("DEVOURED",
+          `You survived ${formatTime(t)}${isBest ? " (best!)" : ""} · score ${points.toLocaleString()}${bestScore ? " (best!)" : ""}. ${duskTag}${bestLine}Press R to retry.`,
+          "lose");
       }
 
-      // compass + timer guide on the objective pill
+      // compass + timer guide on the objective pill: point at the nearest egg
+      // (a heal + stamina top-up is always the next stop on a survival run).
       const pp = player.dino.root.position;
-      let tx, tz, label;
-      if (eggs.carrying > 0) {
-        tx = 0; tz = 0;
-        // A cursed egg keeps the danger legible the whole time it's carried —
-        // the pickup popup fades, but the guide pill stays loud while it's on you.
-        label = eggs.carryingCursed
-          ? `☠ CURSED — every T-Rex hunts you! Bank it at the nest`
-          : `Carrying ${eggs.carrying} — bank at the nest`;
-      } else {
-        const t = nearestEgg(eggs, pp);
-        if (t) { tx = t.x; tz = t.z; label = `Nearest egg · ${eggs.banked}/${EGGS.targetToWin} banked`; }
-      }
-      if (label) {
+      const t = nearestEgg(eggs, pp);
+      if (t) {
         const camFwd = camRig.cam.getForwardRay().direction;
         const camBearing = Math.atan2(camFwd.x, camFwd.z);
-        const worldBearing = Math.atan2(tx - pp.x, tz - pp.z);
+        const worldBearing = Math.atan2(t.x - pp.x, t.z - pp.z);
         const heading = worldBearing - camBearing;   // 0 = straight ahead (up)
-        hud.setGuide(`${label} · ${game.elapsed.toFixed(0)}s`, heading);
+        hud.setGuide(`Nearest egg · ${formatTime(game.elapsed)}`, heading);
+      } else {
+        hud.setGuide(`Survive · ${formatTime(game.elapsed)}`, null);
       }
     }
 
-    // radar — updated whenever the game is running (even after win/lose)
-    minimap.update(player, predators, herd, eggs, pickups, beacons);
+    // radar — updated whenever the game is running (even after death)
+    minimap.update(player, predators, herd, eggs, pickups);
   });
 
   // Soft restart — re-rolls a fresh run in place without reloading the page
@@ -526,18 +471,17 @@ export async function startGame() {
     herd.forEach((h) => h.reset());
     eggs.reset();
     pickups.reset();
-    beacons.reset();
     world.resetDusk();   // fresh run starts in full daylight again
     world.resetThreats(); // abort any in-flight pterosaur dive from the old run
     setDusk(0); hud.setDusk(0); duskAnnounced = false;
-    setLure(false);
     const c = world.heightAt(0, 0);
     player.reset(0, c, 0);
-    score.points = 0; score.combo = 1; score.lastBankAt = -999;
-    game.over = false; game.won = false; game.paused = false;
+    score.points = 0;
+    game.over = false; game.paused = false;
     game.elapsed = 0; game.wave = 0;
     stepTimer = 0; tensionTimer = 0; vocalTimer = AUDIO.vocalIntervalMax;
-    hud.setScore(0, 1);
+    hud.setScore(0);
+    hud.setSurvival(formatTime(0));
     hud.hideBanner();
   };
 
@@ -563,7 +507,7 @@ export async function startGame() {
   window.addEventListener("resize", () => engine.resize());
 
   // Debug handle for in-browser smoke tests (harmless to leave exposed).
-  window.__game = { engine, scene, game, score, player, predators, herd, eggs, pickups, beacons, world, hud, audio, resetGame };
+  window.__game = { engine, scene, game, score, player, predators, herd, eggs, pickups, world, hud, audio, resetGame };
 
   return { engine, scene };
 }
