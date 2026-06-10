@@ -29,6 +29,7 @@ export async function createPlayer(scene, shadow, input) {
     maxHealthValue: PLAYER.maxHealth,
     attackTimer: 0,
     invuln: 0,
+    sinceHit: 999,       // seconds since last damage — gates slow passive regen
     attacking: 0,        // remaining attack-anim lock
     strikeId: 0,         // increments each swing; lets the game land one hit per target per strike
     strikeConnected: false, // true once a swing has dealt damage (drives the impact SFX/feel)
@@ -71,6 +72,12 @@ export async function createPlayer(scene, shadow, input) {
     state.attackTimer = Math.max(0, state.attackTimer - dt);
     state.invuln = Math.max(0, state.invuln - dt);
     state.attacking = Math.max(0, state.attacking - dt);
+    // Slow passive health regen: kicks in only after you've gone unhurt for a
+    // few seconds (back off from danger and you recover over time).
+    state.sinceHit += dt;
+    if (state.sinceHit > PLAYER.regenDelay && state.health < state.maxHealthValue) {
+      state.health = Math.min(state.maxHealthValue, state.health + PLAYER.regenRate * dt);
+    }
     state.dashTimer = Math.max(0, state.dashTimer - dt);
     state.dashActive = Math.max(0, state.dashActive - dt);
     state.dashGuard = Math.max(0, state.dashGuard - dt);
@@ -117,6 +124,7 @@ export async function createPlayer(scene, shadow, input) {
       // (Deep-water swimming does NOT drain — the danger there is the lake
       // predator, not the water itself.)
       state.health = Math.max(0, state.health - WATER.damagePerSec * dt);
+      state.sinceHit = 0;
       if (state.health <= 0 && !state.dead) {
         state.dead = true;
         if (state.onHurt) state.onHurt();
@@ -259,6 +267,7 @@ export async function createPlayer(scene, shadow, input) {
     if (state.invuln > 0) return;
     state.health = Math.max(0, state.health - amount);
     state.invuln = PLAYER.invulnAfterHit;
+    state.sinceHit = 0;  // taking damage resets the regen delay
     dino.flash(0.25, new B.Color3(0.9, 0.05, 0.05));
     if (state.onHurt) state.onHurt();
     if (state.health <= 0) {
@@ -306,6 +315,7 @@ export async function createPlayer(scene, shadow, input) {
   // Soft restart: restore all combat/movement state and re-centre.
   state.reset = (x, y, z) => {
     state.health = state.maxHealthValue;
+    state.sinceHit = 999;
     state.velY = 0;
     state.grounded = true;
     state.facing = 0;

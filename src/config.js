@@ -31,6 +31,8 @@ export const PLAYER = {
   attackCooldown: 0.7, // sec
   attackDamage: 34,    // damage dealt to a predator on a landed punch/kick
   invulnAfterHit: 1.0, // i-frames after taking damage (sec)
+  regenDelay: 6,       // sec unhurt before slow passive health regen begins
+  regenRate: 4,        // health/sec regenerated once safe (~25s near-death to full)
   attackLockSeconds: 0.45, // movement-lock duration of a strike (the swing window)
   lungeSpeed: 9,       // forward burst (units/sec) during the swing window
   lungeSeconds: 0.18,  // how long the lunge push lasts within the swing
