@@ -28,7 +28,6 @@
     #trexFill { background: linear-gradient(90deg, #8e44ad, #c0392b); }
     #staminaFill { background: linear-gradient(90deg, #2e86de, #54e0c7); }
     #staminaFill.exhausted { background: linear-gradient(90deg, #7a7a7a, #aa4040); }
-    #roarFill { background: linear-gradient(90deg, #d98e2b, #ffd27a); }
     #dashFill { background: linear-gradient(90deg, #2b9bd9, #7af0ff); }
     /* Daylight remaining: full bright at run start, depletes toward dusk. */
     #duskFill { background: linear-gradient(90deg, #c0451f, #ffd27a, #fff2c4); }
@@ -164,7 +163,7 @@
       font-size: 15px; font-weight: 800; letter-spacing: 1px; color: #fff;
       background: rgba(46,134,222,0.32); border: 2px solid rgba(255,255,255,0.35);
       touch-action: none; user-select: none; backdrop-filter: blur(3px); }
-    .touchBtn.bite { width: 112px; height: 112px; font-size: 18px;
+    .touchBtn.strike { width: 112px; height: 112px; font-size: 18px;
       background: rgba(232,83,63,0.4); }
     .touchBtn.pressed { transform: scale(0.92); filter: brightness(1.3); }
 
@@ -190,8 +189,6 @@
       <div class="bar"><div id="staminaFill" class="barFill"></div></div>
       <div class="label">T-Rex Health</div>
       <div class="bar"><div id="trexFill" class="barFill"></div></div>
-      <div class="label">Roar <span id="roarReady" class="readyTag">READY</span></div>
-      <div class="bar"><div id="roarFill" class="barFill"></div></div>
       <div class="label">Dash <span id="dashReady" class="readyTag">READY</span></div>
       <div class="bar"><div id="dashFill" class="barFill"></div></div>
       <div class="label"><span id="duskIcon">☀️</span> <span id="duskLabel">Daylight</span></div>

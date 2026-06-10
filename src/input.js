@@ -4,7 +4,6 @@ export function createInput(canvas) {
   const keys = new Set();
   let jumpQueued = false;
   let attackQueued = false;
-  let roarQueued = false;
   let dashQueued = false;
 
   const norm = (e) => e.key.toLowerCase();
@@ -13,7 +12,6 @@ export function createInput(canvas) {
     keys.add(k);
     if (k === " ") { jumpQueued = true; e.preventDefault(); }
     if (k === "j") attackQueued = true;
-    if (k === "q") roarQueued = true;
     if (k === "f") dashQueued = true;
   });
   window.addEventListener("keyup", (e) => keys.delete(norm(e)));
@@ -29,12 +27,10 @@ export function createInput(canvas) {
     keys,
     consumeJump() { const v = jumpQueued; jumpQueued = false; return v; },
     consumeAttack() { const v = attackQueued; attackQueued = false; return v; },
-    consumeRoar() { const v = roarQueued; roarQueued = false; return v; },
     consumeDash() { const v = dashQueued; dashQueued = false; return v; },
     // Edge-trigger queues exposed so the touch layer can drive the same input.
     queueJump() { jumpQueued = true; },
     queueAttack() { attackQueued = true; },
-    queueRoar() { roarQueued = true; },
     queueDash() { dashQueued = true; },
   };
 }

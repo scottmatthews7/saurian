@@ -15,7 +15,7 @@ export function setDusk(f) { DUSK_FACTOR = f; }
 
 // Cursed-egg lure: while the player carries a cursed egg every T-Rex homes in
 // regardless of sight range and chases a little faster. Pushed each frame from
-// the game (true while eggs.carryingCursed). A roar-stagger still overrides it.
+// the game (true while eggs.carryingCursed). A ward-beacon stagger still overrides it.
 let LURE_ACTIVE = false;
 export function setLure(active) { LURE_ACTIVE = active; }
 
@@ -88,8 +88,8 @@ export async function createTrex(scene, shadow, groundFn) {
     speedBonus: 0,
     enraged: false,    // true once wounded past the enrage threshold
     enrageGlow: 0,     // re-flash timer for the sustained angry glow
-    lastBiteId: -1,    // last player swing id that hit this target (one hit per swing)
-    staggered: 0,      // sec remaining frozen/dazed by the player's roar
+    lastStrikeId: -1,  // last player swing id that hit this target (one hit per swing)
+    staggered: 0,      // sec remaining frozen/dazed by a ward beacon
     prey: null,        // herbivore currently hunted instead of the player (or null)
     preyAttackTimer: 0,// cooldown between bites on the hunted herbivore
     feeding: 0,        // sec remaining feeding on a fresh kill — planted + vulnerable
@@ -132,7 +132,7 @@ export async function createTrex(scene, shadow, groundFn) {
       }
     }
 
-    // Staggered by the player's roar: dazed in place (pursuit broken) until the
+    // Staggered by a ward beacon: dazed in place (pursuit broken) until the
     // timer lapses, then it resumes hunting. Keeps the ground animation idle.
     if (state.staggered > 0) {
       state.staggered = Math.max(0, state.staggered - dt);
@@ -252,9 +252,9 @@ export async function createTrex(scene, shadow, groundFn) {
     if (state.health <= 0) { state.dead = true; dino.play("Death", { loop: false }); }
   };
 
-  // React to the player's intimidating roar: stagger (pursuit broken) and drop
+  // Break the chase (a ward beacon's repel): stagger (pursuit broken) and drop
   // back to patrol so the chase resets. A dazed-blue flash reads the daze.
-  state.roarReact = function (seconds) {
+  state.breakChase = function (seconds) {
     if (state.dead) return;
     state.staggered = Math.max(state.staggered, seconds);
     state.mode = "patrol";
@@ -275,7 +275,7 @@ export async function createTrex(scene, shadow, groundFn) {
     state.speedBonus = 0;
     state.enraged = false;
     state.enrageGlow = 0;
-    state.lastBiteId = -1;
+    state.lastStrikeId = -1;
     state.staggered = 0;
     state.prey = null;
     state.preyAttackTimer = 0;
@@ -314,8 +314,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     chargeHitDone: false,
     dead: false,
     health: HERBIVORE.maxHealth,
-    lastBiteId: -1,     // last player swing id that hit this target (one hit per swing)
-    panic: 0,           // sec of forced terror-flee directly away from the player (the roar)
+    lastStrikeId: -1,   // last player swing id that hit this target (one hit per swing)
     onCharge: null,     // (set by game) called when a charge starts
     onDown: null,       // (position) called when killed by the player
   };
@@ -328,24 +327,6 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     const pos = dino.root.position;
     const pp = player.dino.root.position;
     state.chargeCd = Math.max(0, state.chargeCd - dt);
-    state.panic = Math.max(0, state.panic - dt);
-
-    // Roar panic: bolt directly away from the player at flee speed, overriding
-    // wander/charge, until the panic timer lapses.
-    if (state.panic > 0) {
-      const adx = pos.x - pp.x, adz = pos.z - pp.z;
-      const ad = Math.hypot(adx, adz) || 1;
-      const dir = avoidObstacles(pos, adx / ad, adz / ad);
-      state.facing = lerpAngle(state.facing, Math.atan2(dir.dx, dir.dz), 0.25);
-      dino.setYaw(state.facing);
-      pos.x += dir.dx * HERBIVORE.fleeSpeed * dt;
-      pos.z += dir.dz * HERBIVORE.fleeSpeed * dt;
-      pos.y = groundFn(pos.x, pos.z);
-      clampArena(pos);
-      state.fleeing = true;
-      dino.play("Run", { speed: 1.4 });
-      return;
-    }
 
     const threats = [pp];
     if (trex && !trex.dead) threats.push(trex.dino.root.position);
@@ -429,14 +410,6 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     }
   };
 
-  // React to the player's roar: a few seconds of terror-flee straight away.
-  state.roarReact = function (seconds) {
-    if (state.dead) return;
-    state.panic = Math.max(state.panic, seconds);
-    state.charging = 0;
-    dino.flash(0.25, new window.BABYLON.Color3(0.9, 0.9, 0.3));
-  };
-
   // Soft restart: revive, full health, fresh wander target.
   state.reset = function () {
     const p = randPointInArena();
@@ -447,8 +420,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     state.charging = 0;
     state.chargeCd = 0;
     state.chargeHitDone = false;
-    state.lastBiteId = -1;
-    state.panic = 0;
+    state.lastStrikeId = -1;
     state.target = randPointInArena();
     dino.play("Idle");
   };

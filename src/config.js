@@ -29,11 +29,11 @@ export const PLAYER = {
   maxHealth: 100,
   attackRange: 4.5,
   attackCooldown: 0.7, // sec
-  attackDamage: 34,    // damage dealt to a predator on a landed bite
+  attackDamage: 34,    // damage dealt to a predator on a landed punch/kick
   invulnAfterHit: 1.0, // i-frames after taking damage (sec)
-  attackLockSeconds: 0.45, // movement-lock duration of a bite (the bite window)
-  lungeSpeed: 9,       // forward burst (units/sec) during the bite window
-  lungeSeconds: 0.18,  // how long the lunge push lasts within the bite
+  attackLockSeconds: 0.45, // movement-lock duration of a strike (the swing window)
+  lungeSpeed: 9,       // forward burst (units/sec) during the swing window
+  lungeSeconds: 0.18,  // how long the lunge push lasts within the swing
   // Sprint stamina — the core cat-and-mouse lever. The human's 16.5 u/s sprint
   // (1.5x the T-Rex's 11) opens a gap fast, BUT the rex has superior endurance:
   // sprint is stamina-gated so you can't run forever. When stamina empties you
@@ -56,27 +56,16 @@ export const PLAYER = {
   // 16.5 u/s sprint (was 0.18 against the raptor's 14) to preserve the original
   // risk tiering against the unchanged chase economy (T-Rex base 11, dusk peak
   // 13.5): at 0.22, 1 egg = 16.5/1.22 = 13.5 u/s (outruns the base rex by day,
-  // matched at deepest dusk — escapable with skill, roar/dash the late counter),
+  // matched at deepest dusk — escapable with skill, dash the late counter),
   // 2 eggs = 16.5/1.44 = 11.5 (just above base, tense), 3 eggs = 16.5/1.66 = 9.9
   // (below base — greedy and you get run down). Empty-handed sprint (16.5) always
   // beats any chase, so sprinting unburdened outruns the rex; carrying slows you.
   carrySlow: 0.22,      // speed multiplier per egg carried, applied as 1/(1+n*x)
-  // Intimidating ROAR (Q) — an active panic/utility tool. On a cooldown the
-  // raptor bellows: a chasing T-Rex inside the radius is briefly staggered
-  // (its pursuit broken), and nearby herbivores bolt in terror. Costs nothing
-  // but the cooldown, so it's a tactical "get off me" button, not spammable.
-  // All values are arcade-feel design choices.
-  // Cooldown lowered 8->6 in session 7. The roar is the *designed* escape from a
-  // sustained chase (you can't simply outrun the T-Rex once it's on you), so it
-  // needs to come round often enough to chain: roar -> sprint in the stagger
-  // window -> roar again as it re-closes. At 8s with a 1.4s stagger it was usable
-  // only ~17% of the time and a chase from across the arena was a death sentence.
-  // 6s still leaves a clear vulnerable window, so it's a tool, not a panic button.
-  roarCooldown: 6,      // sec between roars
-  roarRadius: 22,       // world units of effect
-  roarStagger: 1.4,     // sec a caught T-Rex is frozen/dazed
-  // DASH / dodge roll (F) — a skill-based reactive escape distinct from the
-  // roar (AoE crowd-control) and sprint (sustained, stamina-gated travel). A
+  // (The raptor-era ROAR (Q) was removed when the player became a human — a
+  // human can't bellow a T-Rex into a stagger. Its chase-breaking role now
+  // belongs to the ward beacons; dash is the personal escape tool.)
+  // DASH / dodge roll (F) — a skill-based reactive escape distinct from
+  // sprint (sustained, stamina-gated travel). A
   // short, fast forward burst with brief invulnerability: time it to slip a
   // T-Rex bite or a pterosaur swoop. It trades against sprint by sharing the
   // stamina pool, so you can't both dash and sustain a sprint indefinitely.
@@ -86,7 +75,7 @@ export const PLAYER = {
   dashSeconds: 0.28,    // burst duration (~8.4 units travelled), enough to clear a bite's reach (attackRange 5)
   dashIFrames: 0.32,    // invuln window — covers the burst + a sliver after, so a frame-perfect dodge negates a hit
   dashCost: 35,         // stamina spent per dash (~1.4s of sprint at drain 25) — equals the post-exhaustion sprint floor, so a dash eats a full recovery's worth of stamina; a real trade against your escape sprint
-  dashCooldown: 1.6,    // sec between dashes — reactive (far shorter than roar's 6s) but not a constant glide
+  dashCooldown: 1.6,    // sec between dashes — reactive but not a constant glide
 };
 
 export const TREX = {
@@ -115,25 +104,25 @@ export const TREX = {
   // choices, tuned against the existing chase economy.
   preySightRange: 30,      // < player sightRange (38): the herd must be clearly nearer than a distant raptor to pull aggro
   preyCloserBy: 8,         // world units the herd must be NEARER than the player before the T-Rex switches off the raptor — keeps the player the priority when both are close
-  preyBite: 30,            // damage per bite to a herbivore (herbivore maxHealth 60 = ~2 bites, same as the raptor's chomp)
+  preyBite: 30,            // damage per bite to a herbivore (herbivore maxHealth 60 = ~2 bites, same economy as the player's strike)
   preyAttackRange: 5.5,    // contact range to bite the prey (~its own attackRange, herbivores are large)
   preyAttackCooldown: 1.1, // sec between prey bites (a touch faster than its player bite — it's committed to the kill)
   playerPriorityRange: 16, // if the raptor is within this, the T-Rex always prefers the player over any prey — you can't hide behind a herbivore at point-blank
   // FEEDING FRENZY — the predator's vulnerable window. When a T-Rex fells its
   // prey it stops to FEED on the carcass: head-down, planted, distracted. This
-  // closes the herd-predation loop into a skill play — a brave raptor can rush
+  // closes the herd-predation loop into a skill play — a brave player can rush
   // in and punish the exposed flank for bonus damage. The predator drops feeding
-  // only if the raptor crowds it at point-blank (it whirls to defend) or its
-  // roar/dusk math forces a break. Provenance: design choice, tuned so one full
-  // feeding window roughly equals a one-bite-saved comeback, not a free kill.
+  // only if the player crowds it at point-blank (it whirls to defend) or a ward
+  // beacon forces a break. Provenance: design choice, tuned so one full
+  // feeding window roughly equals a one-strike-saved comeback, not a free kill.
   feedSeconds: 3.5,         // how long the T-Rex feeds on a fresh kill, planted at the carcass
-  feedVulnMultiplier: 2,    // raptor bite damage is doubled while the T-Rex feeds (head-down, exposed) — the payoff for a brave punish
-  feedBreakRange: 2.5,      // point-blank: only if the raptor crowds RIGHT on top of it (< PLAYER.attackRange 5) does it whirl off the meal to defend — so you CAN land a flank bite from the edge of your reach, but stacking on it loses the window
+  feedVulnMultiplier: 2,    // player strike damage is doubled while the T-Rex feeds (head-down, exposed) — the payoff for a brave punish
+  feedBreakRange: 2.5,      // point-blank: only if the player crowds RIGHT on top of it (< PLAYER.attackRange 4.5) does it whirl off the meal to defend — so you CAN land a flank strike from the edge of your reach, but stacking on it loses the window
 };
 
 export const HERBIVORE = {
   count: 9,
-  maxHealth: 60,         // bites to fell: 2 at PLAYER.attackDamage 34 (drops healing meat)
+  maxHealth: 60,         // strikes to fell: 2 at PLAYER.attackDamage 34 (drops healing meat)
   wanderSpeed: 3.5,
   fleeSpeed: 9,
   fleeRange: 16,         // starts fleeing player/trex within this
@@ -211,19 +200,19 @@ export const WATER = {
 // WARD BEACONS — unlit braziers ringed around the arena. Run up to one to
 // light it (proximity, no key — touch-friendly). A lit beacon does two things:
 // (1) casts a warding glow that breaks any T-Rex chase inside `wardRadius` and
-//     shoves it back to patrol (reuses the roar-stagger), refreshed while in
+//     shoves it back to patrol (a short stagger), refreshed while in
 //     range — so a lit beacon is a moving-but-safe pocket to route a chase
 //     through, especially valuable once dusk emboldens the predators;
 // (2) literally lights the dusk gloom near it (a warm point light) so the
 //     beacon mechanic and the dusk-readability payoff are the same object.
 // Lighting all three in a run fires a one-shot SANCTUARY bonus (heal + score).
 // They re-arm (snuff out) on a soft restart. All values arcade-feel choices,
-// tuned against the chase economy (T-Rex base chase 11, roar radius 22):
+// tuned against the chase economy (T-Rex base chase 11):
 export const BEACONS = {
   count: 3,                // braziers ringed around the arena
   ringRadius: 56,          // world units from centre they sit on (mid-field, between nest and rim)
   lightRange: 11,          // proximity to ignite an unlit beacon (a touch wider than the egg pickup so it's easy to brush)
-  wardRadius: 18,          // world units a lit beacon repels predators within (< roarRadius 22 so it's a pocket, not arena-wide)
+  wardRadius: 18,          // world units a lit beacon repels predators within (deliberately local — a pocket, not arena-wide)
   wardStagger: 0.6,        // sec of stagger refreshed each tick a T-Rex sits in the ward (short; re-applied while in range)
   lightHeight: 6,          // warm point-light range (units) cast around a lit beacon to push back the dusk gloom
   sanctuaryHeal: 25,       // HP restored once all beacons are lit (reward for clearing the ring)
@@ -343,9 +332,9 @@ export const JUICE = {
   pickupPopSeconds: 0.4,    // egg pickup burst lifetime
   lowHealthThreshold: 0.35, // fraction below which the red vignette appears
   chargeShake: 0.3,         // camera shake when a triceratops charges
-  biteConnectShake: 0.22,   // small kick when the raptor's bite lands (tactile confirmation; < a hit-taken)
-  feedHitShake: 0.33,       // bigger kick when the raptor lands a bite on a FEEDING T-Rex (the bonus-damage flank hit reads heavier)
-  roarShake: 0.45,          // strong brief kick selling the intimidating roar
+  strikeConnectShake: 0.22, // small kick when the player's punch/kick lands (tactile confirmation; < a hit-taken)
+  feedHitShake: 0.33,       // bigger kick when the player lands a strike on a FEEDING T-Rex (the bonus-damage flank hit reads heavier)
+  sanctuaryShake: 0.45,     // strong brief kick selling the full-ring sanctuary payoff
 };
 
 export const AUDIO = {

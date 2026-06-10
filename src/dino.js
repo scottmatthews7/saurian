@@ -4,7 +4,10 @@
 
 import { FACING_OFFSET } from "./config.js";
 
-const CLIP_KEYS = ["Idle", "Walk", "Run", "Jump", "Attack", "Death"];
+// Attack2/Attack3 are optional melee variants: only the human ships extra
+// strike clips (punch left / kick), so for the dinos those keys simply never
+// resolve and the single Attack clip is used.
+const CLIP_KEYS = ["Idle", "Walk", "Run", "Jump", "Attack", "Attack2", "Attack3", "Death"];
 
 const MODELS = {
   raptor: "assets/models/raptor.glb",
@@ -19,17 +22,20 @@ const MODELS = {
 // Per-kind clip-name overrides. The six Quaternius dinos share the
 // `<Species>_<Key>` convention, so each logical key matches the substring
 // `_<Key>` (the default below). The human (Quaternius "Adventurer") uses a
-// different naming scheme — `CharacterArmature|<Clip>` — and has no Walk/Jump/
-// bite clips, so we map the player's logical states onto the clips it does
-// ship: a Roll stands in for the jump leap, a Punch for the "Attack" (bite).
-// Each entry is the exact substring matched against an animation-group name.
+// different naming scheme — `CharacterArmature|<Clip>` — and has no Jump clip,
+// so a Roll stands in for the jump leap. The human's melee is bare-handed
+// punches and kicks (Attack/Attack2/Attack3 cycle per swing in the player
+// controller). Each entry is the exact substring matched against an
+// animation-group name.
 const CLIP_ALIASES = {
   human: {
     Idle: "|Idle",     // matches CharacterArmature|Idle (not Idle_Gun etc.)
     Walk: "|Walk",
     Run: "|Run",       // CharacterArmature|Run — first match wins over Run_Left etc.
     Jump: "|Roll",     // no jump clip; the dodge-roll reads as a leap
-    Attack: "|Punch_Right", // no bite; a right punch is the melee "attack"
+    Attack: "|Punch_Right",  // bare-handed melee: right punch…
+    Attack2: "|Punch_Left",  // …left punch…
+    Attack3: "|Kick_Right",  // …and a kick, cycled per swing
     Death: "|Death",
   },
 };

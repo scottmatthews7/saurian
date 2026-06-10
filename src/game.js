@@ -113,7 +113,7 @@ export async function startGame() {
   beacons.onSanctuary = (pos) => {
     audio.win();
     fx.pickupBurst(pos, new B2.Color4(1, 0.85, 0.4, 1));
-    fx.addShake(JUICE.roarShake);
+    fx.addShake(JUICE.sanctuaryShake);
     player.heal(BEACONS.sanctuaryHeal);
     score.points += BEACONS.sanctuaryScore;
     hud.setScore(score.points, score.combo);
@@ -126,8 +126,10 @@ export async function startGame() {
     fx.pickupBurst(pos, new B2.Color4(0.5, 0.5, 0.55, 1));
     hud.popup("BEACON GUTTERED OUT", "warn");
   };
-  player.onAttack = () => audio.bite();
-  // Splash + spray when the raptor wades into the pond.
+  // A punch/kick swing: an airy whoosh (the impact thud lands separately when
+  // a strike actually connects, in the strike resolution below).
+  player.onAttack = () => audio.swing();
+  // Splash + spray when the player wades into the pond.
   player.onSplash = (pos) => {
     audio.splash();
     fx.pickupBurst(pos, new B2.Color4(0.45, 0.7, 0.95, 1));
@@ -138,23 +140,6 @@ export async function startGame() {
   player.onDash = (pos) => {
     audio.whoosh();
     fx.pickupBurst(pos, new B2.Color4(0.45, 0.85, 1, 1));
-  };
-  // Intimidating roar: stagger any T-Rex in range and panic nearby herbivores.
-  player.onRoar = (pos) => {
-    audio.roar();
-    fx.addShake(JUICE.roarShake);
-    fx.pickupBurst(pos, new B2.Color4(1, 0.85, 0.4, 1));
-    const r2 = PLAYER.roarRadius * PLAYER.roarRadius;
-    for (const p of predators) {
-      if (p.dead || !p.roarReact) continue;
-      const tp = p.dino.root.position;
-      if ((tp.x - pos.x) ** 2 + (tp.z - pos.z) ** 2 < r2) p.roarReact(PLAYER.roarStagger);
-    }
-    for (const h of herd) {
-      if (h.dead || !h.roarReact) continue;
-      const tp = h.dino.root.position;
-      if ((tp.x - pos.x) ** 2 + (tp.z - pos.z) ** 2 < r2) h.roarReact(PLAYER.roarStagger);
-    }
   };
   herd.forEach((h) => {
     h.onCharge = () => { audio.bite(); fx.addShake(JUICE.chargeShake); };
@@ -429,31 +414,32 @@ export async function startGame() {
         }
       }
 
-      // player bite: one clean, frame-rate-independent hit per target per swing.
-      // `lastBiteId` on each target gates it so a single chomp lands exactly
-      // PLAYER.attackDamage once, no matter the frame rate. Felled herbivores
-      // drop meat that heals the raptor.
+      // player strike (punch/kick): one clean, frame-rate-independent hit per
+      // target per swing. `lastStrikeId` on each target gates it so a single
+      // swing lands exactly PLAYER.attackDamage once, no matter the frame rate.
+      // Felled herbivores drop meat that heals the player.
       if (player.attacking > 0) {
-        const tryBite = (t) => {
-          if (t.dead || t.lastBiteId === player.biteId) return;
+        const tryStrike = (t) => {
+          if (t.dead || t.lastStrikeId === player.strikeId) return;
           const tp = t.dino.root.position;
           if (Math.hypot(pPos.x - tp.x, pPos.z - tp.z) < PLAYER.attackRange) {
-            t.lastBiteId = player.biteId;
-            // FEEDING FRENZY payoff: a T-Rex bitten while head-down feeding takes
-            // bonus damage — the brave-raptor punish window. Loud feedback so the
+            t.lastStrikeId = player.strikeId;
+            // FEEDING FRENZY payoff: a T-Rex struck while head-down feeding takes
+            // bonus damage — the brave-player punish window. Loud feedback so the
             // player learns the opening pays.
             const feeding = t.feeding > 0;
             t.takeDamage(PLAYER.attackDamage * (feeding ? TREX.feedVulnMultiplier : 1));
+            audio.thud();        // the blow lands: a meaty impact, not a chomp
             if (feeding) {
               hud.popup("FEEDING FRENZY — flank hit!", "good");
               fx.addShake(JUICE.feedHitShake);
-            } else if (!player.biteConnected) {
-              player.biteConnected = true; fx.addShake(JUICE.biteConnectShake);
+            } else if (!player.strikeConnected) {
+              player.strikeConnected = true; fx.addShake(JUICE.strikeConnectShake);
             }
           }
         };
-        for (const p of predators) tryBite(p);
-        for (const h of herd) tryBite(h);
+        for (const p of predators) tryStrike(p);
+        for (const h of herd) tryStrike(h);
       }
 
       // expire the combo display once the chain window lapses
@@ -465,7 +451,6 @@ export async function startGame() {
       // HUD — show the most-threatening (nearest live) predator's health
       hud.setHealth(player.health, PLAYER.maxHealth);
       hud.setStamina(player.stamina, PLAYER.staminaMax, player.exhausted);
-      hud.setRoar(1 - player.roarTimer / PLAYER.roarCooldown);
       hud.setDash(1 - player.dashTimer / PLAYER.dashCooldown);
       hud.setTrex(primary ? primary.health : 0, TREX.maxHealth);
       hud.setEggs(eggs.banked, EGGS.targetToWin, eggs.carrying, eggs.remaining());

@@ -2,8 +2,8 @@ import { TOUCH } from "./config.js";
 
 // On-screen touch controls for phones/tablets: a left analog joystick that
 // drives the existing camera-relative WASD keys (so all movement logic is
-// reused), and right-side BITE / JUMP buttons. A full-deflection stick also
-// engages sprint. Only mounted when a touch device is detected.
+// reused), and right-side STRIKE / JUMP / DASH buttons. A full-deflection
+// stick also engages sprint. Only mounted when a touch device is detected.
 
 export function isTouchDevice() {
   return ("ontouchstart" in window) ||
@@ -34,10 +34,9 @@ export function createTouchControls(input) {
   root.innerHTML = `
     <div id="joyZone"><div id="joyBase"><div id="joyKnob"></div></div></div>
     <div id="touchBtns">
-      <div class="touchBtn" id="btnRoar">ROAR</div>
       <div class="touchBtn" id="btnDash">DASH</div>
       <div class="touchBtn" id="btnJump">JUMP</div>
-      <div class="touchBtn bite" id="btnBite">BITE</div>
+      <div class="touchBtn strike" id="btnStrike">STRIKE</div>
     </div>`;
   document.body.appendChild(root);
 
@@ -45,8 +44,7 @@ export function createTouchControls(input) {
   const joyBase = root.querySelector("#joyBase");
   const knob = root.querySelector("#joyKnob");
   const btnJump = root.querySelector("#btnJump");
-  const btnBite = root.querySelector("#btnBite");
-  const btnRoar = root.querySelector("#btnRoar");
+  const btnStrike = root.querySelector("#btnStrike");
   const btnDash = root.querySelector("#btnDash");
 
   const radius = TOUCH.joyRadius;
@@ -90,7 +88,7 @@ export function createTouchControls(input) {
   joyZone.addEventListener("pointerup", endJoy);
   joyZone.addEventListener("pointercancel", endJoy);
 
-  // action buttons: BITE fires the attack queue, JUMP the jump queue
+  // action buttons: STRIKE fires the attack queue, JUMP the jump queue
   const tap = (el, fn) => {
     el.addEventListener("pointerdown", (e) => {
       fn();
@@ -100,9 +98,8 @@ export function createTouchControls(input) {
     el.addEventListener("pointerup", () => el.classList.remove("pressed"));
     el.addEventListener("pointercancel", () => el.classList.remove("pressed"));
   };
-  tap(btnBite, () => input.queueAttack());
+  tap(btnStrike, () => input.queueAttack());
   tap(btnJump, () => input.queueJump());
-  tap(btnRoar, () => input.queueRoar());
   tap(btnDash, () => input.queueDash());
 
   return { mounted: true, root };

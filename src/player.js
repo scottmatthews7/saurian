@@ -1,8 +1,8 @@
 import { PLAYER, CAMERA, ARENA, WATER } from "./config.js";
 import { loadDino } from "./dino.js";
 
-// Third-person raptor controller: WASD relative to camera, Shift to sprint,
-// Space to jump, click / J to bite. Uses Babylon moveWithCollisions.
+// Third-person human controller: WASD relative to camera, Shift to sprint,
+// Space to jump, click / J to punch/kick. Uses Babylon moveWithCollisions.
 
 export async function createPlayer(scene, shadow, input) {
   const B = window.BABYLON;
@@ -30,10 +30,8 @@ export async function createPlayer(scene, shadow, input) {
     attackTimer: 0,
     invuln: 0,
     attacking: 0,        // remaining attack-anim lock
-    biteId: 0,           // increments each swing; lets the game land one hit per target per bite
-    biteConnected: false,// true once a swing has dealt damage (drives the bite "chomp" SFX/feel)
-    roarTimer: 0,        // roar cooldown remaining (sec)
-    onRoar: null,        // fired when a roar successfully triggers (game applies the AoE + FX)
+    strikeId: 0,         // increments each swing; lets the game land one hit per target per strike
+    strikeConnected: false, // true once a swing has dealt damage (drives the impact SFX/feel)
     dashTimer: 0,        // dash cooldown remaining (sec)
     dashActive: 0,       // remaining dash-burst duration (sec); >0 means mid-dash
     dashDir: { x: 0, z: 1 }, // unit heading the current dash drives along
@@ -45,11 +43,17 @@ export async function createPlayer(scene, shadow, input) {
     carrying: 0,         // eggs carried (set by game each frame, drives carrySlow)
     dead: false,
     wading: false,       // true while standing in the pond
-    onAttack: null,      // fired when a bite starts (set by game for SFX)
+    onAttack: null,      // fired when a punch/kick starts (set by game for SFX)
     onHurt: null,        // fired whenever damage actually lands (any source)
     onSplash: null,      // fired on the frame we enter the water
     pos: collider.position,
   };
+
+  // Melee swing animation cycle: every clip the model ships for the logical
+  // attack (the human has right punch / left punch / kick; a dino just its one
+  // Attack clip). Cycled per swing so repeated strikes read as combinations.
+  const strikeClips = ["Attack", "Attack2", "Attack3"].filter((k) => dino.clips[k]);
+  if (!strikeClips.length) strikeClips.push("Attack");
 
   function camForward() {
     const cam = scene.activeCamera;
@@ -64,17 +68,8 @@ export async function createPlayer(scene, shadow, input) {
     state.attackTimer = Math.max(0, state.attackTimer - dt);
     state.invuln = Math.max(0, state.invuln - dt);
     state.attacking = Math.max(0, state.attacking - dt);
-    state.roarTimer = Math.max(0, state.roarTimer - dt);
     state.dashTimer = Math.max(0, state.dashTimer - dt);
     state.dashActive = Math.max(0, state.dashActive - dt);
-
-    // Intimidating roar (Q): off-cooldown only. The game wires onRoar to apply
-    // the area effect (stagger the T-Rex, panic the herd) and the FX/SFX.
-    if (input.consumeRoar() && state.roarTimer <= 0 && !state.dead) {
-      state.roarTimer = PLAYER.roarCooldown;
-      dino.flash(0.3, new B.Color3(0.9, 0.7, 0.2));
-      if (state.onRoar) state.onRoar(collider.position.clone());
-    }
 
     // --- movement input (camera-relative) ---
     const fwd = camForward();
@@ -131,7 +126,7 @@ export async function createPlayer(scene, shadow, input) {
 
     // DASH / dodge roll (F): a short fast burst along the heading with brief
     // invulnerability. Off-cooldown, costs stamina, and not while exhausted or
-    // mid-bite — so it trades against sprint rather than being free. Dashes
+    // mid-swing — so it trades against sprint rather than being free. Dashes
     // toward the current move input if any, else straight ahead (facing).
     if (input.consumeDash() && state.dashTimer <= 0 && state.dashActive <= 0
         && !state.exhausted && state.stamina >= PLAYER.dashCost && state.attacking <= 0) {
@@ -166,8 +161,8 @@ export async function createPlayer(scene, shadow, input) {
       horiz.x = state.dashDir.x * d;
       horiz.z = state.dashDir.z * d;
     }
-    // Bite lunge: a short forward burst at the start of the attack window so
-    // the bite has weight and can close distance onto a backing-away target.
+    // Strike lunge: a short forward burst at the start of the attack window so
+    // the punch/kick has weight and can close distance onto a backing-away target.
     if (state.attacking > ATTACK_LOCK - PLAYER.lungeSeconds) {
       const lunge = PLAYER.lungeSpeed * dt;
       horiz.x += Math.sin(state.facing) * lunge;
@@ -204,13 +199,14 @@ export async function createPlayer(scene, shadow, input) {
       dino.play("Idle");
     }
 
-    // --- attack ---
+    // --- attack (bare-handed punch/kick) ---
     if (input.consumeAttack() && state.attackTimer <= 0 && state.grounded) {
       state.attackTimer = PLAYER.attackCooldown;
       state.attacking = ATTACK_LOCK;
-      state.biteId++;            // a fresh swing: every target becomes hittable once
-      state.biteConnected = false;
-      dino.play("Attack", { loop: false, speed: 1.4 });
+      state.strikeId++;          // a fresh swing: every target becomes hittable once
+      state.strikeConnected = false;
+      // cycle right punch -> left punch -> kick so combos read naturally
+      dino.play(strikeClips[state.strikeId % strikeClips.length], { loop: false, speed: 1.4 });
       if (state.onAttack) state.onAttack();
     }
   };
@@ -256,9 +252,8 @@ export async function createPlayer(scene, shadow, input) {
     state.attackTimer = 0;
     state.invuln = 0;
     state.attacking = 0;
-    state.biteId = 0;
-    state.biteConnected = false;
-    state.roarTimer = 0;
+    state.strikeId = 0;
+    state.strikeConnected = false;
     state.dashTimer = 0;
     state.dashActive = 0;
     state.stamina = PLAYER.staminaMax;

@@ -9,7 +9,11 @@ export function createAudio() {
   let ctx = null;
   let master = null;
   let musicGain = null;
-  let muted = AUDIO.startMuted;
+  // `?mute` in the URL starts the game muted (a dev/test affordance like
+  // `?probe` — automated checks must not blast audio); normal play keeps the
+  // configured default.
+  const urlMuted = typeof location !== "undefined" && location.search.includes("mute");
+  let muted = AUDIO.startMuted || urlMuted;
   let ambientNodes = null;
 
   // Decoded sample buffers (real CC0/royalty-free audio). Keyed by a logical
@@ -207,7 +211,35 @@ export function createAudio() {
         o.start(); o.stop(now() + dur + 0.02);
       });
     },
-    // Snappy chomp: short pitch-down click plus a noise burst.
+    // Melee swing: a short low airy whoosh as the player's punch/kick swings —
+    // softer and lower than the dash whoosh so the two tools stay distinct.
+    swing() {
+      if (!ctx || muted) return;
+      const n = noise(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+      f.type = "bandpass"; f.Q.value = 1.0;
+      f.frequency.setValueAtTime(280, now());
+      f.frequency.exponentialRampToValueAtTime(900, now() + 0.14);
+      g.gain.setValueAtTime(0.0001, now());
+      g.gain.exponentialRampToValueAtTime(0.18, now() + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now() + 0.16);
+      n.connect(f); f.connect(g); g.connect(master);
+      n.start(); n.stop(now() + 0.18);
+    },
+    // Melee impact: a meaty body thud when a punch/kick actually connects — a
+    // low pitch-drop knock plus a muffled noise slap (deliberately NOT the
+    // T-Rex's chomp; a human hits with fists, not jaws).
+    thud() {
+      if (!ctx || muted) return;
+      tone(110, 0.14, "sine", 0.5, 55);
+      const n = noise(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+      f.type = "lowpass"; f.frequency.value = 600;
+      g.gain.setValueAtTime(0.3, now());
+      g.gain.exponentialRampToValueAtTime(0.0001, now() + 0.09);
+      n.connect(f); f.connect(g); g.connect(master);
+      n.start(); n.stop(now() + 0.1);
+    },
+    // Snappy chomp: short pitch-down click plus a noise burst. The PREDATORS'
+    // bite (T-Rex on the player / on prey) — not the player's attack.
     bite() {
       if (!ctx || muted) return;
       tone(180, 0.12, "square", 0.4, 60);

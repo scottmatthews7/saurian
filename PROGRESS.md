@@ -695,6 +695,60 @@
   a page-resident `initScript` autopilot writing to `window.__audioProbe` + a tiny
   single-shot read.
 
+## Done (session 18) — HUMANISED the player's abilities (no more bite/roar)
+- **The ask:** "the human shouldn't be able to roar or bite to survive lol."
+- **BITE → PUNCH/KICK melee** (same input — Click/J — same damage 34 / cooldown
+  0.7; real weapons come later with the backpack/tools feature):
+  - `dino.js`: added optional `Attack2`/`Attack3` clip keys; the human maps
+    Attack→`|Punch_Right`, Attack2→`|Punch_Left`, Attack3→`|Kick_Right` (full
+    clip list extracted from the glb's JSON chunk — it also ships Kick_Left,
+    HitRecieve etc. for later). Dinos resolve only their single Attack clip.
+  - `player.js`: each swing cycles right punch → left punch → kick so combos
+    read naturally; `biteId`/`biteConnected` renamed `strikeId`/`strikeConnected`
+    (targets' `lastBiteId` → `lastStrikeId` in `ai.js`; `JUICE.biteConnectShake`
+    → `strikeConnectShake`).
+  - **SFX:** the swing plays a new low airy `audio.swing()` whoosh; a connecting
+    hit lands a meaty `audio.thud()` (low pitch-drop + muffled noise slap) — the
+    chomp `audio.bite()` is now predators-only (T-Rex bites, trike charge).
+- **ROAR (Q) removed from the player entirely:** input (q key + queue/consume),
+  `player.roarTimer`/`onRoar` + the game's AoE handler, `PLAYER.roarCooldown/
+  roarRadius/roarStagger`, HUD Roar charge bar (hud.js + index.html markup/CSS),
+  touch ROAR button (BITE button renamed STRIKE), title-screen "roar" copy +
+  Q controls row, README controls/features. The herbivores' roar `panic`
+  terror-flee + `roarReact` were dead code with the player roar gone — removed.
+- **Ward beacons keep their chase-break:** the predator's stagger hook was
+  renamed `roarReact` → `breakChase` (it no longer reacts to any roar) and
+  `beacons.wardPredators` calls that; `JUICE.roarShake` → `sanctuaryShake`.
+  Beacon behaviour itself untouched.
+- **`?mute` URL parameter** (`audio.js`): a page loaded with `?mute` in the
+  query starts muted (a dev/test affordance like `?probe` — automated browser
+  probes must not blast audio through the user's speakers). Normal play keeps
+  the configured default (unmuted); M / the button still toggle. ALL future
+  in-browser test pages must be opened with `?mute` appended.
+
+## Verified (session 18)
+- All 15 src modules pass `node --check`; all 4 headless tests
+  (`dusk`/`cursed_egg`/`beacons`/`herd_hunt`) pass unchanged (none referenced
+  the roar).
+- Live in-browser (isolated context `dinoa-humanise`, own server :8181, fresh
+  files confirmed via curl, **0 console errors/warnings**, 660 meshes):
+  - **Punch/kick:** three consecutive swings on a T-Rex landed exactly 34 dmg
+    each, cycling `CharacterArmature|Punch_Left` → `|Kick_Right` →
+    `|Punch_Right` (140 → 38 HP).
+  - **Q does nothing:** no stagger on a T-Rex inside the old 22u radius,
+    `player.roarTimer`/`t.roarReact` undefined, no `#roarFill` in the DOM.
+  - **Beacons still break chases:** brushing a brazier lights it; a chasing
+    T-Rex dropped inside the ward → `staggered 0.6`, mode flipped to `patrol`.
+  - **Title screen:** no "roar"/"bite" anywhere; "Run, punch, kick, dash to
+    survive" + a "CLICK / J · Punch / Kick" controls row.
+- **`?mute` verified both ways:** headless Node (stubbed `location`: `?mute` →
+  muted true, toggle works, no param → default unmuted) AND in-browser
+  (`?mute` page boots with `audio.muted === true`, HUD shows "🔇 Muted").
+- **Env gotchas re-confirmed:** a peer stole the selected tab mid-probe
+  (re-select by page id), later NAVIGATED my tab to its own URL (re-open a
+  fresh context), and a probe's held synthetic `w` (no keyup) let the rex
+  devour the player, gating input until an `R` restart.
+
 ## Next (session 17)
 - A herbivore "stampede" when one of the herd is taken (the rest bolt as a flock);
   or a brief feeding-frenzy heal-steal: bite the feeding T-Rex AND grab the meat.
@@ -708,16 +762,16 @@
   especially nasty at dusk).
 - Tune the dusk numbers after live play: `fullDuskSeconds` (150) vs typical run
   length, `trexSpeedBonus` (does the chase stay escapable at dusk?), `bankBonus`.
-- Consider dusk also speeding the ROAR cooldown (a defensive payoff to match the
-  offensive bank bonus), and a moonrise/torch-lit-nest readability aid.
+- ~~Consider dusk also speeding the ROAR cooldown~~ (moot — the player roar was
+  removed in session 18); a moonrise/torch-lit-nest readability aid still open.
 
 ## Run it
 ```
 cd /Users/scottmatthews/personal_repos/dino-arena-a
 python3 -m http.server 8124
 # open http://localhost:8124/
-# Controls: WASD move · Shift sprint · Space jump · Click/J bite · Q roar · F dash · M mute · P pause · R restart
-# Touch (phones/tablets): left joystick to move (push full to sprint), ROAR/BITE/JUMP buttons; tap to start/restart
+# Controls: WASD move · Shift sprint · Space jump · Click/J punch/kick · F dash · M mute · P pause · R restart
+# Touch (phones/tablets): left joystick to move (push full to sprint), STRIKE/JUMP/DASH buttons; tap to start/restart
 ```
 
 ## Debug harness

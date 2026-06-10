@@ -155,17 +155,17 @@ export function createBeacons(scene, shadow, groundFn) {
     },
 
     // Repel predators sitting inside any lit beacon's dusk-scaled ward: break the
-    // chase and refresh a short stagger (reuses roarReact). Called from the game
-    // loop with the live predator list. Mutates predator state.
+    // chase and refresh a short stagger (the predator's breakChase). Called from
+    // the game loop with the live predator list. Mutates predator state.
     wardPredators(predators) {
       const wr = state.wardRadiusNow;
       const wr2 = wr * wr;
       for (const b of beacons) {
         if (!b.lit) continue;
         for (const p of predators) {
-          if (p.dead || !p.roarReact) continue;
+          if (p.dead || !p.breakChase) continue;
           const tp = p.dino.root.position;
-          if ((tp.x - b.x) ** 2 + (tp.z - b.z) ** 2 < wr2) p.roarReact(BEACONS.wardStagger);
+          if ((tp.x - b.x) ** 2 + (tp.z - b.z) ** 2 < wr2) p.breakChase(BEACONS.wardStagger);
         }
       }
     },
