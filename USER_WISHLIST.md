@@ -220,3 +220,8 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
    dinosaur, shown ONLY when engaged — i.e. while it's chasing/attacking the
    player or has recently taken damage from the player; hidden otherwise. Billboard
    to the camera, colour by fraction, fade in/out. (Predator + herbivore.)
+
+13. **Plane-crash spawn.** The player starts each run as if they've just survived
+   a PLANE CRASH — a crashed-plane wreck prop at the spawn point (smoke/debris),
+   the human getting up from it. Fits the "stranded in dino country" survival
+   framing. Optional: a brief intro beat/sound on spawn.

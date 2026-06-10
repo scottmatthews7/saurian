@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Saurian — Map Layout Designer</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #11140f; color: #e8efe0;
+    font: 14px/1.5 -apple-system, system-ui, Segoe UI, sans-serif;
+    display: flex; gap: 24px; padding: 24px; flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0 0 4px; letter-spacing: .5px; }
+  .sub { opacity: .6; margin: 0 0 16px; font-size: 13px; }
+  canvas { background: #1a1f16; border-radius: 12px; border: 1px solid #2c3526;
+    cursor: grab; touch-action: none; }
+  .panel { min-width: 320px; max-width: 380px; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 7px 9px;
+    border-radius: 8px; margin-bottom: 6px; background: #1a1f16; border: 1px solid #2c3526; }
+  .sw { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+  .row b { flex: 1; }
+  .row .v { font-variant-numeric: tabular-nums; opacity: .85; font-size: 13px; }
+  textarea { width: 100%; height: 200px; margin-top: 12px; background: #0d100b;
+    color: #cfe0bf; border: 1px solid #2c3526; border-radius: 8px; padding: 10px;
+    font: 12px/1.45 ui-monospace, Menlo, monospace; resize: vertical; }
+  button { margin-top: 8px; background: #3a5a2a; color: #fff; border: 0;
+    padding: 9px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+  button:hover { background: #47702f; }
+  .hint { opacity: .55; font-size: 12px; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <div>
+    <h1>SAURIAN · Map Layout Designer</h1>
+    <p class="sub">Drag a zone to move it · drag its edge ring to resize · drag the spawn dot. The arena edge is fixed.</p>
+    <canvas id="c" width="660" height="660"></canvas>
+  </div>
+  <div class="panel">
+    <div id="rows"></div>
+    <button id="copy">Copy values</button>
+    <button id="reset">Reset to current game</button>
+    <textarea id="out" readonly></textarea>
+    <p class="hint">When it looks right, click <b>Copy values</b> and paste them back to me — I'll bake this layout into the game as the fixed map for all players.</p>
+  </div>
+
+<script>
+const ARENA = 90;                // world radius (fixed)
+const VIEW = 110;                // world half-extent shown
+const S = 660;                   // canvas px
+const scale = S / (VIEW * 2);    // px per world unit
+const cx = S / 2, cy = S / 2;
+
+// World->canvas. +x = east (right), +z = south (down).
+const px = (x) => cx + x * scale;
+const py = (z) => cy + z * scale;
+const wx = (X) => (X - cx) / scale;
+const wz = (Y) => (Y - cy) / scale;
+
+// Seeded from the current game config.
+const DEFAULTS = [
+  { key: 'spawn',     label: 'Spawn',           color: '#ffffff', x: 0,   z: 0,   r: 0,  point: true },
+  { key: 'dryZone',   label: 'Dry rocky (arid)', color: '#c9a85e', x: 46,  z: -40, r: 34 },
+  { key: 'jungleZone',label: 'Jungle thicket',   color: '#4fae5f', x: -42, z: -38, r: 30 },
+  { key: 'pond',      label: 'Wetland / pond',   color: '#3a9bd1', x: -34, z: 28,  r: 17 },
+];
+let zones = structuredClone(DEFAULTS);
+
+const cvs = document.getElementById('c'), ctx = cvs.getContext('2d');
+let drag = null; // { i, mode:'move'|'resize', ox, oz }
+
+function clampArena(z) {
+  const d = Math.hypot(z.x, z.z);
+  const lim = ARENA - (z.point ? 0 : 0); // allow centres anywhere in/near arena
+  if (d > lim + 10) { const k = (lim + 10) / d; z.x *= k; z.z *= k; }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, S, S);
+  // arena disc
+  ctx.fillStyle = '#222a1c'; ctx.beginPath(); ctx.arc(cx, cy, ARENA * scale, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#3a4a2c'; ctx.lineWidth = 2; ctx.stroke();
+  // grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  for (let g = -100; g <= 100; g += 20) {
+    ctx.beginPath(); ctx.moveTo(px(g), 0); ctx.lineTo(px(g), S); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, py(g)); ctx.lineTo(S, py(g)); ctx.stroke();
+  }
+  // compass
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('N (-z)', cx, 16); ctx.fillText('S (+z)', cx, S - 6);
+  ctx.fillText('W (-x)', 22, cy); ctx.fillText('E (+x)', S - 22, cy);
+
+  for (const z of zones) {
+    if (z.point) {
+      ctx.fillStyle = z.color; ctx.beginPath(); ctx.arc(px(z.x), py(z.z), 7, 0, 7); ctx.fill();
+      ctx.fillStyle = '#000'; ctx.font = 'bold 10px sans-serif'; ctx.fillText('S', px(z.x), py(z.z) + 3.5);
+      continue;
+    }
+    ctx.fillStyle = z.color + '33';
+    ctx.beginPath(); ctx.arc(px(z.x), py(z.z), z.r * scale, 0, 7); ctx.fill();
+    ctx.strokeStyle = z.color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(px(z.x), py(z.z), z.r * scale, 0, 7); ctx.stroke();
+    ctx.fillStyle = z.color; ctx.textAlign = 'center'; ctx.font = '12px sans-serif';
+    ctx.fillText(z.label, px(z.x), py(z.z));
+  }
+  renderPanel();
+}
+
+function renderPanel() {
+  document.getElementById('rows').innerHTML = zones.map((z) =>
+    `<div class="row"><span class="sw" style="background:${z.color}"></span>` +
+    `<b>${z.label}</b><span class="v">x ${z.x.toFixed(0)}, z ${z.z.toFixed(0)}` +
+    (z.point ? '' : `, r ${z.r.toFixed(0)}`) + `</span></div>`
+  ).join('');
+  const cfg = {};
+  for (const z of zones) cfg[z.key] = z.point
+    ? { x: Math.round(z.x), z: Math.round(z.z) }
+    : { centerX: Math.round(z.x), centerZ: Math.round(z.z), radius: Math.round(z.r) };
+  document.getElementById('out').value = JSON.stringify(cfg, null, 2);
+}
+
+function hit(mx, my) {
+  for (let i = zones.length - 1; i >= 0; i--) {
+    const z = zones[i];
+    const d = Math.hypot(mx - px(z.x), my - py(z.z));
+    if (z.point) { if (d < 12) return { i, mode: 'move' }; continue; }
+    const rpx = z.r * scale;
+    if (Math.abs(d - rpx) < 9) return { i, mode: 'resize' };
+    if (d < rpx) return { i, mode: 'move' };
+  }
+  return null;
+}
+
+function pos(e) {
+  const r = cvs.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return { mx: t.clientX - r.left, my: t.clientY - r.top };
+}
+cvs.addEventListener('pointerdown', (e) => {
+  const { mx, my } = pos(e); const h = hit(mx, my);
+  if (h) { drag = h; cvs.style.cursor = 'grabbing'; cvs.setPointerCapture(e.pointerId); }
+});
+cvs.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const { mx, my } = pos(e); const z = zones[drag.i];
+  if (drag.mode === 'move') { z.x = wx(mx); z.z = wz(my); clampArena(z); }
+  else { z.r = Math.max(6, Math.hypot(mx - px(z.x), my - py(z.z)) / scale); }
+  draw();
+});
+cvs.addEventListener('pointerup', () => { drag = null; cvs.style.cursor = 'grab'; });
+
+document.getElementById('copy').onclick = () => {
+  const t = document.getElementById('out'); t.select();
+  navigator.clipboard.writeText(t.value).catch(() => {});
+};
+document.getElementById('reset').onclick = () => { zones = structuredClone(DEFAULTS); draw(); };
+
+draw();
+</script>
+</body>
+</html>
