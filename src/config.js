@@ -320,10 +320,12 @@ export const PTERO_DIVE = {
 // If a species visibly runs backwards in the ?probe harness, set its entry to
 // Math.PI here — no code change needed. Verified via window.__probeResult.
 export const FACING_OFFSET = {
-  // The Quaternius "Adventurer" (human player) authors its forward toward -Z,
-  // opposite the dinos, so it needs a half-turn to face its travel heading.
-  // Verified empirically via the ?probe harness (forwardDotTravel sign check).
-  human: Math.PI,
+  // The Quaternius "Adventurer" (human player) authors its forward toward +Z,
+  // same as the dinos (matches our atan2(dx,dz)->rotation.y convention), so no
+  // correction is needed. Verified by a side-on screenshot: with offset 0 the
+  // human's chest/face lead his travel heading. (An earlier PI guess made him
+  // visibly run BACKWARDS — backpack-first — so this is 0, not PI.)
+  human: 0,
   raptor: 0,
   trex: 0,
   triceratops: 0,
