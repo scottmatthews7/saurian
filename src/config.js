@@ -127,6 +127,17 @@ export const EGGS = {
   goldenChance: 0.18,    // probability an egg spawns golden
   goldenValueMul: 3,     // score multiplier vs a normal egg
   goldenCounts: 2,       // counts as this many toward the win target
+  // A rare CURSED egg: a dark, eerie prize. While it is carried EVERY T-Rex
+  // homes in on the raptor (its FSM target is forced onto you regardless of
+  // sight range) and chases a touch faster — you've rung the dinner bell. It is
+  // worth a big score bonus but counts as only 1 toward the win target, so it's
+  // a bravado play: grab it, sprint home with the whole arena hunting you, bank
+  // it for a windfall. Especially deadly at dusk when predators are already
+  // bold. Rolled mutually-exclusive with golden (golden wins the tie). Arcade.
+  cursedChance: 0.12,    // probability an egg spawns cursed (rolled after golden)
+  cursedValueMul: 6,     // score multiplier vs a normal egg (the windfall)
+  cursedCounts: 1,       // counts as this many toward the win target
+  cursedLureSpeed: 1.5,  // +chase units/sec a T-Rex gains while you carry a cursed egg
 };
 
 // Meat pickups: a fleeing herbivore the raptor bites drops meat that heals on

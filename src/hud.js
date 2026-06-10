@@ -107,7 +107,7 @@ export function createHUD() {
         <div class="titleCard">
           <div class="bannerTitle start titleBig">DINO ARENA</div>
           <div class="titleTag">SURVIVAL</div>
-          <div class="titleObjective">Collect <b>${target}</b> glowing eggs and bank them at your nest.<br/>A roaming T-Rex wants you dead. Run, bite, <b>roar</b> to survive.<br/><span class="titleDusk">As <b>dusk</b> falls the predators grow bolder — but late banks pay double.</span></div>
+          <div class="titleObjective">Collect <b>${target}</b> glowing eggs and bank them at your nest.<br/>A roaming T-Rex wants you dead. Run, bite, <b>roar</b> to survive.<br/><span class="titleDusk">As <b>dusk</b> falls the predators grow bolder — but late banks pay double.</span><br/><span class="titleCursed">Grab a <b>cursed egg</b> ☠ for a huge score — but every T-Rex hunts you while you carry it.</span></div>
           <div class="controls">
             ${ctrl("WASD", "Move")}
             ${ctrl("SHIFT", "Sprint")}

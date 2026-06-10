@@ -28,6 +28,15 @@ export function createEggs(scene, shadow, groundFn) {
   goldMat.emissiveColor = new B.Color3(1.0, 0.75, 0.15).scale(EGGS.glowIntensity);
   goldMat.specularColor = new B.Color3(1.0, 0.9, 0.5);
 
+  // Cursed egg material — dark violet shell with an eerie magenta glow that
+  // reads "do not touch". Carrying it summons every T-Rex.
+  const cursedMat = new B.StandardMaterial("cursedEggMat", scene);
+  cursedMat.diffuseColor = new B.Color3(0.28, 0.1, 0.36);
+  cursedMat.emissiveColor = new B.Color3(0.7, 0.12, 0.85).scale(EGGS.glowIntensity);
+  cursedMat.specularColor = new B.Color3(0.8, 0.4, 0.9);
+
+  const matFor = (e) => (e.cursed ? cursedMat : e.golden ? goldMat : eggMat);
+
   // Carried-egg visuals: a small pool of glowing eggs that hover above the
   // raptor's back while carrying, so the load is visible, not just a HUD count.
   const carriedVisuals = [];
@@ -43,6 +52,9 @@ export function createEggs(scene, shadow, groundFn) {
   // Used at creation and on a soft restart so each run scatters anew.
   const rollEgg = (e) => {
     const golden = Math.random() < EGGS.goldenChance;
+    // Cursed is rolled only if not golden (golden wins the tie), so the two
+    // rare types stay mutually exclusive.
+    const cursed = !golden && Math.random() < EGGS.cursedChance;
     let x, z;
     do {
       const r = golden
@@ -52,18 +64,19 @@ export function createEggs(scene, shadow, groundFn) {
       x = Math.cos(a) * r; z = Math.sin(a) * r;
     } while (inPond(x, z));
     e.golden = golden;
-    e.counts = golden ? EGGS.goldenCounts : 1;
-    e.value = golden ? EGGS.goldenValueMul : 1;
+    e.cursed = cursed;
+    e.counts = golden ? EGGS.goldenCounts : cursed ? EGGS.cursedCounts : 1;
+    e.value = golden ? EGGS.goldenValueMul : cursed ? EGGS.cursedValueMul : 1;
     e.collected = false;
     e.banked = false;
     e.baseY = groundFn(x, z) + 0.9;
-    e.mesh.material = golden ? goldMat : eggMat;
-    e.mesh.scaling.setAll(golden ? 1.25 : 1);
+    e.mesh.material = matFor(e);
+    e.mesh.scaling.setAll(golden || cursed ? 1.25 : 1);
     e.mesh.position.set(x, e.baseY, z);
     e.mesh.setEnabled(true);
-    e.light.diffuse = golden ? new B.Color3(1, 0.8, 0.3) : new B.Color3(1, 0.9, 0.5);
-    e.light.intensity = golden ? 1.0 : 0.6;
-    e.light.range = golden ? 14 : 10;
+    e.light.diffuse = cursed ? new B.Color3(0.85, 0.2, 1) : golden ? new B.Color3(1, 0.8, 0.3) : new B.Color3(1, 0.9, 0.5);
+    e.light.intensity = golden || cursed ? 1.0 : 0.6;
+    e.light.range = golden || cursed ? 14 : 10;
     e.light.position.copyFrom(e.mesh.position);
     e.light.setEnabled(true);
   };
@@ -73,7 +86,7 @@ export function createEggs(scene, shadow, groundFn) {
     const mesh = B.MeshBuilder.CreateSphere("egg" + i, { diameterX: 1, diameterY: 1.4, diameterZ: 1 }, scene);
     shadow.addShadowCaster(mesh);
     const light = new B.PointLight("eggLight" + i, B.Vector3.Zero(), scene);
-    const e = { mesh, light, baseY: 0, golden: false, counts: 1, value: 1, collected: false, banked: false };
+    const e = { mesh, light, baseY: 0, golden: false, cursed: false, counts: 1, value: 1, collected: false, banked: false };
     rollEgg(e);
     eggs.push(e);
   }
@@ -82,6 +95,9 @@ export function createEggs(scene, shadow, groundFn) {
     nest, eggs,
     carried: [],      // stack of carried egg indices (length === carrying)
     get carrying() { return state.carried.length; },
+    // True while any carried egg is cursed — the game reads this to summon every
+    // T-Rex onto the player. Cheap recompute over the small carried stack.
+    get carryingCursed() { return state.carried.some((idx) => eggs[idx].cursed); },
     banked: 0,        // counts toward the win target (golden eggs count double)
     bobT: 0,
     onPickup: null,   // (position, golden) -> void, set by game for SFX/FX
@@ -93,18 +109,19 @@ export function createEggs(scene, shadow, groundFn) {
       for (let i = 0; i < eggs.length; i++) {
         const e = eggs[i];
         if (e.banked || e.collected) continue;
-        const bob = e.golden ? EGGS.bobHeight * 1.5 : EGGS.bobHeight;
+        const bob = (e.golden || e.cursed) ? EGGS.bobHeight * 1.5 : EGGS.bobHeight;
         e.mesh.position.y = e.baseY + Math.sin(state.bobT * 2 + i) * bob;
-        e.mesh.rotation.y += dt * (e.golden ? 1.6 : 1);
+        e.mesh.rotation.y += dt * ((e.golden || e.cursed) ? 1.6 : 1);
         e.light.position.copyFrom(e.mesh.position);
         if (e.golden) e.light.intensity = 0.85 + 0.35 * Math.sin(state.bobT * 4 + i);
+        else if (e.cursed) e.light.intensity = 0.7 + 0.5 * Math.sin(state.bobT * 5 + i); // eerier, faster throb
         const d = Math.hypot(pp.x - e.mesh.position.x, pp.z - e.mesh.position.z);
         if (d < EGGS.pickupRange && !player.dead) {
           e.collected = true;
           e.mesh.setEnabled(false);
           e.light.setEnabled(false);
           state.carried.push(i);
-          if (state.onPickup) state.onPickup(e.mesh.position.clone(), e.golden);
+          if (state.onPickup) state.onPickup(e.mesh.position.clone(), e.golden, e.cursed);
         }
       }
       // bank when near nest
@@ -113,15 +130,16 @@ export function createEggs(scene, shadow, groundFn) {
         if (dn < 5) {
           const idxs = state.carried;
           const count = idxs.length;
-          let target = 0, value = 0;
+          let target = 0, value = 0, cursed = false;
           idxs.forEach((idx) => {
             eggs[idx].banked = true;
             target += eggs[idx].counts;
             value += eggs[idx].value;
+            if (eggs[idx].cursed) cursed = true;
           });
           state.banked += target;
           state.carried = [];
-          if (state.onBank) state.onBank({ count, value });
+          if (state.onBank) state.onBank({ count, value, cursed });
         }
       }
 
@@ -133,7 +151,7 @@ export function createEggs(scene, shadow, groundFn) {
         const cv = carriedVisuals[k];
         if (k >= n) { if (cv.isEnabled()) cv.setEnabled(false); continue; }
         if (!cv.isEnabled()) cv.setEnabled(true);
-        cv.material = eggs[state.carried[k]].golden ? goldMat : eggMat;
+        cv.material = matFor(eggs[state.carried[k]]);
         const tier = Math.floor(k / 2);
         const side = (k % 2 === 0 ? -0.35 : 0.35);
         cv.position.set(

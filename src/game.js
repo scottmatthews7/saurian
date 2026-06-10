@@ -1,6 +1,6 @@
 import { buildWorld } from "./world.js";
 import { createPlayer, createFollowCamera } from "./player.js";
-import { createTrex, createHerd, setObstacles, setDusk } from "./ai.js";
+import { createTrex, createHerd, setObstacles, setDusk, setLure } from "./ai.js";
 import { createEggs } from "./eggs.js";
 import { createPickups } from "./pickups.js";
 import { createInput } from "./input.js";
@@ -66,14 +66,18 @@ export async function startGame() {
   const B2 = window.BABYLON;
   // scoring + combo: chained banks within comboWindow grow a multiplier
   const score = { points: 0, combo: 1, lastBankAt: -999 };
-  eggs.onPickup = (pos, golden) => {
-    audio.pickup(golden);
-    fx.pickupBurst(pos, golden ? new B2.Color4(1, 0.82, 0.25, 1) : new B2.Color4(1, 0.9, 0.5, 1));
-    if (golden) hud.popup("GOLDEN EGG!", "gold");
+  eggs.onPickup = (pos, golden, cursed) => {
+    audio.pickup(golden || cursed);
+    const col = cursed ? new B2.Color4(0.8, 0.2, 1, 1)
+      : golden ? new B2.Color4(1, 0.82, 0.25, 1)
+      : new B2.Color4(1, 0.9, 0.5, 1);
+    fx.pickupBurst(pos, col);
+    if (cursed) { hud.popup("CURSED EGG — they're coming!", "warn"); audio.roar(); }
+    else if (golden) hud.popup("GOLDEN EGG!", "gold");
   };
-  eggs.onBank = ({ count, value }) => {
+  eggs.onBank = ({ count, value, cursed }) => {
     audio.bank();
-    fx.pickupBurst(eggs.nest.position, new B2.Color4(0.5, 1, 0.6, 1));
+    fx.pickupBurst(eggs.nest.position, cursed ? new B2.Color4(0.8, 0.3, 1, 1) : new B2.Color4(0.5, 1, 0.6, 1));
     const sinceLast = game.elapsed - score.lastBankAt;
     score.combo = sinceLast <= EGGS.comboWindow
       ? Math.min(EGGS.comboMax, score.combo + EGGS.comboStep)
@@ -87,7 +91,8 @@ export async function startGame() {
     score.points += gained;
     hud.setScore(score.points, score.combo);
     const duskTag = dusk >= DUSK.duskThreshold ? " 🌆" : "";
-    hud.popup(`+${gained.toLocaleString()}${score.combo > 1 ? ` ×${score.combo}` : ""}${duskTag}`, "score");
+    const cursedTag = cursed ? " ☠" : "";
+    hud.popup(`+${gained.toLocaleString()}${score.combo > 1 ? ` ×${score.combo}` : ""}${cursedTag}${duskTag}`, cursed ? "gold" : "score");
   };
   eggs.onDrop = (pos) => fx.pickupBurst(pos, new B2.Color4(1, 0.5, 0.3, 1));
   pickups.onHeal = (pos) => {
@@ -223,6 +228,8 @@ export async function startGame() {
       // grow bolder) and the HUD time-of-day bar. One-shot cue when dusk deepens.
       const dusk = world.getDusk();
       setDusk(dusk);
+      // Cursed-egg lure: while carried, every T-Rex homes in on the raptor.
+      setLure(eggs.carryingCursed);
       hud.setDusk(dusk);
       if (!duskAnnounced && dusk >= DUSK.duskThreshold) {
         duskAnnounced = true;
@@ -377,6 +384,7 @@ export async function startGame() {
     pickups.reset();
     world.resetDusk();   // fresh run starts in full daylight again
     setDusk(0); hud.setDusk(0); duskAnnounced = false;
+    setLure(false);
     const c = world.heightAt(0, 0);
     player.reset(0, c, 0);
     score.points = 0; score.combo = 1; score.lastBankAt = -999;

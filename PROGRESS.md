@@ -262,7 +262,39 @@
   within ~1-2s; verification uses single-shot evals guarded by a `location.href`
   8124 check and the `window.__game` handle.
 
-## Next (session 8)
+## Done (session 8) — the CURSED egg (risk/reward content)
+- **New mechanic — cursed egg** (`config.EGGS.cursed*`, `eggs.js`, `ai.js`,
+  `game.js`, `minimap.js`, `hud.js`, `index.html`): a rare (12%, rolled
+  mutually-exclusive with golden — golden wins the tie) dark-violet egg with an
+  eerie magenta throb. **While carried, EVERY T-Rex homes in on the raptor** —
+  its FSM target is forced to chase regardless of sight/lose-interest range
+  (`ai.setLure(active)`, pushed each frame from `eggs.carryingCursed`) and gains
+  `+cursedLureSpeed` (1.5) chase speed. You've rung the dinner bell. Worth a
+  big windfall (`cursedValueMul` 6x score) but counts only **1** toward the win
+  target — so it's a bravado play, not a progress shortcut: grab it, sprint home
+  with the whole arena hunting you, bank it for the payout. **Especially deadly
+  at dusk** (predators already faster) — pairs with the existing dusk arc.
+  - Readability: dark-violet shell + magenta point light, faster eerier glow
+    throb; purple radar blip; on pickup a **"CURSED EGG — they're coming!"**
+    warn popup + roar; on bank a ☠-tagged purple burst + score popup; title
+    screen now teaches it ("grab a cursed egg ☠ for a huge score — but every
+    T-Rex hunts you while you carry it").
+- All tunables in `config.EGGS` with provenance notes; lure cleared on bank
+  (carrying empties) and on soft restart (`setLure(false)` in `resetGame`).
+
+## Verified (session 8)
+- All 14 src modules pass `node --check`; `node tools/dusk_test.mjs` passes;
+  new `node tools/cursed_egg_test.mjs` passes (classification mutual-exclusion,
+  6x value / counts-1, lure speed nudge).
+- Live in-browser (isolated context `dinoa-s8`, port 8124, **0 console
+  errors/warnings**, 639 meshes, 77 FPS):
+  - **Lure A/B proven:** a T-Rex 164u away (far beyond sight 38) sits in
+    `patrol`; the instant a cursed egg is carried it flips to `chase`. Clears on
+    bank/reset.
+  - Cursed bank windfall = 600 pts (6×100×combo1×dusk1) ✓; banked counts +1;
+    `cursedEggMat` present in the scene; carry visual + radar blip render.
+
+## Next (session 9)
 - More biome variety (second pond / rocky mesa / tar pit); ambient grazing anims.
 - Egg variety beyond golden (e.g. a "cursed" egg that draws the T-Rex —
   especially nasty at dusk).

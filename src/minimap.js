@@ -57,7 +57,8 @@ export function createMinimap() {
       if (eggs) {
         for (const e of eggs.eggs) {
           if (e.collected || e.banked) continue;
-          if (e.golden) dot(e.mesh.position.x, e.mesh.position.z, "#ffb31a", 4);
+          if (e.cursed) dot(e.mesh.position.x, e.mesh.position.z, "#c14dff", 4);
+          else if (e.golden) dot(e.mesh.position.x, e.mesh.position.z, "#ffb31a", 4);
           else dot(e.mesh.position.x, e.mesh.position.z, "#ffd95a", 2.5);
         }
       }

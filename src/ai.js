@@ -1,4 +1,4 @@
-import { TREX, HERBIVORE, TRICERATOPS, ARENA, JUICE, WATER, AI_AVOID, DUSK } from "./config.js";
+import { TREX, HERBIVORE, TRICERATOPS, ARENA, JUICE, WATER, AI_AVOID, DUSK, EGGS } from "./config.js";
 import { loadDino } from "./dino.js";
 
 // Solid obstacle footprints ({x, z, r}) the AI steers around. Injected from the
@@ -12,6 +12,12 @@ export function setObstacles(list) {
 // from the world clock; predators read it to grow bolder as dusk falls.
 let DUSK_FACTOR = 0;
 export function setDusk(f) { DUSK_FACTOR = f; }
+
+// Cursed-egg lure: while the player carries a cursed egg every T-Rex homes in
+// regardless of sight range and chases a little faster. Pushed each frame from
+// the game (true while eggs.carryingCursed). A roar-stagger still overrides it.
+let LURE_ACTIVE = false;
+export function setLure(active) { LURE_ACTIVE = active; }
 
 // Steer a move (unit dir dx,dz) away from nearby obstacle footprints. Adds an
 // outward push from each footprint within its clearance band, then renormalises.
@@ -105,16 +111,19 @@ export async function createTrex(scene, shadow, groundFn) {
     const loseRange = TREX.loseInterestRange + DUSK.trexLoseBonus * DUSK_FACTOR;
     const duskSpeed = DUSK.trexSpeedBonus * DUSK_FACTOR;
 
-    // FSM
+    // FSM. The cursed-egg lure forces chase regardless of distance — the egg
+    // rings the dinner bell, so sight/lose-interest ranges no longer apply.
     const wasChasing = state.mode === "chase";
-    if (!player.dead && distP < sightRange) state.mode = "chase";
+    if (!player.dead && (LURE_ACTIVE || distP < sightRange)) state.mode = "chase";
     else if (state.mode === "chase" && distP > loseRange) state.mode = "patrol";
     if (!wasChasing && state.mode === "chase" && state.onRoar) state.onRoar();
 
     let goal, speed;
     if (state.mode === "chase") {
       goal = { x: pp.x, z: pp.z };
-      speed = TREX.chaseSpeed + state.speedBonus + duskSpeed + (enraged ? TREX.enrageSpeedBonus : 0);
+      speed = TREX.chaseSpeed + state.speedBonus + duskSpeed
+        + (enraged ? TREX.enrageSpeedBonus : 0)
+        + (LURE_ACTIVE ? EGGS.cursedLureSpeed : 0);
       if (distP < TREX.attackRange) {
         speed = 0;
         if (state.attackTimer <= 0) {
