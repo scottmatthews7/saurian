@@ -375,20 +375,23 @@ export const WATER = {
 // economy (player walk 7 / sprint 16.5, T-Rex bite 22) and the pond geometry
 // (WATER.radius 17, centre at -34,28).
 export const AQUATIC = {
-  // --- Build proportions (world units) -----------------------------------
-  bodyLength: 4.8,        // humped torso spindle length
-  bodyRadius: 0.95,       // torso girth
-  neckLength: 4.2,        // long plesiosaur neck (rises out of the water on a surface)
-  neckSegments: 6,        // neck built as N tapering segments so it can arc/curl
-  headLength: 1.1,        // snout-tipped head
-  flipperLength: 1.8,     // paddle flippers either side
-  // --- Colours -----------------------------------------------------------
-  bodyColor: { r: 0.16, g: 0.28, b: 0.30 },     // dark wet slate-teal
-  bellyColor: { r: 0.42, g: 0.50, b: 0.46 },    // paler underside
-  eyeColor: { r: 0.95, g: 0.78, b: 0.20 },      // amber predator eye
-  // --- Lurk / surface geometry -------------------------------------------
-  submergedDepth: 1.4,    // how far the body sits below the water surface while lurking (only a wake shows)
-  surfacedRise: 2.6,      // how far the body rises (toward/above the surface) when it surfaces to strike
+  // --- Build proportions (world units) — PRD-plesiosaur.md @ L=10 u --------
+  // Ratios: neck 0.58 L, trunk 0.12 L, head 0.03 L, flippers 0.13 L, tail 0.25 L
+  bodyLength: 1.2,        // compact trunk spindle (~0.12 L)
+  bodyRadius: 0.85,       // oval girth (~0.085 L depth)
+  neckLength: 5.8,        // absurd elasmosaur neck (~0.58 L) — dominates silhouette
+  neckSegments: 8,        // tapering segments for a smooth surface arc
+  headLength: 0.32,       // tiny strike head (~0.03 L)
+  flipperLength: 1.3,     // paddle flipper chord (~0.13 L)
+  tailLength: 2.5,        // short steering tail (~0.25 L)
+  // --- Colours (PRD §Visual appearance) ------------------------------------
+  bodyColor: { r: 0.165, g: 0.227, b: 0.220 },  // slate-teal dorsal #2a3a38
+  bellyColor: { r: 0.655, g: 0.733, b: 0.706 },  // pale green-grey ventral
+  eyeColor: { r: 0.784, g: 0.471, b: 0.094 },    // amber #c87818 + emissive
+  toothColor: { r: 0.910, g: 0.894, b: 0.847 },  // ivory fangs #e8e4d8
+  // --- Lurk / surface geometry ---------------------------------------------
+  submergedDepth: 1.1,    // lurks below surface (scaled with smaller body)
+  surfacedRise: 2.2,      // neck rears ~0.22 L on strike telegraph
   // --- AI state machine --------------------------------------------------
   // submerged patrol -> (player near shore/in water) surface + lunge -> bite ->
   // submerge -> cooldown. It stays inside the pond (it's a lake creature).

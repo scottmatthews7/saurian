@@ -4,9 +4,17 @@
 // the deep — before submerging again. The water's edge is no longer a free
 // hazard to skirt; something is hunting from it.
 //
+// Build spec (fossil proportions): dino-arena-a-dinocritic/procgen/PRD-plesiosaur.md
+// Reference: Albertonectes vanderveldei TMP 2007.011.0001 — L ≈ 12.1 m;
+//   neck ~0.58 L (~7 m), tiny head ~0.03 L, flippers ~0.13 L each;
+//   amber predator eyes + fang teeth at the waterline when surfaced.
+//
+// Visual (PRD §Visual appearance): slate-teal dorsal (#2a3a38–#3d524e), pale
+// green-grey ventral; wet sheen when surfaced; ivory fangs; amber emissive eyes.
+//
 // Built procedurally (no glb) like the pterosaur flyer: a humped torso, a long
 // tapering neck of segments that rears up on a surface, a snouted head with
-// amber eyes, and two paddle flippers. Animated by node transforms each frame
+// amber eyes, four paddle flippers, ivory fangs, and a short tail. Animated by node transforms each frame
 // (neck arc, flipper paddle, surface bob) — cheap, no skeleton.
 //
 // It exposes a small predator-like surface ({ root, update, reset, takeDamage,
@@ -16,6 +24,7 @@
 // T-Rex/herd-prey/feeding logic the lake creature doesn't use).
 
 import { AQUATIC, WATER } from "./config.js";
+import { makeLoft } from "./loft-core.mjs";
 
 // State machine phases. Telegraphed: a surface (rear up, dodge window) precedes
 // the committed lunge, so a sharp player can back off the bank in time.
@@ -28,40 +37,78 @@ const PHASE = {
 
 export function createAquatic(scene, shadow, world) {
   const B = window.BABYLON;
+  const V = (x, y, z) => new B.Vector3(x, y, z);
   const surfaceY = world.waterSurfaceY;
 
   // ---- Build the creature ------------------------------------------------
   const root = new B.TransformNode("aquatic_root", scene);
+  const loft = makeLoft(scene, B, { quality: "realtime" });
 
-  const skin = new B.StandardMaterial("aquaticSkin", scene);
-  skin.diffuseColor = new B.Color3(AQUATIC.bodyColor.r, AQUATIC.bodyColor.g, AQUATIC.bodyColor.b);
-  skin.specularColor = new B.Color3(0.4, 0.5, 0.5);   // wet sheen
-  skin.specularPower = 48;
-  const belly = new B.StandardMaterial("aquaticBelly", scene);
-  belly.diffuseColor = new B.Color3(AQUATIC.bellyColor.r, AQUATIC.bellyColor.g, AQUATIC.bellyColor.b);
-  belly.specularColor = B.Color3.Black();
-  const eyeMat = new B.StandardMaterial("aquaticEye", scene);
-  eyeMat.diffuseColor = new B.Color3(AQUATIC.eyeColor.r, AQUATIC.eyeColor.g, AQUATIC.eyeColor.b);
-  eyeMat.emissiveColor = new B.Color3(AQUATIC.eyeColor.r * 0.6, AQUATIC.eyeColor.g * 0.5, 0.04);
-  eyeMat.specularColor = B.Color3.Black();
+  // Countershaded wet hide (PBR) — slate-teal dorsal, pale green-grey ventral
+  // baked as a gradient across the loft ring (seam at the belly), so a single
+  // material gives open-water camouflage without a second belly mesh. Matches
+  // the procgen plesiosaur (procgen/plesiosaur.js + PRD-plesiosaur.md).
+  function makeCountershade() {
+    const W = 256, H = 64;
+    const d = AQUATIC.bodyColor, v = AQUATIC.bellyColor;
+    const rgb = (c, k = 1) => `rgb(${(c.r * 255 * k) | 0},${(c.g * 255 * k) | 0},${(c.b * 255 * k) | 0})`;
+    const tex = new B.DynamicTexture("aquaticHideTex", { width: W, height: H }, scene, false);
+    const ctx = tex.getContext();
+    const g = ctx.createLinearGradient(0, 0, W, 0); // u runs around the ring
+    g.addColorStop(0.0, rgb(v));         // belly seam (pale)
+    g.addColorStop(0.18, rgb(v, 0.85));
+    g.addColorStop(0.36, rgb(d, 1.25));
+    g.addColorStop(0.5, rgb(d));         // dorsal ridge (dark)
+    g.addColorStop(0.64, rgb(d, 1.25));
+    g.addColorStop(0.82, rgb(v, 0.85));
+    g.addColorStop(1.0, rgb(v));         // belly seam (pale)
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    tex.update();
+    return tex;
+  }
 
-  // Humped torso spindle lying along +Z (forward).
-  const body = B.MeshBuilder.CreateCylinder("aquaticBody", {
-    height: AQUATIC.bodyLength, diameterTop: AQUATIC.bodyRadius * 1.1,
-    diameter: AQUATIC.bodyRadius * 2, diameterBottom: AQUATIC.bodyRadius * 0.8, tessellation: 10,
-  }, scene);
-  body.rotation.x = Math.PI / 2;
-  body.material = skin;
+  const hide = new B.PBRMaterial("aquaticHide", scene);
+  hide.albedoTexture = makeCountershade();
+  hide.albedoColor = new B.Color3(1, 1, 1);
+  hide.metallic = 0;
+  hide.roughness = 0.34;          // wet sheen
+  hide.specularIntensity = 0.7;
+  const eyeMat = new B.PBRMaterial("aquaticEye", scene);
+  eyeMat.albedoColor = new B.Color3(AQUATIC.eyeColor.r, AQUATIC.eyeColor.g, AQUATIC.eyeColor.b);
+  eyeMat.emissiveColor = new B.Color3(AQUATIC.eyeColor.r * 0.75, AQUATIC.eyeColor.g * 0.5, 0.05);
+  eyeMat.metallic = 0;
+  eyeMat.roughness = 0.18;
+  const toothMat = new B.PBRMaterial("aquaticTooth", scene);
+  toothMat.albedoColor = new B.Color3(AQUATIC.toothColor.r, AQUATIC.toothColor.g, AQUATIC.toothColor.b);
+  toothMat.metallic = 0;
+  toothMat.roughness = 0.4;
+
+  const R = AQUATIC.bodyRadius;
+
+  // Compact oval torpedo trunk with a subtle dorsal hump — ONE lofted spindle
+  // (no separate belly mesh; countershading lives in the hide texture). +Z fwd.
+  const body = loft("aquaticBody", [
+    { p: V(0, 0, -0.62), w: R * 0.16, h: R * 0.16 },
+    { p: V(0, 0, -0.35), w: R * 0.72, hT: R * 0.62, hB: R * 0.58, sq: 2.1 },
+    { p: V(0, R * 0.08, 0.0), w: R * 1.0, hT: R * 0.82, hB: R * 0.72, sq: 2.1 },
+    { p: V(0, R * 0.08, 0.35), w: R * 0.74, hT: R * 0.62, hB: R * 0.56 },
+    { p: V(0, R * 0.30, 0.62), w: R * 0.42, hT: R * 0.42, hB: R * 0.40 },
+  ], { ringN: 24, samplesPerSpan: 6 });
+  body.material = hide;
   body.parent = root;
   body.isPickable = false;
 
-  // Paler belly underside (a squashed half-sphere tucked beneath the torso).
-  const bellyMesh = B.MeshBuilder.CreateSphere("aquaticBelly", { diameter: AQUATIC.bodyRadius * 1.9, segments: 8 }, scene);
-  bellyMesh.scaling.set(1, 0.45, AQUATIC.bodyLength / (AQUATIC.bodyRadius * 1.9));
-  bellyMesh.position.y = -AQUATIC.bodyRadius * 0.45;
-  bellyMesh.material = belly;
-  bellyMesh.parent = root;
-  bellyMesh.isPickable = false;
+  // Short tail tapering to a point (PRD: ~0.25 L), lofted off the trunk rear.
+  const tail = loft("aquaticTail", [
+    { p: V(0, 0, -0.55), w: R * 0.2, hT: R * 0.22, hB: R * 0.2 },
+    { p: V(0, -0.01, -0.55 - AQUATIC.tailLength * 0.4), w: R * 0.12, h: R * 0.12 },
+    { p: V(0, -0.02, -0.55 - AQUATIC.tailLength * 0.8), w: R * 0.05, h: R * 0.05 },
+    { p: V(0, -0.03, -0.55 - AQUATIC.tailLength), w: 0.015, h: 0.015 },
+  ], { ringN: 16, samplesPerSpan: 5 });
+  tail.material = hide;
+  tail.parent = root;
+  tail.isPickable = false;
 
   // ---- Neck: a chain of tapering segments pivoting at the shoulders so it
   // arcs up out of the water on a surface and lashes forward on a lunge. ----
@@ -69,67 +116,103 @@ export function createAquatic(scene, shadow, world) {
   neckPivot.parent = root;
   neckPivot.position.set(0, AQUATIC.bodyRadius * 0.4, AQUATIC.bodyLength / 2);
   const segLen = AQUATIC.neckLength / AQUATIC.neckSegments;
+  // half-width taper down the neck: thick at the base, narrow at the skull.
+  const neckHW = (t) => R * (0.46 - 0.34 * t);
   const segPivots = [];
   let parent = neckPivot;
   for (let i = 0; i < AQUATIC.neckSegments; i++) {
     const piv = new B.TransformNode("aquaticNeckSeg" + i, scene);
     piv.parent = parent;
     if (i > 0) piv.position.z = segLen;   // each segment sits at the tip of the previous
-    const t = i / AQUATIC.neckSegments;
-    const dia = AQUATIC.bodyRadius * (0.9 - 0.45 * t);  // taper toward the head
-    const seg = B.MeshBuilder.CreateCylinder("aquaticNeckMesh" + i,
-      { height: segLen * 1.05, diameter: dia, tessellation: 8 }, scene);
-    seg.rotation.x = Math.PI / 2;          // lie along the segment's +Z
-    seg.position.z = segLen / 2;
-    seg.material = skin;
+    const r0 = neckHW(i / AQUATIC.neckSegments);
+    const r1 = neckHW((i + 1) / AQUATIC.neckSegments);
+    // a short lofted tube along the segment's local +Z; matching end diameters
+    // across joints keep the segmented neck reading as one smooth stiff arc.
+    const seg = loft("aquaticNeckMesh" + i, [
+      { p: V(0, 0, 0), w: r0, h: r0 },
+      { p: V(0, 0, segLen * 0.5), w: (r0 + r1) / 2, h: (r0 + r1) / 2 },
+      { p: V(0, 0, segLen), w: r1, h: r1 },
+    ], { ringN: 16, samplesPerSpan: 4 });
+    seg.material = hide;
     seg.parent = piv;
     seg.isPickable = false;
     segPivots.push(piv);
     parent = piv;
   }
 
-  // ---- Head at the neck tip: a snouted block + two amber eyes. ----
+  // ---- Head at the neck tip: a tiny lofted snouted skull + amber eyes. ----
   const headPivot = segPivots[segPivots.length - 1];
-  const head = B.MeshBuilder.CreateCylinder("aquaticHead",
-    { height: AQUATIC.headLength, diameterTop: AQUATIC.bodyRadius * 0.18, diameter: AQUATIC.bodyRadius * 0.5, tessellation: 8 }, scene);
-  head.rotation.x = Math.PI / 2;
-  head.position.set(0, 0, segLen + AQUATIC.headLength / 2);
-  head.material = skin;
+  const HL = AQUATIC.headLength;
+  const rTip = neckHW(1);
+  const head = loft("aquaticHead", [
+    { p: V(0, 0, segLen + 0.01), w: rTip, h: rTip },
+    { p: V(0, R * 0.03, segLen + HL * 0.45), w: R * 0.16, hT: R * 0.14, hB: R * 0.15, sq: 2.2 }, // skull
+    { p: V(0, -R * 0.01, segLen + HL * 0.8), w: R * 0.1, hT: R * 0.08, hB: R * 0.1 },            // snout
+    { p: V(0, -R * 0.02, segLen + HL * 1.08), w: R * 0.04, h: R * 0.045 },                       // snout tip
+  ], { ringN: 16, samplesPerSpan: 4 });
+  head.material = hide;
   head.parent = headPivot;
   head.isPickable = false;
-  const eyeR = AQUATIC.bodyRadius * 0.1;
+  const eyeR = AQUATIC.bodyRadius * 0.085;
   for (const sx of [-1, 1]) {
-    const eye = B.MeshBuilder.CreateSphere("aquaticEyeMesh", { diameter: eyeR * 2, segments: 6 }, scene);
-    eye.position.set(sx * AQUATIC.bodyRadius * 0.18, AQUATIC.bodyRadius * 0.12, segLen + AQUATIC.headLength * 0.25);
+    const eye = B.MeshBuilder.CreateSphere("aquaticEyeMesh", { diameter: eyeR * 2, segments: 8 }, scene);
+    eye.position.set(sx * AQUATIC.bodyRadius * 0.15, AQUATIC.bodyRadius * 0.12, segLen + HL * 0.5);
     eye.material = eyeMat;
     eye.parent = headPivot;
     eye.isPickable = false;
   }
+  // Interlocking fangs — visible when the head surfaces at the waterline.
+  for (let i = 0; i < 6; i++) {
+    const tz = segLen + HL * (0.4 + i * 0.1);
+    const taper = 1 - i / 7;
+    for (const sx of [-1, 1]) {
+      const fang = B.MeshBuilder.CreateCylinder("aquaticFang", {
+        diameterTop: 0, diameterBottom: AQUATIC.bodyRadius * 0.05 * taper,
+        height: AQUATIC.bodyRadius * 0.18 * taper, tessellation: 5,
+      }, scene);
+      fang.position.set(sx * AQUATIC.bodyRadius * 0.1, -AQUATIC.bodyRadius * 0.05, tz);
+      fang.rotation.x = Math.PI * 0.55;
+      fang.material = toothMat;
+      fang.parent = headPivot;
+      fang.isPickable = false;
+    }
+  }
 
-  // ---- Two paddle flippers either side of the torso (they oar back/forth). ----
-  function buildFlipper(side) {
+  // ---- Four paddle flippers (fore + hind pairs, elasmosaurid symmetry). ----
+  // Each blade is lofted along its own +Z then yawed so its length points out
+  // along ±X from the pivot (a +Z sweep avoids the loft frame degenerating when
+  // the path runs along the +X right-hint). The pivot animates the paddle.
+  const FL = AQUATIC.flipperLength;
+  function buildFlipper(side, zPos) {
     const piv = new B.TransformNode("aquaticFlipperPivot", scene);
     piv.parent = root;
-    piv.position.set(side * AQUATIC.bodyRadius * 0.9, -AQUATIC.bodyRadius * 0.2, 0);
-    const fin = B.MeshBuilder.CreateBox("aquaticFlipper",
-      { width: AQUATIC.flipperLength, height: AQUATIC.bodyRadius * 0.18, depth: AQUATIC.bodyRadius * 0.9 }, scene);
-    fin.position.x = side * AQUATIC.flipperLength / 2;
-    fin.material = skin;
-    fin.parent = piv;
-    fin.isPickable = false;
+    piv.position.set(side * AQUATIC.bodyRadius * 0.78, -AQUATIC.bodyRadius * 0.2, zPos);
+    const blade = loft("aquaticFlipper", [
+      { p: V(0, 0, -0.08), w: R * 0.14, h: R * 0.06 },   // rounded root
+      { p: V(0, 0, FL * 0.25), w: R * 0.4, h: R * 0.09 },
+      { p: V(0, 0, FL * 0.55), w: R * 0.42, h: R * 0.09 }, // broad mid-blade
+      { p: V(0, 0, FL * 0.85), w: R * 0.3, h: R * 0.06 },
+      { p: V(0, 0, FL * 1.05), w: R * 0.12, h: R * 0.04 }, // rounded distal tip
+    ], { ringN: 14, samplesPerSpan: 4 });
+    blade.rotation.y = -side * Math.PI / 2; // local +Z -> outward ±X
+    blade.material = hide;
+    blade.parent = piv;
+    blade.isPickable = false;
     return piv;
   }
-  const flipperL = buildFlipper(-1);
-  const flipperR = buildFlipper(1);
+  const flipperL = buildFlipper(-1, 0);
+  const flipperR = buildFlipper(1, 0);
+  const flipperLRear = buildFlipper(-1, -AQUATIC.bodyLength * 0.35);
+  const flipperRRear = buildFlipper(1, -AQUATIC.bodyLength * 0.35);
 
-  // Shadow casting (the body + neck) so it reads grounded when surfaced.
+  // Shadow casting (the body + tail) so it reads grounded when surfaced.
   if (shadow) {
     shadow.addShadowCaster(body);
-    shadow.addShadowCaster(bellyMesh);
+    shadow.addShadowCaster(tail);
   }
 
-  // Collect materials whose emissive we flash red on a hit (skin + belly).
-  const flashTargets = [skin, belly].map((m) => ({ mat: m, base: m.emissiveColor.clone() }));
+  // The hide material whose emissive we flash red on a hit.
+  const flashTargets = [hide].map((m) => ({ mat: m, base: m.emissiveColor.clone() }));
 
   // ---- Place inside the lake at a submerged start --------------------------
   const lakeCenter = { x: WATER.centerX, z: WATER.centerZ };
@@ -189,6 +272,8 @@ export function createAquatic(scene, shadow, world) {
     const a = Math.sin(state.bob) * amp;
     flipperL.rotation.x = a;
     flipperR.rotation.x = -a;
+    flipperLRear.rotation.x = -a * 0.85;
+    flipperRRear.rotation.x = a * 0.85;
   }
 
   // Move the body toward a goal on the water plane, clamped inside the lake, and

@@ -246,3 +246,29 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
 18. **Jungle thicket much DENSER / more jungly.** It currently isn't jungly enough —
    crank tree + canopy + undergrowth density way up inside the jungle zone so it
    reads as a proper dense jungle.
+
+19. **Character select (pick your character).** Let the player choose who they play
+   as on the title/start screen. At least three options: (a) the current blond
+   clean-shaven guy (item 1b), (b) an OLD EXPLORER with GREY HAIR (weathered,
+   adventurer outfit), (c) a WOMAN explorer. Reuse the same Adventurer base mesh
+   where possible — distinguish by recolour (hair/skin) + minor mesh tweaks, not
+   full model swaps, to stay cheap. Selection drives the in-game player model.
+
+20. **PROCESS — fossil-accurate proportions for EVERY procedural dino.** Before
+   (or while) building each creature with the Fable-5 swept-geometry method, look
+   up the LATEST fossil records and take the LARGEST specimen found. Pull BOTH:
+   (a) the measured SKELETON dimensions, and (b) the predicted FLESHED/living body
+   dimensions (with muscle + soft tissue). Convert to proportional ratios (fraction
+   of total length) and bake them into that creature's module header + build spec so
+   every dino is built to reliable, real proportions — not eyeballed. Done for the
+   T-Rex (Scotty / RSM P2523.8: ~13 m, ~4 m hip, ~8,870 kg, skull 1.39 m, femur
+   1.33 m, deep keel chest ~1.4:1 deeper-than-wide). **Specs written** for all
+   five remaining creatures in `dino-arena-a-dinocritic/procgen/PRD-*.md` +
+   `BUILD_SPECS.md` (Spino, Therizino, Quetzalcoatlus, Albertonectes plesiosaur,
+   Dreadnoughtus). Next: rebuild modules to those ratios + critic loop.
+
+21. **First-person view.** Add a first-person camera mode (look out through the
+   human's eyes) as an option alongside the current third-person follow camera —
+   toggleable. Hide/handle the player mesh head in FP; keep the look controls and
+   sprint/dash/attack working. Heightens the survival immersion (a T-Rex bearing
+   down on you fills the screen).
