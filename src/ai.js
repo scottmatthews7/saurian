@@ -22,8 +22,19 @@ export function setLure(active) { LURE_ACTIVE = active; }
 // Steer a move (unit dir dx,dz) away from nearby obstacle footprints. Adds an
 // outward push from each footprint within its clearance band, then renormalises.
 // A steering nudge, not hard collision — keeps the cheap direct-move AI cheap.
-function avoidObstacles(pos, dx, dz) {
-  let mx = dx, mz = dz;
+//
+// Jitter fix: a PURELY RADIAL push (straight away from the obstacle centre)
+// fights the goal-pull head-on when the goal sits directly behind the obstacle —
+// the two near-cancel and flip sign frame-to-frame, so the dino vibrates in
+// place. The fix is to steer TANGENTIALLY (around the obstacle) on a committed
+// side, not straight away: each agent remembers which way it last skirted an
+// obstacle (`steerState.side`, +1/-1) and holds that side for a short commit
+// window so it doesn't re-decide and reverse every frame. The radial term is
+// kept small (just enough to not creep inward); the tangential term does the
+// work of sliding past. `steerState` is per-agent (defaults are seeded lazily).
+function avoidObstacles(pos, dx, dz, steerState) {
+  // Find the most-intruding obstacle this frame (the one we must skirt).
+  let worst = null, worstW = 0;
   for (let i = 0; i < OBSTACLES.length; i++) {
     const o = OBSTACLES[i];
     const ox = pos.x - o.x, oz = pos.z - o.z;
@@ -31,9 +42,35 @@ function avoidObstacles(pos, dx, dz) {
     const margin = o.r + AI_AVOID.clearance;
     if (d >= margin || d < 0.001) continue;
     const w = (margin - d) / margin;        // 0 at margin .. 1 at centre
-    mx += (ox / d) * w * AI_AVOID.strength;
-    mz += (oz / d) * w * AI_AVOID.strength;
+    if (w > worstW) { worstW = w; worst = { o, ox, oz, d, w }; }
   }
+  if (!worst) {
+    // Clear of everything — let the avoidance commitment lapse so the next
+    // encounter can pick a fresh side.
+    if (steerState) steerState.commit = Math.max(0, (steerState.commit || 0) - 1);
+    return { dx, dz };
+  }
+
+  const { ox, oz, d, w } = worst;
+  // Outward (radial) unit vector and its two tangents (left/right around the
+  // obstacle). Pick the tangent that best agrees with the desired heading so we
+  // slide past toward the goal, and COMMIT to that side until we're clear.
+  const rx = ox / d, rz = oz / d;          // away from centre
+  const t1x = -rz, t1z = rx;               // tangent (one way round)
+  let side;
+  if (steerState && steerState.commit > 0) {
+    side = steerState.side;                // hold the committed side
+  } else {
+    // choose the tangent more aligned with where we want to go
+    side = (dx * t1x + dz * t1z) >= 0 ? 1 : -1;
+    if (steerState) { steerState.side = side; steerState.commit = AI_AVOID.commitFrames; }
+  }
+  if (steerState && steerState.commit > 0) steerState.commit -= 1;
+
+  const tx = t1x * side, tz = t1z * side;
+  // Blend: mostly tangential (slide around), a little radial (don't creep in).
+  const mx = dx + (tx * AI_AVOID.strength + rx * AI_AVOID.radialKeep) * w;
+  const mz = dz + (tz * AI_AVOID.strength + rz * AI_AVOID.radialKeep) * w;
   const m = Math.hypot(mx, mz) || 1;
   return { dx: mx / m, dz: mz / m };
 }
@@ -113,6 +150,7 @@ export async function createTrex(scene, shadow, groundFn) {
     enrageGlow: 0,     // re-flash timer for the sustained angry glow
     lastBiteId: -1,    // last player swing id that hit this target (one hit per swing)
     staggered: 0,      // sec remaining frozen/dazed by the player's roar
+    steer: { side: 1, commit: 0 },  // committed obstacle-skirt side (anti-jitter)
     prey: null,        // herbivore currently hunted instead of the player (or null)
     preyAttackTimer: 0,// cooldown between bites on the hunted herbivore
     feeding: 0,        // sec remaining feeding on a fresh kill — planted + vulnerable
@@ -250,7 +288,7 @@ export async function createTrex(scene, shadow, groundFn) {
 
     const dx0 = goal.x - pos.x, dz0 = goal.z - pos.z;
     const dist = Math.hypot(dx0, dz0) || 1;
-    const dir = avoidObstacles(pos, dx0 / dist, dz0 / dist);
+    const dir = avoidObstacles(pos, dx0 / dist, dz0 / dist, state.steer);
     const targetYaw = Math.atan2(dir.dx, dir.dz);
     state.facing = lerpAngle(state.facing, targetYaw, TREX.turnLerp);
     dino.setYaw(state.facing);
@@ -361,8 +399,10 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
     prey: null,
     feeding: 0,
     staggered: 0,
+    steer: { side: 1, commit: 0 },  // committed obstacle-skirt side (anti-jitter)
     lastBiteId: -1,
     slot, packCount,
+    slotWobble: (Math.random() - 0.5) * 2 * RAPTOR.slotJitter,  // fixed per-member ring jitter
     onBite: null,
     onRoar: null,
     onPreyBite: null,
@@ -404,26 +444,20 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
     let goal, speed;
     if (state.mode === "chase") {
       speed = RAPTOR.chaseSpeed + state.speedBonus + duskSpeed;
-      // FLANKING: aim for this member's slot on a ring around the player so the
-      // pack surrounds the target, until close enough to commit straight in.
+      // FLANKING: each member holds a FIXED, evenly-spaced slot on a ring around
+      // the player (slot i of packCount → angle i·2π/packCount, plus a small
+      // stable per-member jitter so the ring isn't robotic). It steers to that
+      // ring point to encircle, then drops the slot and darts straight in once
+      // inside lungeRange. Fixed slots keep the swarm fanned out instead of two
+      // members converging on the same bearing.
       if (distP > RAPTOR.lungeRange) {
-        // angle of this member's slot, biased by where it currently sits so the
-        // pack naturally fans out around the player rather than crossing over.
-        const baseAngle = (state.slot / state.packCount) * Math.PI * 2;
-        const fromPlayer = Math.atan2(pos.x - pp.x, pos.z - pp.z);
-        // blend the assigned slot angle with the member's current bearing to keep
-        // the encirclement stable as the player moves
-        const ang = lerpAngle(fromPlayer, baseAngle, 0.35);
-        const ringX = pp.x + Math.sin(ang) * RAPTOR.surroundRadius;
-        const ringZ = pp.z + Math.cos(ang) * RAPTOR.surroundRadius;
-        // blend "go to my ring slot" (flank) with "go straight at the player"
-        const f = RAPTOR.flankStrength;
+        const slotAngle = (state.slot / state.packCount) * Math.PI * 2 + state.slotWobble;
         goal = {
-          x: ringX * f + pp.x * (1 - f),
-          z: ringZ * f + pp.z * (1 - f),
+          x: pp.x + Math.sin(slotAngle) * RAPTOR.surroundRadius,
+          z: pp.z + Math.cos(slotAngle) * RAPTOR.surroundRadius,
         };
       } else {
-        goal = { x: pp.x, z: pp.z };   // committed — straight in for the bite
+        goal = { x: pp.x, z: pp.z };   // committed — straight in for the nip
       }
       if (distP < RAPTOR.attackRange) {
         speed = 0;
@@ -443,7 +477,7 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
 
     const dx0 = goal.x - pos.x, dz0 = goal.z - pos.z;
     const dist = Math.hypot(dx0, dz0) || 1;
-    const dir = avoidObstacles(pos, dx0 / dist, dz0 / dist);
+    const dir = avoidObstacles(pos, dx0 / dist, dz0 / dist, state.steer);
     const targetYaw = Math.atan2(dir.dx, dir.dz);
     state.facing = lerpAngle(state.facing, targetYaw, RAPTOR.turnLerp);
     dino.setYaw(state.facing);
@@ -531,6 +565,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     chargeCd: 0,
     chargeHitDone: false,
     recover: 0,         // post-charge settle: decelerate + re-point before normal AI resumes
+    steer: { side: 1, commit: 0 },  // committed obstacle-skirt side (anti-jitter)
     dead: false,
     maxHealth,
     health: maxHealth,
@@ -554,7 +589,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     if (state.panic > 0) {
       const adx = pos.x - pp.x, adz = pos.z - pp.z;
       const ad = Math.hypot(adx, adz) || 1;
-      const dir = avoidObstacles(pos, adx / ad, adz / ad);
+      const dir = avoidObstacles(pos, adx / ad, adz / ad, state.steer);
       state.facing = lerpAngle(state.facing, Math.atan2(dir.dx, dir.dz), 0.25);
       dino.setYaw(state.facing);
       pos.x += dir.dx * HERBIVORE.fleeSpeed * dt;
@@ -635,7 +670,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
 
     const dx0 = goal.x - pos.x, dz0 = goal.z - pos.z;
     const dist = Math.hypot(dx0, dz0) || 1;
-    const dir = avoidObstacles(pos, dx0 / dist, dz0 / dist);
+    const dir = avoidObstacles(pos, dx0 / dist, dz0 / dist, state.steer);
     const targetYaw = Math.atan2(dir.dx, dir.dz);
     state.facing = lerpAngle(state.facing, targetYaw, turnLerp);
     dino.setYaw(state.facing);

@@ -145,7 +145,12 @@ export const HERBIVORE = {
 // A steering nudge, not hard collision — keeps the cheap direct-move AI.
 export const AI_AVOID = {
   clearance: 2.5,        // extra units added to each obstacle's radius
-  strength: 2.6,         // how hard the outward push bends the heading
+  strength: 2.6,         // how hard the TANGENTIAL (around-the-obstacle) steer bends the heading
+  // Jitter fix (see avoidObstacles): steer AROUND obstacles tangentially and
+  // commit to one side for a few frames instead of re-deciding every frame, so
+  // a dino skirting a tree no longer vibrates as away-push and goal-pull flip.
+  radialKeep: 0.6,       // small straight-away component kept so it doesn't creep into the obstacle (< strength, which slides it past)
+  commitFrames: 30,      // frames a chosen skirt-side is held before re-deciding (~0.25-0.5s depending on FPS) — long enough to clear a footprint, short enough to react to a new one
 };
 
 // A cornered Triceratops turns and charges the player instead of fleeing.
@@ -176,30 +181,32 @@ export const TRICERATOPS = {
 // point, so they cut off escape lanes. All arcade-feel, anchored on the existing
 // chase economy (T-Rex base chase 11 u/s, player sprint 16.5, walk 7):
 export const RAPTOR = {
-  packSize: 3,            // 2-4 hunt together; 3 is the default pack (see packMin/packMax for the spawn roll)
-  packMin: 2,
-  packMax: 4,
-  modelHeight: 2.0,       // smaller/leaner than the 4.2u T-Rex — reads as quick + light
-  chaseSpeed: 13,         // faster than the T-Rex's 11 (they're the quick threat) but below the player's 16.5 sprint, so a clean sprint still escapes — the danger is being surrounded/worn down, not outrun in a straight line
-  patrolSpeed: 6,         // a touch quicker patrol than the T-Rex's 5
-  sightRange: 34,         // a little shorter than the T-Rex's 38 — they rely on the pack closing, not long-range lock
+  packSize: 4,            // 3-5 hunt together; a swarm needs numbers (see packMin/packMax)
+  packMin: 3,
+  packMax: 5,
+  // Turkey-sized (per the player's note): real Velociraptor stood ~0.5m at the
+  // hip / ~0.7m head-height — a small, light ankle-biter, NOT a man-sized raptor.
+  // The player model is 2.0u ≈ 1.8m, so ~1.1u/metre; 0.7m ≈ 0.75u standing height.
+  modelHeight: 0.75,      // turkey-sized — small + quick (was 2.0u, far too big)
+  chaseSpeed: 13.5,       // quick — faster than the T-Rex's 11, still below the player's 16.5 sprint so a clean sprint escapes; the threat is the swarm closing, not a straight-line outrun
+  patrolSpeed: 6,
+  sightRange: 34,
   loseInterestRange: 50,
-  attackRange: 3.2,       // shorter reach than the 5.0 T-Rex bite (smaller jaws)
-  attackCooldown: 0.9,    // bites faster than the T-Rex's 1.4 — death by many quick nips
-  attackDamage: 9,        // weak per bite (vs the T-Rex's 22); a 3-pack peaks ~27/round but only if they all connect — the human can fight back/scatter them
-  maxHealth: 45,          // fragile: ~2 player bites at attackDamage 34 fells one (vs the T-Rex's 140)
-  turnLerp: 0.16,         // nimble — turns far faster than the T-Rex's 0.06
-  // Flanking: each pack member holds a slot on a ring around the player and aims
-  // for that slot until it's close enough to lunge, so the pack encircles instead
-  // of stacking. surroundRadius is the ring they try to hold; flankGain bends a
-  // member's heading toward its slot tangentially (the sidestep that closes a net).
-  surroundRadius: 7,      // world units — the standoff ring the pack tries to form around you
-  flankStrength: 0.7,     // 0..1 blend of "go to my slot on the ring" vs "go straight at the player" (higher = more encircling, less head-on)
-  lungeRange: 9,          // inside this the member drops its flank slot and commits straight in for the bite
-  // Pack call: when the pack first locks on it yips (reuses the roar SFX hook),
-  // and a wounded pack does NOT enrage like the lone T-Rex — they're a swarm, the
-  // pressure comes from numbers, so no comeback-speed mechanic here.
-  secondPackWave: 2,      // a pack joins from this difficulty wave (~60s) — staggered after the lone T-Rex establishes
+  attackRange: 1.8,       // tiny jaws — must get right on your ankles to nip (vs the 5.0 T-Rex bite)
+  attackCooldown: 0.8,    // quick repeated nips
+  attackDamage: 5,        // very weak per nip (vs the T-Rex's 22) — a full 4-swarm peaks ~20/round only if they ALL connect; you punch them off easily
+  maxHealth: 24,          // fragile: 1 player bite at attackDamage 34 fells one — easy to scatter, dangerous only as a group
+  turnLerp: 0.18,         // very nimble little hunter
+  // Flanking: each pack member is assigned a FIXED, evenly-spaced slot angle on a
+  // ring around the player and steers to hold that slot, so the swarm fans out
+  // and encircles instead of stacking on one point. Inside lungeRange a member
+  // drops its slot and darts straight in for the nip.
+  surroundRadius: 6,      // the standoff ring the swarm tries to hold around you
+  slotJitter: 0.35,       // radians of wobble on each member's slot so the ring isn't robotically rigid
+  lungeRange: 5,          // inside this a member commits straight in for the nip
+  // No enrage/comeback mechanic — a wounded swarm is just a smaller swarm; the
+  // pressure is numbers. The pack yips once as a group on first lock-on.
+  secondPackWave: 2,      // a pack joins from this difficulty wave (~60s), after the lone T-Rex establishes
 };
 
 // New animated species added to the roster (wishlist item 4c). poly.pizza has
