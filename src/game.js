@@ -432,9 +432,6 @@ export async function startGame() {
         const prevScore = readBestScore();
         const bestScore = prevScore == null || points > prevScore;
         if (bestScore) localStorage.setItem(BEST_SCORE_KEY, String(points));
-        // A new personal best earns a positive chime, layered just after the death
-        // sting so both read (survival is endless — this is the only "win" cue).
-        if (isBest || bestScore) setTimeout(() => audio.win(), 700);
         const bestLine = isBest ? "New best survival! " : `Best: ${formatTime(prev)}. `;
         // Acknowledge a brave run: surviving into dusk earns a flourish.
         const duskTag = world.getDusk() >= DUSK.duskThreshold ? "🌆 You held out into dusk! " : "";

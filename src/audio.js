@@ -16,15 +16,10 @@ export function createAudio() {
   let muted = AUDIO.startMuted || urlMuted;
   let ambientNodes = null;
 
-  // Decoded sample buffers (real CC0 audio — see CREDITS.md). Keyed by a logical
+  // Decoded sample buffers (real CC0/royalty-free audio). Keyed by a logical
   // name; values are AudioBuffer | AudioBuffer[]. Loaded once on unlock; until
-  // then the procedural fallbacks below cover any early sound (and a per-file load
-  // failure leaves that buffer null, so its method silently falls back too).
-  const buffers = {
-    footsteps: [], wadeSteps: [], pant: null, bigStep: null, creatures: {},
-    swing: null, whoosh: null, splash: null, hurt: null, bite: null,
-    screech: null, roar: null, creatureCall: null, win: null, lose: null,
-  };
+  // then the procedural fallbacks below cover any early sound.
+  const buffers = { footsteps: [], pant: null, creatures: {} };
   let buffersLoaded = false;
   // Panting loop nodes (created lazily, gain-ramped — never hard cut).
   let pant = null;
@@ -55,24 +50,18 @@ export function createAudio() {
     } catch { return null; }
   }
 
-  // Load every configured sample once. Failures are tolerated per-file (a null
-  // buffer just means that sound uses its procedural fallback).
+  // Load every configured sample once. Failures are tolerated per-file.
   async function loadSamples() {
     if (!ctx || buffersLoaded) return;
     buffersLoaded = true; // guard re-entry; individual files may still be null
     const s = AUDIO.samples;
-    buffers.footsteps = (await Promise.all((s.footsteps || []).map(load))).filter(Boolean);
-    buffers.wadeSteps = (await Promise.all((s.wadeSteps || []).map(load))).filter(Boolean);
+    buffers.footsteps = await Promise.all((s.footsteps || []).map(load));
+    buffers.footsteps = buffers.footsteps.filter(Boolean);
     buffers.pant = await load(s.pant);
     buffers.bigStep = await load(s.bigStep);
     for (const [kind, url] of Object.entries(s.creatures || {})) {
       buffers.creatures[kind] = await load(url);
     }
-    // One-shot event samples — load in parallel.
-    const oneShots = ["swing", "whoosh", "splash", "hurt", "bite", "screech", "roar", "creatureCall", "win", "lose"];
-    await Promise.all(oneShots.map(async (key) => {
-      if (s[key]) buffers[key] = await load(s[key]);
-    }));
   }
 
   // Play a one-shot buffer with a short attack/release envelope (no clicks) and
@@ -169,16 +158,6 @@ export function createAudio() {
       const m = Math.max(0, Math.min(1, menace));
       const vol = Math.max(0, Math.min(1, gain));
       if (vol <= 0.001) return;
-      // Prefer the real predator-roar sample (CC0), deepened + slowed by menace as
-      // the predator closes; fall back to the detuned-saw synth below if unloaded.
-      if (buffers.roar) {
-        playBuffer(buffers.roar, {
-          gain: vol * 0.85,
-          rate: 1 - m * 0.15,                    // closing predator sounds deeper/slower
-          jitter: 0.04, attack: 0.02, release: 0.18,
-        });
-        return;
-      }
       const dur = 1.1 + m * 0.5;                 // more menace = a longer bellow
       const pitchMul = 1 - m * 0.25;             // and a deeper one
       const filter = ctx.createBiquadFilter();
@@ -213,14 +192,6 @@ export function createAudio() {
       if (!ctx || muted) return;
       const vol = Math.max(0, Math.min(1, gain));
       if (vol <= 0.001) return;
-      // Prefer the real distant-call sample (CC0); bigger herbivores (lower pitch)
-      // play it a touch slower. Falls back to the two-tone hoot synth below.
-      if (buffers.creatureCall) {
-        playBuffer(buffers.creatureCall, {
-          gain: vol * 0.7, rate: pitch, jitter: 0.05, attack: 0.02, release: 0.2,
-        });
-        return;
-      }
       const dur = 0.85;
       const base = 180 * pitch;
       const filter = ctx.createBiquadFilter();
@@ -240,12 +211,10 @@ export function createAudio() {
         o.start(); o.stop(now() + dur + 0.02);
       });
     },
-    // Melee swing: a real short air whoosh on the player's punch/kick (CC0 sample).
-    // Shorter + tighter than the dash whoosh so the two tools stay distinct. Falls
-    // back to a filtered-noise sweep if the sample failed to load.
+    // Melee swing: a short low airy whoosh as the player's punch/kick swings —
+    // softer and lower than the dash whoosh so the two tools stay distinct.
     swing() {
       if (!ctx || muted) return;
-      if (buffers.swing) { playBuffer(buffers.swing, { gain: 0.6, jitter: 0.06 }); return; }
       const n = noise(), g = ctx.createGain(), f = ctx.createBiquadFilter();
       f.type = "bandpass"; f.Q.value = 1.0;
       f.frequency.setValueAtTime(280, now());
@@ -269,12 +238,10 @@ export function createAudio() {
       n.connect(f); f.connect(g); g.connect(master);
       n.start(); n.stop(now() + 0.1);
     },
-    // Predator bite: a real wet flesh chomp/snap (CC0 squelch + impact, baked).
-    // The PREDATORS' bite (T-Rex on the player / on prey) — not the player's
-    // attack. Falls back to the old click+noise burst if the sample is missing.
+    // Snappy chomp: short pitch-down click plus a noise burst. The PREDATORS'
+    // bite (T-Rex on the player / on prey) — not the player's attack.
     bite() {
       if (!ctx || muted) return;
-      if (buffers.bite) { playBuffer(buffers.bite, { gain: 0.85, jitter: 0.06 }); return; }
       tone(180, 0.12, "square", 0.4, 60);
       const n = noise(), g = ctx.createGain(), f = ctx.createBiquadFilter();
       f.type = "highpass"; f.frequency.value = 800;
@@ -309,16 +276,8 @@ export function createAudio() {
       if (!ctx || muted) return;
       const vol = Math.max(0, volume);
       if (vol <= 0.001) return;
-      // Wading: play a real wet footstep sample (Kenney grass step + OGA water
-      // splash, baked) — a genuine water-slosh per step, not a synth spray sweep.
-      const wet = buffers.wadeSteps;
-      if (wading && wet && wet.length) {
-        const buf = wet[(Math.random() * wet.length) | 0];
-        playBuffer(buf, { gain: vol * 1.6, rate: 1.0, jitter: 0.08 });
-        return;
-      }
-      // Dry footfall: real CC0 footstep sample (Kenney): pick a random variant +
-      // pitch-jitter so a run doesn't machine-gun. Sprint plays faster + louder.
+      // Real CC0 footstep sample (Kenney): pick a random variant + pitch-jitter
+      // so a run doesn't machine-gun. Sprint plays slightly faster + louder.
       const steps = buffers.footsteps;
       if (steps && steps.length) {
         const buf = steps[(Math.random() * steps.length) | 0];
@@ -327,6 +286,23 @@ export function createAudio() {
           rate: sprint ? 1.12 : 1.0,
           jitter: 0.08,                          // ±8% pitch per step
         });
+        if (wading) {
+          // Watery splash layer over the dry step: a bright spray sizzle (a foot
+          // breaking the surface) plus a quick pitched water-drop "plip", so it
+          // reads as WATER, not a dull wet thud. Same recipe as splash() but
+          // shorter/lighter — it's a footfall, not a plunge.
+          const wn = noise(), wg = ctx.createGain(), wf = ctx.createBiquadFilter();
+          wf.type = "bandpass"; wf.Q.value = 0.6;
+          wf.frequency.setValueAtTime(2600, now());                    // bright spray on entry
+          wf.frequency.exponentialRampToValueAtTime(700, now() + 0.22); // settling back into the water
+          wg.gain.setValueAtTime(0.0001, now());
+          wg.gain.exponentialRampToValueAtTime(vol * 1.1, now() + 0.01);
+          wg.gain.exponentialRampToValueAtTime(0.0001, now() + 0.24);
+          wn.connect(wf); wf.connect(wg); wg.connect(master);
+          wn.start(); wn.stop(now() + 0.24);
+          // pitched water-drop blip (the round "plip" of a splash)
+          tone(900, 0.12, "sine", vol * 0.5, 380);
+        }
         return;
       }
       // Procedural fallback (samples not yet loaded / blocked): a soft filtered
@@ -342,11 +318,10 @@ export function createAudio() {
       n.connect(f); f.connect(g); g.connect(master);
       n.start(); n.stop(now() + dur);
     },
-    // Splash: a real water splash (CC0) when the player wades into the pond.
-    // Falls back to a downward-swept noise burst + blip if the sample is missing.
+    // Splash: a bright noise burst sweeping down through a lowpass, plus a
+    // little watery blip. Played when the raptor enters the pond.
     splash() {
       if (!ctx || muted) return;
-      if (buffers.splash) { playBuffer(buffers.splash, { gain: 0.7, jitter: 0.05 }); return; }
       const n = noise(), g = ctx.createGain(), f = ctx.createBiquadFilter();
       f.type = "lowpass";
       f.frequency.setValueAtTime(3500, now());
@@ -357,11 +332,10 @@ export function createAudio() {
       n.start(); n.stop(now() + 0.4);
       tone(520, 0.18, "sine", 0.18, 240);
     },
-    // Dash whoosh: a real, stronger/longer air gust (CC0) — clearly distinct from
-    // the short punch swing. Falls back to a rising bandpass noise sweep.
+    // Dash whoosh: a quick bright noise sweep through a rising bandpass — a
+    // short airy "swish" distinct from the watery splash, selling the burst.
     whoosh() {
       if (!ctx || muted) return;
-      if (buffers.whoosh) { playBuffer(buffers.whoosh, { gain: 0.6, jitter: 0.04 }); return; }
       const n = noise(), g = ctx.createGain(), f = ctx.createBiquadFilter();
       f.type = "bandpass"; f.Q.value = 1.2;
       f.frequency.setValueAtTime(600, now());
@@ -372,11 +346,9 @@ export function createAudio() {
       n.connect(f); f.connect(g); g.connect(master);
       n.start(); n.stop(now() + 0.28);
     },
-    // Pterosaur dive screech: a real raptor-style shriek (CC0) warning of a swoop.
-    // Falls back to a shrill rising-then-falling synth cry if the sample is missing.
+    // Pterosaur screech: a shrill rising-then-falling cry warning of a dive.
     screech() {
       if (!ctx || muted) return;
-      if (buffers.screech) { playBuffer(buffers.screech, { gain: 0.7, jitter: 0.05 }); return; }
       const dur = 0.55;
       const o = ctx.createOscillator();
       const g = ctx.createGain();
@@ -392,10 +364,9 @@ export function createAudio() {
       o.connect(f); f.connect(g); g.connect(master);
       o.start(); o.stop(now() + dur + 0.02);
     },
-    // Player hurt: a real male pain grunt/exhale (CC0). Falls back to a low buzz.
+    // Player hurt: dissonant low buzz.
     hurt() {
       if (!ctx || muted) return;
-      if (buffers.hurt) { playBuffer(buffers.hurt, { gain: 0.8, jitter: 0.05 }); return; }
       tone(140, 0.3, "sawtooth", 0.4, 80);
     },
     // A single heartbeat-like tension pulse; intensity (0..1) raises pitch+gain.
@@ -413,36 +384,24 @@ export function createAudio() {
       o.connect(g); g.connect(master);
       o.start(); o.stop(now() + 0.25);
     },
-    // Game over (DEVOURED): a real ominous, final death sting (CC0 deep gong +
-    // thunder). Falls back to a descending dejected motif if the sample is missing.
     lose() {
       if (!ctx || muted) return;
-      if (buffers.lose) { playBuffer(buffers.lose, { gain: 0.85, attack: 0.01, release: 0.4 }); return; }
       [330, 247, 196, 147].forEach((f, i) => setTimeout(() => tone(f, 0.5, "sawtooth", 0.35), i * 160));
-    },
-    // Positive sting — a real new-best chime (CC0 bell, rising). Survival is endless
-    // so there is no classic "win"; this plays on a new personal best. No-op (no
-    // synth fallback) if the sample is missing — a missing reward cue is harmless.
-    win() {
-      if (!ctx || muted) return;
-      if (buffers.win) playBuffer(buffers.win, { gain: 0.7, attack: 0.005, release: 0.3 });
     },
     // Ambient drone removed — the user hated the constant sine hum. Kept as a
     // no-op so call sites stay valid; if an ambient bed returns it should be a
     // real sample (wind/jungle), never a pitched oscillator.
     startAmbient() {},
-    // Giant-sauropod footfall: a real heavy impact THUD/BOOM (CC0 Kenney slam +
-    // baked sub-bass), distance gain 0..1. Replaces the old repurposed bellow that
-    // read as "bricks". T-Rex deliberately has NO footfall — padded feet (user
-    // note): it's silent underfoot, which is scarier.
+    // Giant-sauropod footfall thud (user-picked low sample), distance gain 0..1.
+    // T-Rex deliberately has NO footfall — padded feet (user note): it's silent
+    // underfoot, which is scarier.
     bigStep(gain = 1) {
       if (!ctx || muted || !buffers.bigStep) return;
       playBuffer(buffers.bigStep, {
-        // Ceiling kept at 0.4 (in-game "too loud" note); the sample is a normalised
-        // deep impact, so this lands as a felt thud without dominating the bed.
+        // User feedback: too loud in-game — halved the ceiling (0.8 -> 0.4).
         gain: Math.max(0, Math.min(1, gain)) * 0.4,
-        rate: 0.95, jitter: 0.06,
-        attack: 0.005, release: 0.12,
+        rate: 0.9, jitter: 0.06,
+        attack: 0.01, release: 0.15,
       });
     },
     // Player breathing: a looping breath sample whose volume + rate track
