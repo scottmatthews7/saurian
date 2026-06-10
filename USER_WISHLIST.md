@@ -225,3 +225,24 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
    a PLANE CRASH — a crashed-plane wreck prop at the spawn point (smoke/debris),
    the human getting up from it. Fits the "stranded in dino country" survival
    framing. Optional: a brief intro beat/sound on spawn.
+
+14. **Fixed map layout (authored in layout-designer.html).** Bake this layout into
+   config (fixed for all players): WETLAND/pond to the N, JUNGLE thicket to the W,
+   DRY ROCKY (big) to the S, NEW SEA on the EAST edge, spawn at centre. Exact
+   coords to come from the designer (Copy values); current seed approx: pond
+   (-6,-56) r28, jungle (-55,-18) r45, dry (8,56) r60, sea (92,4) r46.
+
+15. **SEA biome (east edge).** A large sea/ocean on the eastern edge of the map —
+   home to the BIG marine reptiles. Open water, distinct from the inland wetland.
+
+16. **Aquatic predator = long-necked PLESIOSAUR.** The current lake creature looks
+   rubbish — replace it with a proper plesiosaur/elasmosaurus (long neck, 4
+   flippers, ref image): sources a CC0/CC-BY model or builds a good procedural one.
+   Lives in the SEA (and surfaces menacingly); big and dangerous near the water.
+
+17. **Spinosaurus in the wetland/swamp.** The Spino (from the foundry) inhabits the
+   wetland/swampy area as its apex predator.
+
+18. **Jungle thicket much DENSER / more jungly.** It currently isn't jungly enough —
+   crank tree + canopy + undergrowth density way up inside the jungle zone so it
+   reads as a proper dense jungle.

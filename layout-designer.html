@@ -58,10 +58,11 @@ const wz = (Y) => (Y - cy) / scale;
 
 // Seeded from the current game config.
 const DEFAULTS = [
-  { key: 'spawn',     label: 'Spawn',           color: '#ffffff', x: 0,   z: 0,   r: 0,  point: true },
-  { key: 'dryZone',   label: 'Dry rocky (arid)', color: '#c9a85e', x: 46,  z: -40, r: 34 },
-  { key: 'jungleZone',label: 'Jungle thicket',   color: '#4fae5f', x: -42, z: -38, r: 30 },
-  { key: 'pond',      label: 'Wetland / pond',   color: '#3a9bd1', x: -34, z: 28,  r: 17 },
+  { key: 'spawn',     label: 'Spawn',            color: '#ffffff', x: 0,   z: 0,   r: 0,  point: true },
+  { key: 'dryZone',   label: 'Dry rocky (arid)', color: '#c9a85e', x: 8,   z: 56,  r: 60 },
+  { key: 'jungleZone',label: 'Jungle thicket',   color: '#4fae5f', x: -55, z: -18, r: 45 },
+  { key: 'pond',      label: 'Wetland (Spino)',  color: '#3a9bd1', x: -6,  z: -56, r: 28 },
+  { key: 'sea',       label: 'Sea (plesiosaurs)', color: '#1f6f9b', x: 92,  z: 4,   r: 46 },
 ];
 let zones = structuredClone(DEFAULTS);
 
