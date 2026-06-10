@@ -100,13 +100,22 @@
     .titleObjective { font-size: 16px; line-height: 1.6; opacity: 0.9;
       max-width: 540px; text-align: center; margin-bottom: 18px; }
     .titleObjective b { color: var(--accent); }
-    .titleDusk { display: inline-block; margin-top: 8px; font-size: 14px; color: #ff9a5b; opacity: 0.95; }
+    .titleMore { max-width: 560px; text-align: center; margin-bottom: 16px; opacity: 0.82; }
+    .titleMore > summary { font-size: 13px; letter-spacing: 0.5px; cursor: pointer;
+      list-style: none; color: rgba(255,255,255,0.6); padding: 4px 12px;
+      border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; user-select: none;
+      pointer-events: auto; }
+    .titleMore > summary::-webkit-details-marker { display: none; }
+    .titleMore > summary:hover { color: rgba(255,255,255,0.85); }
+    .titleMore[open] > summary { margin-bottom: 8px; }
+    .titleMore > span:first-of-type { margin-top: 0 !important; }
+    .titleDusk { display: inline-block; margin-top: 8px; font-size: 13px; color: #ff9a5b; opacity: 0.95; }
     .titleDusk b { color: #ffb877; }
-    .titleCursed { display: inline-block; margin-top: 6px; font-size: 14px; color: #c98bff; opacity: 0.95; }
+    .titleCursed { display: inline-block; margin-top: 6px; font-size: 13px; color: #c98bff; opacity: 0.95; }
     .titleCursed b { color: #d9a6ff; }
-    .titleBeacon { display: inline-block; margin-top: 6px; font-size: 14px; color: #ffc078; opacity: 0.95; }
+    .titleBeacon { display: inline-block; margin-top: 6px; font-size: 13px; color: #ffc078; opacity: 0.95; }
     .titleBeacon b { color: #ffd9a0; }
-    .titleFeed { display: inline-block; margin-top: 6px; font-size: 14px; color: #8fd97f; opacity: 0.95; }
+    .titleFeed { display: inline-block; margin-top: 6px; font-size: 13px; color: #8fd97f; opacity: 0.95; }
     .titleFeed b { color: #b6f0a8; }
     .controls { display: grid; grid-template-columns: repeat(3, auto); gap: 8px 26px;
       margin-bottom: 16px; }

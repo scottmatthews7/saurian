@@ -130,7 +130,11 @@ export function createHUD() {
         <div class="titleCard">
           <div class="bannerTitle start titleBig">DINO ARENA</div>
           <div class="titleTag">SURVIVAL</div>
-          <div class="titleObjective">Collect <b>${target}</b> glowing eggs and bank them at your nest.<br/>A roaming T-Rex wants you dead. Run, bite, <b>roar</b>, <b>dash</b> to survive.<br/><span class="titleDusk">As <b>dusk</b> falls the predators grow bolder — but late banks pay double.</span><br/><span class="titleCursed">Grab a <b>cursed egg</b> ☠ for a huge score — but every T-Rex hunts you while you carry it.</span><br/><span class="titleBeacon">Run through the <b>🔥 ward beacons</b> to light them — a lit beacon repels the T-Rex (and wards <b>wider at dusk</b>); light all three for a <b>sanctuary</b> bonus. They <b>burn down</b> — brush one again to relight it.</span><br/><span class="titleFeed">The T-Rex hunts the <b>herd</b> too — lead it onto a herbivore and it'll peel off. When it makes a kill it stops to <b>feed</b> (it glows <b>green</b> on the radar): rush in and bite its exposed flank for <b>double damage</b>.</span></div>
+          <div class="titleObjective">Collect <b>${target}</b> glowing eggs and bank them at your nest.<br/>A roaming T-Rex wants you dead. Run, bite, <b>roar</b>, <b>dash</b> to survive.</div>
+          <details class="titleMore">
+            <summary>More to discover &nbsp;(optional — learn as you play)</summary>
+            <span class="titleDusk">As <b>dusk</b> falls the predators grow bolder — but late banks pay double.</span><br/><span class="titleCursed">Grab a <b>cursed egg</b> ☠ for a huge score — but every T-Rex hunts you while you carry it.</span><br/><span class="titleBeacon">Run through the <b>🔥 ward beacons</b> to light them — a lit beacon repels the T-Rex (and wards <b>wider at dusk</b>); light all three for a <b>sanctuary</b> bonus. They <b>burn down</b> — brush one again to relight it.</span><br/><span class="titleFeed">The T-Rex hunts the <b>herd</b> too — lead it onto a herbivore and it'll peel off. When it makes a kill it stops to <b>feed</b> (it glows <b>green</b> on the radar): rush in and bite its exposed flank for <b>double damage</b>.</span>
+          </details>
           <div class="controls">
             ${ctrl("WASD", "Move")}
             ${ctrl("SHIFT", "Sprint")}
@@ -145,6 +149,14 @@ export function createHUD() {
           <div class="titlePrompt">Press any key or click to begin</div>
         </div>`;
       banner.style.display = "flex";
+      // Expanding "More to discover" must not also start the run (the start
+      // listeners fire on any pointerdown). Swallow the toggle interaction.
+      const more = banner.querySelector(".titleMore > summary");
+      if (more) {
+        const swallow = (e) => e.stopPropagation();
+        more.addEventListener("pointerdown", swallow);
+        more.addEventListener("click", swallow);
+      }
     },
     hideBanner() { banner.style.display = "none"; },
   };
