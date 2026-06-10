@@ -150,3 +150,19 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
    giant sauropod is close (scaling with proximity / its footfalls) — the ground
    should feel like it's shaking. Note: T-Rex has padded feet (user note) — no
    thud/shake from the rex; the shake belongs to the giants.
+
+9. **Bigger map + gentle hills (requested).** Grow the arena (ARENA.radius /
+   groundSize up) and add slight rolling hills to the terrain. Requires real
+   ground-height sampling everywhere (player, dinos, eggs, props all follow the
+   terrain — no floating/clipping), and AI pathing must stay sane on slopes.
+   Coordinate with the env realism pass (same world.js territory) — do AFTER the
+   env branch merges to avoid conflicts.
+
+10. **TREE CLIMBING to evade the T-Rex (requested; design decided).** The human
+   can climb suitable trees (interact near trunk → climb up; climb down or drop).
+   While treed, the T-Rex SHAKES THE TREE: it rams the trunk on a cadence and the
+   player must time/hold their grip (grip input or stamina) or be shaken off into
+   danger. Evasion works but is active and tense — not an AFK safe spot. Raptors
+   (turkey-sized) can't reach you up a tree either but may circle below. Needs:
+   climbable-tree flagging, climb state/anim on the player, rex tree-shake AI +
+   shake impulse, fall-off, HUD grip cue.
