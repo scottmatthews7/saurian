@@ -115,16 +115,16 @@ export function createHUD() {
     },
     // Rich title screen: animated title, objective, a controls grid, best stats,
     // and a pulsing prompt. Shown before the first input starts the run.
-    showTitle(target, bestLine) {
+    showTitle(bestLine) {
       const ctrl = (k, label) => `<div class="ctrlRow"><span class="key">${k}</span><span>${label}</span></div>`;
       banner.innerHTML = `
         <div class="titleCard">
-          <div class="bannerTitle start titleBig">DINO ARENA</div>
+          <div class="bannerTitle start titleBig">SAURIAN</div>
           <div class="titleTag">SURVIVAL</div>
-          <div class="titleObjective">Collect <b>${target}</b> glowing eggs and bank them at your nest.<br/>A roaming T-Rex wants you dead. Run, <b>punch</b>, <b>kick</b>, <b>dash</b> to survive.</div>
+          <div class="titleObjective">One human, alone in a valley full of teeth.<br/>Outrun the <b>T-Rex</b>, slip the <b>raptor packs</b>, and stay alive — <b>run</b>, <b>punch</b>, <b>kick</b> and <b>dash</b> to survive the dark.</div>
           <details class="titleMore">
             <summary>More to discover &nbsp;(optional — learn as you play)</summary>
-            <span class="titleDusk">As <b>dusk</b> falls the predators grow bolder — but late banks pay double.</span><br/><span class="titleCursed">Grab a <b>cursed egg</b> ☠ for a huge score — but every T-Rex hunts you while you carry it.</span><br/><span class="titleBeacon">Run through the <b>🔥 ward beacons</b> to light them — a lit beacon repels the T-Rex (and wards <b>wider at dusk</b>); light all three for a <b>sanctuary</b> bonus. They <b>burn down</b> — brush one again to relight it.</span><br/><span class="titleFeed">The T-Rex hunts the <b>herd</b> too — lead it onto a herbivore and it'll peel off. When it makes a kill it stops to <b>feed</b> (it glows <b>green</b> on the radar): rush in and strike its exposed flank for <b>double damage</b>.</span>
+            <span class="titleFeed">Glowing <b>eggs</b> dotted across the valley are pickups — grab them on the run to keep your <b>health</b> and <b>stamina</b> up.</span><br/><span class="titleDusk">As <b>dusk</b> falls the predators grow bolder and the valley darkens — the longer you last, the deadlier it gets.</span><br/><span class="titleCursed">Some eggs glow with a <b>cursed</b> ☠ pulse — they draw <i>every</i> T-Rex straight to you. Touch one and you'd best be fast.</span><br/><span class="titleBeacon">Run through the <b>🔥 ward beacons</b> to light them — a lit beacon repels the T-Rex (and wards <b>wider at dusk</b>). They <b>burn down</b> — brush one again to relight it.</span><br/><span class="titleFeed">The T-Rex hunts the <b>herd</b> too — lead it onto a herbivore and it'll peel off. When it makes a kill it stops to <b>feed</b> (it glows <b>green</b> on the radar): rush in and strike its exposed flank for <b>double damage</b>.</span>
           </details>
           <div class="controls">
             ${ctrl("WASD", "Move")}

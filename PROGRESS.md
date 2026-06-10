@@ -1,5 +1,55 @@
 # Progress
 
+## Done (session 18 — landing-pass branch: marketing landing page + title screen)
+Goal: a premium cinematic LANDING page for SAURIAN + a matching in-game
+title/start screen. Branch `landing-pass` (isolated worktree; coordinator
+merges). Edited only: new `landing.html`, plus `index.html` (title-screen CSS),
+`src/hud.js` (title-card copy), `src/game.js` (objective/title call) — no
+gameplay/mechanic changes.
+
+- **`landing.html` (new, self-contained, no build step):** dark cinematic AAA
+  game-site feel. Hero with a clamped gradient wordmark (white→amber→ember),
+  animated `<canvas>` background (drifting embers + 3 parallax ridgeline/tree
+  silhouette layers + volumetric fog bands), scrim, PLAY NOW → `index.html`,
+  scroll cue. Below: a stats strip, 6 feature cards (3→1 col responsive), a
+  controls grid, a final CTA, and a footer CREDITS line (CC0/royalty-free assets
+  per CREDITS.md, link to CREDITS.md). Reveal-on-scroll, reduced-motion respected.
+- **Hero canvas SIZING bug fixed (the brief's named bug):** `resize()` lets CSS
+  set display size (`#sky{width:100%;height:100%}`) and sizes the BUFFER from
+  `getBoundingClientRect()` × `min(devicePixelRatio,2)`, then
+  `ctx.setTransform(DPR,…)`. Never assigns read-only `clientHeight`. Verified
+  desktop (CSS 1440×721 → buffer 2880×1442 @dpr2) and mobile (CSS 390×844 →
+  buffer 780×1688, DPR capped at 2 for perf).
+- **In-game title/start screen upgraded to match** (`index.html` `.titleBig`,
+  `.titleCard`, `.titleTag`): SAURIAN now uses the same white→amber→ember
+  gradient wordmark + glow pulse, sits on a dark rounded backdrop card (legible
+  over the bright valley), tidied SURVIVAL tag. Press-any-key / click-to-start
+  flow + HUD untouched; start listeners intact.
+- **COPY = survival framing, NO egg-banking/nests** in any marketing/title text.
+  Landing + title screen reframed around outrun/evade/survive; eggs described as
+  pickups. No "The Hunt" framing (the landing feature section is "Gameplay").
+  NOTE: the live in-PLAY HUD still reads "EGGS BANKED"/"bank at the nest" because
+  that is the actual game MECHANIC — a SEPARATE peer is converting the gameplay
+  itself to eat-to-heal survival on their own branch; left untouched here to
+  avoid merge conflicts (flagged to coordinator).
+
+## Verified (session 18)
+- Served from THIS worktree on a unique port (8231). `landing.html` + `index.html`
+  both load with **0 console errors** (desktop 1440 + mobile 390). Game title
+  screen renders and starts on input; **muted first** on every game URL (`?mute`,
+  "🔇 MUTED" shown) per the call-in-progress note.
+- Landing audit (page-targeted evaluate): banned-copy scan ["banked","nest",
+  "bank 6/six","bank them","bank at"] → 0 hits; no "The Hunt"; grid 3 cols
+  desktop / 1 col mobile; 6 cards, 8 controls; Play→index.html; CREDITS link
+  present; no horizontal scroll on mobile; title fits.
+- `index.html` served by my worktree server confirmed to carry the gradient title
+  + card backdrop; `node --check` clean on hud.js/game.js.
+- CAVEAT: the shared Chrome was heavily contended by 7+ peer tabs that kept
+  stealing OS focus, so pixel screenshots intermittently captured peers' tabs.
+  Verification leaned on page-targeted `evaluate_script`/`wait_for` + curl of my
+  own server (deterministic). One clean hero + one clean title screenshot were
+  captured early (`.shots/`).
+
 ## Done (session 17 — dinos-pass branch: roster + behaviour)
 Wishlist items 3, 4, 4c, 4d. Branch `dinos-pass` (isolated worktree; coordinator
 merges). Edited only: `dino.js`, `ai.js`, `config.js` (DINO section), new

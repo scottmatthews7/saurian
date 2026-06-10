@@ -213,13 +213,13 @@ export async function startGame() {
   // past DUSK.duskThreshold in a run. A roar + popup so the player reads it.
   let duskAnnounced = false;
 
-  hud.setObjective(`Bank ${EGGS.targetToWin} eggs at your nest. Don't get eaten.`);
+  hud.setObjective(`Outrun the T-Rex. Evade the raptor packs. Don't get eaten.`);
   {
     const bt = readBest(), bs = readBestScore();
     const bestLine = (bt || bs)
       ? `Best: ${bt ? bt.toFixed(0) + "s" : "—"}${bs ? " · " + bs.toLocaleString() + " pts" : ""}`
       : "";
-    hud.showTitle(EGGS.targetToWin, bestLine);
+    hud.showTitle(bestLine);
   }
   let started = false;
   const startGameLoop = () => {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dino Arena: Survival</title>
+  <title>SAURIAN — Survive the Valley</title>
   <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'&gt;&lt;text y='26' font-size='26'&gt;🦖&lt;/text&gt;&lt;/svg&gt;" />
   <style>
     :root { --accent: #ffcd58; --danger: #e8533f; --good: #6fe06f; }
@@ -90,12 +90,21 @@
 
     /* Title screen card */
     .titleCard { display: flex; flex-direction: column; align-items: center;
-      gap: 6px; padding: 8px 24px; }
-    .titleBig { font-size: 72px; animation: titlePulse 3s ease-in-out infinite; }
-    @keyframes titlePulse { 0%,100% { text-shadow: 0 4px 24px rgba(0,0,0,0.6); }
-      50% { text-shadow: 0 4px 40px rgba(255,205,88,0.55); } }
-    .titleTag { font-size: 22px; letter-spacing: 14px; color: #fff; opacity: 0.75;
-      margin: -6px 0 14px 12px; font-weight: 600; }
+      gap: 6px; padding: 40px 44px 36px; border-radius: 22px;
+      background: radial-gradient(120% 90% at 50% 30%, rgba(8,14,16,0.74), rgba(4,7,8,0.92));
+      border: 1px solid rgba(255,180,80,0.16);
+      box-shadow: 0 30px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05);
+      backdrop-filter: blur(3px); }
+    .titleBig { font-size: clamp(56px, 11vw, 110px); font-weight: 900; letter-spacing: 2px;
+      line-height: 0.92; text-transform: uppercase;
+      background: linear-gradient(180deg,#fff 0%,#ffe9b8 38%,#ffae4d 72%,#ff7330 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      filter: drop-shadow(0 8px 36px rgba(255,140,50,0.35));
+      animation: titlePulse 3s ease-in-out infinite; }
+    @keyframes titlePulse { 0%,100% { filter: drop-shadow(0 8px 30px rgba(255,140,50,0.30)); }
+      50% { filter: drop-shadow(0 10px 46px rgba(255,170,70,0.55)); } }
+    .titleTag { font-size: 16px; letter-spacing: 13px; color: var(--accent); opacity: 0.85;
+      margin: 2px 0 18px; padding-left: 13px; font-weight: 700; text-transform: uppercase; }
     .titleObjective { font-size: 16px; line-height: 1.6; opacity: 0.9;
       max-width: 540px; text-align: center; margin-bottom: 18px; }
     .titleObjective b { color: var(--accent); }
@@ -216,7 +225,7 @@
   </div>
 
   <div id="loading">
-    <div class="title">DINO ARENA</div>
+    <div class="title">SAURIAN</div>
     <div class="loadMsg">Loading…</div>
     <div class="spinner"></div>
   </div>
