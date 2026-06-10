@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<!-- Headless desert screenshot harness. Boots ONLY the world + env (no game
+     sim) and parks a free camera inside the dry zone (read from config) at a
+     few eye-level + elevated angles. Used to iterate the desert look. -->
+<html>
+<head>
+  <meta charset="utf-8" />
+  <!-- Resolve relative asset paths (assets/textures/...) from the server root,
+       exactly as index.html does — the harness lives under /tools/ otherwise. -->
+  <base href="/" />
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+    #c { width: 100vw; height: 100vh; display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <script src="/lib/babylon.js"></script>
+  <script src="/lib/babylonjs.loaders.min.js"></script>
+  <script type="module">
+    import { buildWorld } from "/src/world.js";
+    import { buildEnv } from "/src/env.js";
+    import { ENV } from "/src/config.js";
+
+    const B = window.BABYLON;
+    const canvas = document.getElementById("c");
+    const engine = new B.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
+    const scene = new B.Scene(engine);
+    scene.collisionsEnabled = true;
+
+    // Camera params from the URL: shot=<name>, fwd/elev presets.
+    const params = new URLSearchParams(location.search);
+    const shot = params.get("shot") || "eye";
+
+    const dz = ENV.dryZone;
+    const cam = new B.FreeCamera("cam", new B.Vector3(0, 5, 0), scene);
+    cam.minZ = 0.1; cam.maxZ = 1000; cam.fov = 0.9;
+    scene.activeCamera = cam;
+
+    const world = buildWorld(scene);
+    if (params.get("nopost") !== "1") buildEnv(scene, cam);
+    if (params.get("nosky") === "1") { const sk = scene.getMeshByName("sky"); if (sk) sk.setEnabled(false); }
+    window.__dbg = { scene, cam, world };
+
+    // Place the camera relative to the dry-zone centre once the ground exists.
+    const gy = (x, z) => world.heightAt(x, z);
+    function frame(name) {
+      const cx = dz.centerX, cz = dz.centerZ;
+      if (name === "eye") {
+        // eye-level, near the zone CENTRE looking across the deep desert
+        const ex = cx - dz.radius * 0.35, ez = cz + dz.radius * 0.35;
+        cam.position.set(ex, gy(ex, ez) + 2.2, ez);
+        cam.setTarget(new B.Vector3(cx + dz.radius * 0.5, gy(cx + dz.radius * 0.5, cz - dz.radius * 0.5) + 1.5, cz - dz.radius * 0.5));
+      } else if (name === "eye2") {
+        // eye-level from the far side, looking back toward the green biome edge
+        const ex = cx + dz.radius * 0.6, ez = cz - dz.radius * 0.6;
+        cam.position.set(ex, gy(ex, ez) + 2.2, ez);
+        cam.setTarget(new B.Vector3(-10, 2, 20));
+      } else if (name === "high") {
+        // elevated 3/4 establishing shot of the whole zone
+        const ex = cx + dz.radius * 1.3, ez = cz + dz.radius * 1.3;
+        cam.position.set(ex, gy(ex, ez) + 26, ez);
+        cam.setTarget(new B.Vector3(cx, gy(cx, cz), cz));
+      } else if (name === "jungle") {
+        // the jungle thicket (config jungleZone centre) — must stay lush green
+        const jx = -42, jz = -38;
+        cam.position.set(jx - 18, gy(jx - 18, jz + 18) + 3, jz + 18);
+        cam.setTarget(new B.Vector3(jx, gy(jx, jz) + 3, jz));
+      } else if (name === "pond") {
+        // the wetland pond (WATER centre ~ -34,28) — must still have water + reeds
+        cam.position.set(-34 - 22, gy(-56, 28) + 6, 28 + 6);
+        cam.setTarget(new B.Vector3(-34, 1, 28));
+      } else if (name === "vista") {
+        // eye-level inside the zone, low angle sweeping across the dunes toward
+        // the mesa ring — the money shot for the "bold desert" read
+        const ex = cx - dz.radius * 0.55, ez = cz + dz.radius * 0.2;
+        cam.position.set(ex, gy(ex, ez) + 1.8, ez);
+        cam.setTarget(new B.Vector3(cx + dz.radius * 0.4, gy(cx, cz) + 4, cz - dz.radius * 0.3));
+      } else if (name === "top") {
+        // straight down over the zone centre (clean ground colour read)
+        cam.position.set(cx, gy(cx, cz) + 40, cz + 0.01);
+        cam.setTarget(new B.Vector3(cx, gy(cx, cz), cz));
+      } else if (name === "edge") {
+        // straddle the biome boundary: half green, half desert in frame
+        const ex = cx - dz.radius * 1.6, ez = cz + dz.radius * 1.1;
+        cam.position.set(ex, gy(ex, ez) + 8, ez);
+        cam.setTarget(new B.Vector3(cx, gy(cx, cz) + 1, cz));
+      }
+    }
+    frame(shot);
+
+    // Drive a fixed number of frames so async textures/HDRI resolve and the
+    // proximity-blended fog/light settle, then mark ready for capture.
+    let n = 0;
+    const READY_FRAMES = 90;
+    window.__ready = false;
+    window.__err = null;
+    window.addEventListener("error", (e) => { window.__err = String(e.message || e.error); });
+    engine.runRenderLoop(() => {
+      try {
+        // advance the world clock so proximity fog/light tint converges in-zone
+        world.update(1 / 60, false);
+        scene.render();
+        if (++n === READY_FRAMES) window.__ready = true;
+      } catch (e) {
+        window.__err = String(e && e.stack || e);
+      }
+    });
+    window.addEventListener("resize", () => engine.resize());
+  </script>
+</body>
+</html>

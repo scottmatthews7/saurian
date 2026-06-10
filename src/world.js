@@ -24,6 +24,19 @@ function zoneFactor(Z, x, z) {
 const dryZoneFactor = (x, z) => zoneFactor(ENV.dryZone, x, z);
 const jungleZoneFactor = (x, z) => zoneFactor(ENV.jungleZone, x, z);
 
+// Dune undulation for the desert zone: low-frequency layered sines so each dune
+// spans many ground quads (no stair-stepping). Returns the raw rise in metres;
+// callers weight it by dryZoneFactor so dunes only exist in-zone and feather
+// out at the edge. MUST be applied identically in the vertex loop AND heightAt
+// (else rocks/grass/collisions float or sink — the top desert bug risk).
+function duneHeight(x, z) {
+  const D = ENV.dryZone;
+  return (
+    Math.sin(x * D.duneFreqA) * Math.cos(z * D.duneFreqA) +
+    0.5 * Math.sin(x * D.duneFreqB + z * D.duneFreqB * 0.7)
+  ) * D.duneAmp;
+}
+
 // Builds terrain, sky, lighting, fog, foliage and the day/night cycle.
 // Returns handles the rest of the game needs (ground mesh for collisions,
 // shadow generator, an update fn for the day/night cycle).
@@ -92,6 +105,11 @@ export function buildWorld(scene) {
     const rim = Math.max(0, d - ARENA.radius) * 0.12;
     h = h * Math.min(1, d / ARENA.radius * 1.2) + rim;
     h -= basinFactor(x, z) * WATER.depth; // carve the pond basin
+    // Desert dunes: rolling undulation, weighted by zone membership so the
+    // dunes only rise inside the dry zone and feather out at its edge. MUST
+    // mirror heightAt below (placement/collision desync otherwise).
+    const dzH = dryZoneFactor(x, z);
+    if (dzH > 0) h += dzH * duneHeight(x, z);
     positions[i + 1] = h;
     // Soil weight: high on the raised rim and right around the pond shoreline,
     // plus a little procedural mottling so patches of bare earth show through.
@@ -119,7 +137,10 @@ export function buildWorld(scene) {
       b = b * (1 - jz) + jGT[2] * jz;
     }
     const ci = (i / 3) * 4;
-    colors[ci] = r; colors[ci + 1] = g; colors[ci + 2] = b; colors[ci + 3] = 1;
+    // Repurpose the vertex-colour ALPHA channel to carry the dry-zone weight so
+    // the ground material plugin can blend in the sand albedo + ripple normal
+    // per-vertex without a second full-ground mesh/draw.
+    colors[ci] = r; colors[ci + 1] = g; colors[ci + 2] = b; colors[ci + 3] = dz;
   }
   ground.updateVerticesData(B.VertexBuffer.PositionKind, positions);
   ground.setVerticesData(B.VertexBuffer.ColorKind, colors);
@@ -137,7 +158,12 @@ export function buildWorld(scene) {
     let h = Math.sin(x * 0.06) * Math.cos(z * 0.05) * 1.6
           + Math.sin(x * 0.13 + z * 0.07) * 0.7;
     const rim = Math.max(0, d - ARENA.radius) * 0.12;
-    return h * Math.min(1, d / ARENA.radius * 1.2) + rim - basinFactor(x, z) * WATER.depth;
+    h = h * Math.min(1, d / ARENA.radius * 1.2) + rim - basinFactor(x, z) * WATER.depth;
+    // MIRROR of the dune term baked into the ground vertex loop above. Keep
+    // these two expressions identical or placement/collision desyncs.
+    const dz = dryZoneFactor(x, z);
+    if (dz > 0) h += dz * duneHeight(x, z);
+    return h;
   };
 
   // --- Water pond ----------------------------------------------------------
@@ -229,12 +255,45 @@ export function buildWorld(scene) {
     // little with the sky/dusk so it never fights the time-of-day — a richer,
     // depth-graded haze rather than a bright cartoon wall.
     const fc = ENV.fogColor;
-    scene.fogColor.set(
-      fc[0] * 0.7 + skyR * 0.3,
-      fc[1] * 0.7 + skyG * 0.3,
-      fc[2] * 0.7 + skyB * 0.3,
-    );
-    scene.clearColor.set(skyR, skyG, skyB, 1);
+    let fogR = fc[0] * 0.7 + skyR * 0.3;
+    let fogG = fc[1] * 0.7 + skyG * 0.3;
+    let fogB = fc[2] * 0.7 + skyB * 0.3;
+    let clR = skyR, clG = skyG, clB = skyB;
+    let sunR = sun.diffuse.r, sunG = sun.diffuse.g, sunB = sun.diffuse.b;
+
+    // --- Desert air: warm the fog + sun + low sky by CAMERA proximity to the
+    // dry zone (fog/sun are global, so we blend by where the camera is — exactly
+    // like the dusk arc). Entering the zone: the horizon haze goes hot ochre, the
+    // sun key warms to amber, the air thickens slightly (dust), the sky band near
+    // the horizon warms. This is the single biggest "this is a desert" cue.
+    const cam = scene.activeCamera;
+    const camDryW = cam ? dryZoneFactor(cam.position.x, cam.position.z) : 0;
+    if (camDryW > 0) {
+      const D = ENV.dryZone;
+      const fg = D.fogColor, sw = D.sunWarmTint;
+      fogR = fogR * (1 - camDryW) + fg[0] * camDryW;
+      fogG = fogG * (1 - camDryW) + fg[1] * camDryW;
+      fogB = fogB * (1 - camDryW) + fg[2] * camDryW;
+      // warm the low sky / clear toward the hot horizon haze too (readable edge)
+      clR = clR * (1 - camDryW) + fg[0] * camDryW;
+      clG = clG * (1 - camDryW) + fg[1] * camDryW;
+      clB = clB * (1 - camDryW) + fg[2] * camDryW;
+      // amber sun key (multiplicative nudge so it composes with dusk, not fights)
+      sunR = sunR * (1 - camDryW) + Math.max(sunR, sw[0]) * camDryW;
+      sunG = sunG * (1 - camDryW) + sw[1] * camDryW;
+      sunB = sunB * (1 - camDryW) + sw[2] * camDryW;
+      // dustier air inside the zone (slightly denser, hazier)
+      scene.fogDensity = ENV.fogDensity + D.hazeDensityBonus * camDryW;
+      // warm the hemispheric ground bounce so shadowed sand reads warm, not cold
+      hemi.groundColor = new B.Color3(0.34 * (1 - camDryW) + 0.42 * camDryW,
+                                      0.30 * (1 - camDryW) + 0.30 * camDryW,
+                                      0.22 * (1 - camDryW) + 0.18 * camDryW);
+    } else {
+      scene.fogDensity = ENV.fogDensity;
+    }
+    sun.diffuse.set(sunR, sunG, sunB);
+    scene.fogColor.set(fogR, fogG, fogB);
+    scene.clearColor.set(clR, clG, clB, 1);
   };
 
   // Soft restart must also rewind the ambient day clock, else repeated retries
@@ -340,7 +399,88 @@ function makeGroundPBR(scene) {
   mat.useAmbientInGrayScale = true;
   // IBL contribution scaled to taste (matte outdoor ground).
   mat.environmentIntensity = ENV.iblIntensity;
+
+  // Desert sand blend: a PBR material plugin replaces the grass albedo with a
+  // warm sand albedo and lifts roughness to matte, masked to the dry zone by a
+  // world-position smoothstep — ONE mesh / ONE draw, no second ground plane.
+  // Wrapped in try/catch: if the plugin can't compile on a given driver the
+  // ground still renders (the warm vertex-colour tint still carries sand hue).
+  try { attachSandBlendPlugin(mat, scene); }
+  catch (e) { console.warn("[desert] sand blend plugin unavailable:", e && e.message); }
   return mat;
+}
+
+// PBR material plugin that turns the ground to warm SAND inside the dry zone.
+// The zone weight is derived in-shader from WORLD POSITION (robust — independent
+// of the vertex-colour alpha, which doubles as mesh opacity). Both the albedo
+// swap and the roughness lift are injected at CUSTOM_FRAGMENT_UPDATE_METALLIC-
+// ROUGHNESS: that point reliably weaves into the compiled PBR fragment in this
+// packaged Babylon build (the albedo-stage marker does not), and surfaceAlbedo
+// is still the live local that feeds lighting there.
+function attachSandBlendPlugin(mat, scene) {
+  const B = window.BABYLON;
+  const D = ENV.dryZone;
+  const sandAlb = new B.Texture(ENV.texturePath + D.sandTextures.albedo, scene, null, false);
+  sandAlb.uScale = sandAlb.vScale = D.sandTiling;
+  sandAlb.anisotropicFilteringLevel = 8;
+  const tilingRatio = (D.sandTiling / ENV.groundTiling).toFixed(4);
+
+  class SandBlendPlugin extends B.MaterialPluginBase {
+    constructor(m) {
+      super(m, "SandBlend", 280, { SANDBLEND: true });
+      this._enable(true);
+    }
+    prepareDefines(defines) { defines.SANDBLEND = true; }
+    getClassName() { return "SandBlendPlugin"; }
+    getSamplers(samplers) { samplers.push("sandAlbedoSampler"); }
+    getUniforms() {
+      return {
+        ubo: [
+          { name: "sandTint", size: 3, type: "vec3" },
+          { name: "sandRoughness", size: 1, type: "float" },
+          { name: "dryCenter", size: 2, type: "vec2" },
+          { name: "dryRadii", size: 2, type: "vec2" },  // x: radius, y: radius+feather
+        ],
+        fragment: `#ifdef SANDBLEND
+uniform vec3 sandTint;
+uniform float sandRoughness;
+uniform vec2 dryCenter;
+uniform vec2 dryRadii;
+float dryZoneW(vec3 p) {
+  return 1.0 - smoothstep(dryRadii.x, dryRadii.y, distance(p.xz, dryCenter));
+}
+#endif`,
+      };
+    }
+    bindForSubMesh(ubo) {
+      ubo.updateColor3("sandTint", new B.Color3(D.groundTint[0], D.groundTint[1], D.groundTint[2]));
+      ubo.updateFloat("sandRoughness", D.sandRoughness);
+      ubo.updateFloat2("dryCenter", D.centerX, D.centerZ);
+      ubo.updateFloat2("dryRadii", D.radius, D.radius + D.edgeFeather);
+      ubo.setTexture("sandAlbedoSampler", sandAlb);
+    }
+    getCustomCode(shaderType) {
+      if (shaderType !== "fragment") return null;
+      return {
+        CUSTOM_FRAGMENT_UPDATE_METALLICROUGHNESS: `
+#ifdef SANDBLEND
+  #ifdef ALBEDOTEXTURE
+    float dryW = dryZoneW(vPositionW);
+    if (dryW > 0.001) {
+      vec3 sandCol = texture2D(sandAlbedoSampler, vAlbedoUV * ${tilingRatio}).rgb * sandTint;
+      surfaceAlbedo = mix(surfaceAlbedo, sandCol, dryW);
+      metallicRoughness.g = mix(metallicRoughness.g, sandRoughness, dryW);
+    }
+  #endif
+#endif
+`,
+      };
+    }
+  }
+  new SandBlendPlugin(mat);
+  // Attaching a plugin after material creation doesn't invalidate the cached
+  // shader/defines, so force a recompile to collect the injected code + uniforms.
+  mat.markAsDirty(B.Material.AllDirtyFlag);
 }
 
 // Visual set dressing that lives above the playfield: a circling pterosaur
@@ -942,6 +1082,16 @@ function scatterFoliage(scene, shadow, heightAt) {
     placeGrassCard(x, z, 0.6, 1.4, i, "jcover");
   }
 
+  // --- Desert hero features: banded sandstone mesas/buttes, drought tufts +
+  // dead shrubs, and half-buried bleached bones. All instanced + clustered in
+  // the dry zone via the same disc sampler as the boulder densification. The
+  // mesas are the bold orange-red silhouettes that make the biome unmistakable
+  // from across the map; the tufts/shrubs/bones add dryness storytelling.
+  scatterDesertFeatures({
+    scene, shadow, rng, rand, heightAt, inArena, obstacles,
+    sandstoneTex: tex, coverSwayers,
+  });
+
   // Wind sway: ease each registered card's tilt with a phase-offset sine so the
   // whole valley breathes gently. Cheap (a sin per swayer).
   let wt = 0;
@@ -952,6 +1102,225 @@ function scatterFoliage(scene, shadow, heightAt) {
   };
 
   return { obstacles, windUpdate };
+}
+
+// Builds the desert's hero set-dressing inside ENV.dryZone: banded reddish
+// SANDSTONE mesas/buttes (flat-topped, instanced silhouettes that read as the
+// Gobi "Flaming Cliffs"), sparse drought VEGETATION (dry-grass tufts + dead
+// skeletal shrubs), and half-buried bleached BONE clusters. Everything is
+// instanced off a few invisible source meshes (negligible draw cost) and
+// clustered with the same disc sampler the boulder densification uses. Large
+// mesas register as obstacles so the AI steers around them.
+function scatterDesertFeatures({ scene, shadow, rng, rand, heightAt, inArena, obstacles, sandstoneTex, coverSwayers }) {
+  const B = window.BABYLON;
+  const D = ENV.dryZone;
+  const tex = sandstoneTex;
+  // disc sampler around the zone centre (sqrt for uniform area distribution)
+  const sampleInZone = (rMul = 1) => {
+    const a = rng() * Math.PI * 2, rr = Math.sqrt(rng()) * D.radius * rMul;
+    return [D.centerX + Math.cos(a) * rr, D.centerZ + Math.sin(a) * rr];
+  };
+
+  // --- Sandstone PBR: reuse the rock albedo/normal/roughness maps but tint warm
+  // orange-terracotta. A second "band" material (deeper rust) stripes the lower
+  // third of each mesa for the horizontal strata that read as sedimentary.
+  // Mesas are big, so tile the rock detail more than a boulder (else the strata
+  // smear). uScale wider than vScale stretches the grain into HORIZONTAL bands,
+  // reinforcing the sedimentary read.
+  const mesaTileU = ENV.rockTiling * 4, mesaTileV = ENV.rockTiling * 7;
+  const makeSandstoneMat = (name, col) => {
+    const m = new B.PBRMaterial(name, scene);
+    const set = (file) => { const t = new B.Texture(ENV.texturePath + file, scene); t.uScale = mesaTileU; t.vScale = mesaTileV; t.anisotropicFilteringLevel = 8; return t; };
+    m.albedoTexture = set(ENV.rockTextures.albedo);
+    m.bumpTexture = set(ENV.rockTextures.normal);
+    m.bumpTexture.level = 1.3;  // crisper wind-cut relief on the cliff faces
+    m.metallic = 0; m.roughness = 1;
+    m.metallicTexture = set(ENV.rockTextures.roughness);
+    m.useRoughnessFromMetallicTextureGreen = true;
+    m.useMetallnessFromMetallicTextureBlue = true;
+    m.albedoColor = new B.Color3(col[0], col[1], col[2]);
+    m.environmentIntensity = ENV.iblIntensity;
+    return m;
+  };
+  const sandstoneMat = makeSandstoneMat("sandstoneMat", D.sandstoneColor);
+  const sandstoneBandMat = makeSandstoneMat("sandstoneBandMat", D.sandstoneBandColor);
+
+  // Mesa source: a wide, flat-topped displaced cylinder. Flat top + near-vertical
+  // wind-undercut sides = the iconic butte/mesa silhouette. Two stacked sources
+  // (broad base band + main body) give the horizontal strata banding cheaply.
+  const makeMesaSource = (name, mat, topScale) => {
+    const c = B.MeshBuilder.CreateCylinder(name, {
+      height: 1, diameterTop: 2 * topScale, diameterBottom: 2, tessellation: 9,
+    }, scene);
+    // wind-erode the sides: nudge ring vertices in/out by a per-angle noise so
+    // the silhouette is gullied, not a clean lathe.
+    const vp = c.getVerticesData(B.VertexBuffer.PositionKind);
+    for (let i = 0; i < vp.length; i += 3) {
+      const x = vp[i], z = vp[i + 2];
+      const ang = Math.atan2(z, x);
+      const erode = 1 + 0.12 * Math.sin(ang * 5) + 0.07 * Math.cos(ang * 9 + 1.3);
+      vp[i] = x * erode; vp[i + 2] = z * erode;
+    }
+    c.setVerticesData(B.VertexBuffer.PositionKind, vp);
+    c.createNormals(true);
+    c.material = mat; c.isVisible = false;
+    return c;
+  };
+  const mesaBody = makeMesaSource("mesaBody", sandstoneMat, 0.78);   // tapers up a touch
+  const mesaBand = makeMesaSource("mesaBand", sandstoneBandMat, 1.0); // rust base band
+  const talusSrc = makeMesaSource("talusSrc", sandstoneBandMat, 0.2); // debris cone apron
+
+  let mIdx = 0;
+  const placeMesa = (x, z) => {
+    const gy = heightAt(x, z);
+    const h = rand(D.mesaMinHeight, D.mesaMaxHeight);
+    const rad = rand(D.mesaMinRadius, D.mesaMaxRadius);
+    const rot = rng() * Math.PI * 2;
+    // rust base band (lower ~22% of height) — the strata foot
+    const bandH = h * 0.22;
+    const band = mesaBand.createInstance("mesaBand" + mIdx);
+    band.position.set(x, gy + bandH * 0.5 - 0.4, z);
+    band.scaling.set(rad * 1.04, bandH, rad * 1.04);
+    band.rotation.y = rot;
+    band.checkCollisions = true; shadow.addShadowCaster(band);
+    // main body
+    const body = mesaBody.createInstance("mesaBody" + mIdx);
+    body.position.set(x, gy + bandH + (h - bandH) * 0.5 - 0.4, z);
+    body.scaling.set(rad, h - bandH, rad);
+    body.rotation.y = rot + 0.3;
+    body.checkCollisions = true; shadow.addShadowCaster(body);
+    // talus debris apron at the base (darker rust cone)
+    const talus = talusSrc.createInstance("talus" + mIdx);
+    talus.position.set(x, gy + rad * 0.18 - 0.4, z);
+    talus.scaling.set(rad * 1.7, rad * 0.5, rad * 1.7);
+    talus.rotation.y = rng() * Math.PI;
+    shadow.addShadowCaster(talus);
+    // a big obstacle so the AI (and player collisions) treat the mesa as solid
+    obstacles.push({ x, z, r: rad * 1.1 });
+    mIdx++;
+  };
+  // Place mesas with a minimum spacing so they spread into a skyline rather
+  // than piling up; bias toward the outer 40–100% of the radius so the centre
+  // stays open to run through.
+  const mesaSpots = [];
+  const minMesaGap = D.mesaMaxRadius * 2.6;
+  for (let i = 0; i < D.mesaCount; i++) {
+    let x, z, ok = false, tries = 0;
+    while (!ok && tries++ < 30) {
+      const a = rng() * Math.PI * 2, rr = (0.4 + 0.6 * rng()) * D.radius;
+      x = D.centerX + Math.cos(a) * rr; z = D.centerZ + Math.sin(a) * rr;
+      if (!inArena(x, z)) continue;
+      ok = mesaSpots.every((p) => Math.hypot(p.x - x, p.z - z) > minMesaGap);
+    }
+    if (ok) { mesaSpots.push({ x, z }); placeMesa(x, z); }
+  }
+
+  // --- Bleached bones: a half-buried ribcage (a row of curved ribs) + a skull
+  // dome + a few scattered vertebrae. Instanced off two primitive sources.
+  const boneMat = new B.PBRMaterial("boneMat", scene);
+  boneMat.albedoColor = new B.Color3(D.boneColor[0], D.boneColor[1], D.boneColor[2]);
+  boneMat.metallic = 0; boneMat.roughness = 0.85;
+  boneMat.environmentIntensity = ENV.iblIntensity;
+  const ribSrc = B.MeshBuilder.CreateTorus("ribSrc", { diameter: 1.6, thickness: 0.16, tessellation: 10 }, scene);
+  ribSrc.material = boneMat; ribSrc.isVisible = false;
+  const skullSrc = B.MeshBuilder.CreateSphere("skullSrc", { diameter: 1, segments: 8 }, scene);
+  skullSrc.material = boneMat; skullSrc.isVisible = false;
+  let bIdx = 0;
+  const placeBones = (x, z) => {
+    const gy = heightAt(x, z);
+    const dir = rng() * Math.PI * 2, cd = Math.cos(dir), sd = Math.sin(dir);
+    const s = rand(0.8, 1.3);
+    const nRibs = 4 + Math.floor(rng() * 3);
+    for (let r = 0; r < nRibs; r++) {
+      const off = (r - nRibs / 2) * 0.5 * s;
+      const rx = x + cd * off, rz = z + sd * off;
+      const rib = ribSrc.createInstance("rib" + bIdx + "_" + r);
+      // half-buried: only the top arc of the torus shows above the sand
+      rib.position.set(rx, heightAt(rx, rz) - 0.35 * s, rz);
+      rib.scaling.set(s * rand(0.8, 1.0), s * rand(0.7, 1.0), s * 0.5);
+      rib.rotation.set(Math.PI / 2, dir, rand(-0.2, 0.2)); // ribs stand as arches across the spine line
+      rib.isPickable = false;
+    }
+    // skull at the head end
+    const hx = x + cd * (nRibs / 2 + 0.8) * 0.5 * s, hz = z + sd * (nRibs / 2 + 0.8) * 0.5 * s;
+    const skull = skullSrc.createInstance("skull" + bIdx);
+    skull.position.set(hx, heightAt(hx, hz) + 0.05 * s, hz);
+    skull.scaling.set(s * 0.9, s * 0.7, s * 1.1);
+    skull.rotation.y = dir;
+    skull.isPickable = false;
+    bIdx++;
+  };
+  for (let i = 0; i < D.boneClusterCount; i++) {
+    let x, z, tries = 0;
+    do { [x, z] = sampleInZone(0.85); } while (!inArena(x, z) && ++tries < 8);
+    if (inArena(x, z)) placeBones(x, z);
+  }
+
+  // --- Drought vegetation: dry-grass tufts + dead skeletal shrubs. Built from
+  // cheap primitive cards/branches tinted from the dry palette. Tufts do NOT
+  // cast shadows (hundreds would tax the shadow map); only shrubs do.
+  const dryMat = (name, col, rough) => {
+    const m = new B.StandardMaterial(name, scene);
+    m.diffuseColor = new B.Color3(col[0], col[1], col[2]);
+    m.specularColor = B.Color3.Black();
+    m.backFaceCulling = false;
+    return m;
+  };
+  // Tuft: a small fan of 3 thin tapered blades (cones) in straw/sage.
+  const tuftMats = D.dryPalette.slice(0, 3).map((c, k) => dryMat("tuftMat" + k, c));
+  const tuftSrcs = tuftMats.map((m, k) => {
+    const blade = B.MeshBuilder.CreateCylinder("tuftSrc" + k, { height: 1, diameterTop: 0, diameterBottom: 0.12, tessellation: 4 }, scene);
+    blade.material = m; blade.isVisible = false;
+    return blade;
+  });
+  let tIdx = 0;
+  const placeTuft = (x, z) => {
+    const gy = heightAt(x, z);
+    const k = Math.floor(rng() * tuftSrcs.length);
+    const s = rand(0.6, 1.2);
+    const n = 3 + Math.floor(rng() * 3);
+    for (let b = 0; b < n; b++) {
+      const blade = tuftSrcs[k].createInstance("tuft" + tIdx + "_" + b);
+      const a = rng() * Math.PI * 2, lean = rand(0.1, 0.5), spread = rand(0, 0.25);
+      blade.position.set(x + Math.cos(a) * spread, gy + 0.5 * s, z + Math.sin(a) * spread);
+      blade.scaling.set(s * rand(0.7, 1.1), s * rand(0.8, 1.4), s * rand(0.7, 1.1));
+      blade.rotation.set(Math.cos(a) * lean, rng() * 6.28, Math.sin(a) * lean);
+      blade.isPickable = false;
+      coverSwayers.push({ mesh: blade, base: blade.rotation.z, phase: rng() * 6.28, amp: ENV.windStrength * rand(1.4, 2.2) });
+    }
+    tIdx++;
+  };
+  for (let i = 0; i < D.tuftCount; i++) {
+    let x, z, tries = 0;
+    do { [x, z] = sampleInZone(1.0); } while (!inArena(x, z) && ++tries < 6);
+    if (inArena(x, z)) placeTuft(x, z);
+  }
+
+  // Dead shrub: a gnarled cluster of bare grey branch stubs (saxaul skeleton).
+  const deadWoodMat = dryMat("deadShrubMat", D.dryPalette[3]);
+  const shrubBranch = B.MeshBuilder.CreateCylinder("shrubBranchSrc", { height: 1, diameterTop: 0.03, diameterBottom: 0.16, tessellation: 5 }, scene);
+  shrubBranch.material = deadWoodMat; shrubBranch.isVisible = false;
+  let sIdx = 0;
+  const placeShrub = (x, z) => {
+    const gy = heightAt(x, z);
+    const s = rand(0.8, 1.6);
+    const n = 4 + Math.floor(rng() * 4);
+    for (let b = 0; b < n; b++) {
+      const br = shrubBranch.createInstance("shrub" + sIdx + "_" + b);
+      const a = rng() * Math.PI * 2, lean = rand(0.4, 1.0);
+      br.position.set(x, gy + rand(0.3, 0.9) * s, z);
+      br.scaling.set(s * rand(0.6, 1.0), s * rand(0.9, 1.6), s * rand(0.6, 1.0));
+      br.rotation.set(Math.cos(a) * lean, rng() * 6.28, Math.sin(a) * lean);
+      br.isPickable = false;
+      shadow.addShadowCaster(br);
+    }
+    sIdx++;
+  };
+  for (let i = 0; i < D.shrubCount; i++) {
+    let x, z, tries = 0;
+    do { [x, z] = sampleInZone(1.0); } while (!inArena(x, z) && ++tries < 6);
+    if (inArena(x, z)) placeShrub(x, z);
+  }
 }
 
 // small deterministic PRNG
