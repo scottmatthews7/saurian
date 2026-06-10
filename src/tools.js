@@ -102,6 +102,12 @@ export function createTools(scene, shadow, groundFn, inventory) {
   const mats = makeMaterials(scene);
   const KINDS = Object.keys(TOOLS.kinds);
 
+  // Held/world weapons are modelled at near-real-metre sizes (spear ~2.9u long)
+  // but the player is only ~2u tall, so shown raw they dwarf him. Scale every
+  // weapon mesh — in hand and on the ground — to ~a third of the player so a
+  // club reads as a club (~0.7u), per the owner's "realistic" choice.
+  const WEAPON_SCALE = 0.42;
+
   // --- scattered world pickups ---------------------------------------------
   // One reusable mesh per scatter slot; the kind is re-rolled on spawn/respawn.
   const scatter = [];
@@ -119,8 +125,9 @@ export function createTools(scene, shadow, groundFn, inventory) {
       x = Math.cos(a) * r; z = Math.sin(a) * r;
     } while (inPond(x, z));
     const node = buildWeaponMesh(scene, kind, mats);
+    node.scaling.setAll(WEAPON_SCALE);   // hand-sized on the ground too, not chest-high
     node.__parts.forEach((p) => { if (p.getTotalVertices && p.getTotalVertices() > 0) shadow.addShadowCaster(p); });
-    const y = groundFn(x, z) + 0.8;
+    const y = groundFn(x, z) + 0.35;
     node.position.set(x, y, z);
     node.rotation.z = 0.5;        // tilt so it reads as dropped, not floating upright
     slot.kind = kind;
@@ -166,12 +173,15 @@ export function createTools(scene, shadow, groundFn, inventory) {
     const mesh = buildWeaponMesh(scene, kind, mats);
     mesh.parent = parent;
     if (onBone) {
-      // Bone space is in the model's un-normalised local scale; counter the
-      // root's height-normalisation so the weapon reads hand-sized, and seat it
-      // in the grip with a forward/clench rotation.
-      const s = 1 / Math.max(0.001, dinoScale);
-      mesh.scaling.setAll(s * 0.9);
-      mesh.position.set(0, 0.05 * s, 0.05 * s);
+      // Counter the wrist bone's ABSOLUTE world scale. The old 1/dinoScale only
+      // undid the root height-normalisation, NOT the rig's native bone scale, so
+      // weapons came out ~native size (a club as tall as the player). Then size
+      // the held weapon to ~a third of the ~2u player (club ~0.7u, spear ~1.2u).
+      parent.computeWorldMatrix(true);
+      const bs = parent.absoluteScaling;
+      const boneScale = (Math.abs(bs.x) + Math.abs(bs.y) + Math.abs(bs.z)) / 3 || 1;
+      mesh.scaling.setAll(WEAPON_SCALE / boneScale);
+      mesh.position.set(0, 0.05 / boneScale, 0.05 / boneScale);
       mesh.rotation.set(Math.PI * 0.5, 0, 0);
     } else {
       // Root-offset fallback: sit it at the right side, chest height, pointing
