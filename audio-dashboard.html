@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Saurian — Audio Audit Dashboard</title>
+<link rel="icon" href="data:," />
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0f1318; color: #e6e9ec; line-height: 1.45;
+  }
+  header { padding: 24px 30px 16px; border-bottom: 1px solid #232b34; }
+  h1 { margin: 0 0 6px; font-size: 23px; letter-spacing: 0.4px; }
+  header p { margin: 4px 0; color: #94a0aa; font-size: 13px; max-width: 880px; }
+  .warn-banner {
+    margin: 12px 0 0; padding: 9px 13px; border-radius: 7px;
+    background: #3a2417; border: 1px solid #6b4326; color: #ffc78a; font-size: 12.5px;
+  }
+  main { padding: 10px 30px 70px; max-width: 1080px; }
+  .group { margin: 30px 0 0; }
+  .group > h2 {
+    font-size: 14px; text-transform: uppercase; letter-spacing: 1.2px;
+    color: #ffc777; margin: 0 0 3px; border-bottom: 1px solid #232b34; padding-bottom: 7px;
+  }
+  .group > .desc { color: #828e98; font-size: 12.5px; margin: 6px 0 14px; }
+  .row {
+    display: flex; align-items: center; gap: 16px;
+    padding: 11px 14px; border: 1px solid #232b34; border-radius: 9px;
+    margin-bottom: 9px; background: #161c22;
+  }
+  .row:hover { background: #1b232a; }
+  .row.silent { opacity: 0.78; }
+  button.play {
+    flex: 0 0 auto; width: 46px; height: 46px; border-radius: 50%;
+    border: none; cursor: pointer; font-size: 16px; font-weight: 700;
+    background: #2e7d5b; color: #fff; transition: background 0.12s, transform 0.06s;
+  }
+  button.play:hover { background: #379a6e; }
+  button.play:active { transform: scale(0.93); }
+  button.play.playing { background: #c45b4a; }
+  button.play.disabled { background: #2a323b; color: #5d6770; cursor: not-allowed; }
+  .meta { flex: 1 1 auto; min-width: 0; }
+  .meta .name { font-weight: 650; font-size: 14.5px; }
+  .meta .role { font-size: 12px; color: #8a96a0; margin-top: 2px; }
+  .tags { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; min-width: 132px; }
+  .tag { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; border-radius: 5px; padding: 2px 8px; text-transform: uppercase; }
+  .tag.sample { background: #1d3a4d; color: #7fd0ff; }
+  .tag.proc { background: #3a2f1d; color: #ffce7a; }
+  .tag.removing { background: #4a2030; color: #ff9bb5; }
+  .tag.silent { background: #2a323b; color: #8d99a3; }
+  .tag.src { background: transparent; color: #6f7a84; font-weight: 500; text-transform: none; font-size: 10.5px; padding: 0 2px; }
+  .rowwrap { margin-bottom: 9px; }
+  .rowwrap .row { margin-bottom: 0; }
+  .alts {
+    display: none; margin: -2px 0 0; padding: 10px 14px 11px 60px;
+    border: 1px solid #232b34; border-top: none; border-radius: 0 0 9px 9px;
+    background: #11161b;
+  }
+  .alts.open { display: block; }
+  .alts .hdr { font-size: 11px; color: #ff9bb5; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 8px; }
+  .alt {
+    display: flex; align-items: center; gap: 12px; padding: 6px 0;
+  }
+  .alt button {
+    flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; border: none;
+    cursor: pointer; font-size: 13px; background: #3a3550; color: #cdb8ff; transition: background 0.12s, transform 0.06s;
+  }
+  .alt button:hover { background: #4a4470; }
+  .alt button:active { transform: scale(0.92); }
+  .alt .lbl { font-size: 13px; color: #cdd3da; }
+  button.altsToggle {
+    flex: 0 0 auto; border: 1px solid #4a2030; background: transparent; color: #ff9bb5;
+    border-radius: 6px; padding: 5px 10px; font-size: 11px; cursor: pointer; white-space: nowrap;
+  }
+  button.altsToggle:hover { background: #2a1820; }
+  footer { padding: 18px 30px 50px; color: #6f7a84; font-size: 12px; max-width: 1080px; }
+  footer code, header code { background: #1b232a; padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+  a { color: #74b3ff; }
+  #status { font-size: 12px; color: #828e98; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Saurian — Audio Audit Dashboard</h1>
+  <p>Plays <strong>every sound the game currently uses</strong>, driven through the real audio
+     engine (<code>createAudio()</code> from <code>src/audio.js</code>) calling the exact same
+     methods the game loop calls — so what you hear is what plays in-game. Use it to flag the
+     ones that sound wrong.</p>
+  <p>Each row marks whether the sound is a <span style="color:#7fd0ff">REAL SAMPLE</span>
+     (with its source from <code>CREDITS.md</code>) or <span style="color:#ffce7a">PROCEDURAL</span>
+     synth, plus a one-line note on where it's used.</p>
+  <div class="warn-banner">⚠ This page MAKES SOUND on every Play click (it is an audio auditor).
+     The first click also unlocks the browser audio context. Mind your volume on calls.</div>
+  <div id="status">Click any Play button to unlock audio and start auditing.</div>
+</header>
+<main id="main"></main>
+<footer>
+  Engine: <code>src/audio.js</code> · sample paths + tunables: <code>src/config.js → AUDIO</code> ·
+  sample sources: <code>CREDITS.md</code>. Real samples live in <code>assets/audio/</code>.
+  Sounds marked <span style="color:#ffce7a">PROCEDURAL</span> are synthesised live in the Web Audio API
+  (no file). Sounds marked <span style="color:#ff9bb5">BEING REMOVED</span> still fire in the current
+  build but are slated to go.
+</footer>
+
+<script type="module">
+import { createAudio } from "./src/audio.js";
+
+// One shared engine instance — same object the game builds. unlock() resumes the
+// AudioContext and kicks off the real sample load (footsteps/pant/creatures/bigStep).
+const audio = createAudio();
+let unlocked = false;
+const statusEl = document.getElementById("status");
+
+// panting is a continuous loop in-game; here we play a fixed-length burst then ease
+// it back to silence so a Play click auditions it without leaving the breath running.
+let pantTimer = null;
+function auditionPanting(intensity) {
+  if (pantTimer) { clearTimeout(pantTimer); pantTimer = null; }
+  audio.panting(true, intensity);
+  pantTimer = setTimeout(() => { audio.stopPanting(); pantTimer = null; }, 2200);
+}
+
+// --- CANDIDATE ALTERNATIVES (audition-only) -----------------------------------
+// The user flagged several procedural sounds as bad. These are CANDIDATE replacement
+// synths to A/B against the current one — NOT yet wired into src/audio.js. Each is a
+// self-contained Web Audio recipe. Tell the coordinator which candidate you want and a
+// follow-up will port the winner into the real engine. They run on their own context.
+let altCtx = null;
+function altEnsure() {
+  if (altCtx) return altCtx;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  altCtx = new AC();
+  return altCtx;
+}
+// small synth helpers mirroring the engine's primitives (tone / noise)
+function aTone(c, freq, dur, type, gain, glideTo, t0) {
+  const t = t0 ?? c.currentTime;
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(gain, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(c.destination);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+let _altNoiseBuf = null;
+function aNoise(c) {
+  if (!_altNoiseBuf || _altNoiseBuf.sampleRate !== c.sampleRate) {
+    _altNoiseBuf = c.createBuffer(1, c.sampleRate * 1.5, c.sampleRate);
+    const d = _altNoiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const s = c.createBufferSource(); s.buffer = _altNoiseBuf; return s;
+}
+
+// Registry: each flagged sound -> a few labelled candidate recipes.
+const ALT_SOUNDS = {
+  hurt: [
+    { label: "A · soft 'oof' (filtered thud + low sine)", play: (c) => {
+        const t = c.currentTime;
+        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
+        f.type = "lowpass"; f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(200, t + 0.18);
+        g.gain.setValueAtTime(0.4, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.2);
+        aTone(c, 180, 0.16, "sine", 0.3, 90, t);
+    }},
+    { label: "B · short downward grunt (triangle 220→70)", play: (c) => {
+        aTone(c, 220, 0.18, "triangle", 0.4, 70);
+    }},
+    { label: "C · muffled body hit (noise burst + low square)", play: (c) => {
+        const t = c.currentTime;
+        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
+        f.type = "bandpass"; f.frequency.value = 320; f.Q.value = 0.8;
+        g.gain.setValueAtTime(0.45, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.12);
+        aTone(c, 130, 0.1, "square", 0.22, 80, t);
+    }},
+  ],
+  whoosh: [
+    { label: "A · descending swish (sweep DOWN 2200→500)", play: (c) => {
+        const t = c.currentTime;
+        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
+        f.type = "bandpass"; f.Q.value = 1.4;
+        f.frequency.setValueAtTime(2200, t); f.frequency.exponentialRampToValueAtTime(500, t + 0.22);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.26, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
+        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.28);
+    }},
+    { label: "B · tight fast cloth-swish (short, high-Q up-sweep)", play: (c) => {
+        const t = c.currentTime;
+        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
+        f.type = "bandpass"; f.Q.value = 3.0;
+        f.frequency.setValueAtTime(1200, t); f.frequency.exponentialRampToValueAtTime(3200, t + 0.12);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.18);
+    }},
+    { label: "C · airy gust (lowpass-shaped noise puff)", play: (c) => {
+        const t = c.currentTime;
+        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
+        f.type = "lowpass"; f.frequency.setValueAtTime(800, t); f.frequency.exponentialRampToValueAtTime(2400, t + 0.1); f.frequency.exponentialRampToValueAtTime(600, t + 0.3);
+        g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.24, t + 0.06); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.32);
+    }},
+  ],
+  splash: [
+    { label: "A · bubbly plips (descending water drops)", play: (c) => {
+        [820, 560, 380].forEach((fq, i) => aTone(c, fq, 0.12, "sine", 0.3, fq * 0.55, c.currentTime + i * 0.06));
+        const t = c.currentTime;
+        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
+        f.type = "bandpass"; f.frequency.value = 1800; f.Q.value = 0.5;
+        g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.18);
+    }},
+    { label: "B · sharp plip (single quick water-drop)", play: (c) => {
+        const t = c.currentTime;
+        aTone(c, 1100, 0.1, "sine", 0.4, 420, t);
+        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
+        f.type = "highpass"; f.frequency.value = 1500;
+        g.gain.setValueAtTime(0.2, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.1);
+    }},
+    { label: "C · fizzy spray (bright hissing sheet)", play: (c) => {
+        const t = c.currentTime;
+        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
+        f.type = "highpass"; f.frequency.setValueAtTime(4000, t); f.frequency.exponentialRampToValueAtTime(1200, t + 0.3);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.4, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.34);
+    }},
+  ],
+  screech: [
+    { label: "A · raspy bird shriek (square + noise, up-down)", play: (c) => {
+        const t = c.currentTime, dur = 0.5;
+        const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
+        o.type = "square";
+        o.frequency.setValueAtTime(1100, t); o.frequency.exponentialRampToValueAtTime(2000, t + 0.1); o.frequency.exponentialRampToValueAtTime(800, t + dur);
+        f.type = "bandpass"; f.frequency.value = 1800; f.Q.value = 6;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.26, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.02);
+        const n = aNoise(c), ng = c.createGain(), nf = c.createBiquadFilter();
+        nf.type = "highpass"; nf.frequency.value = 3000;
+        ng.gain.setValueAtTime(0.12, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        n.connect(nf); nf.connect(ng); ng.connect(c.destination); n.start(t); n.stop(t + dur);
+    }},
+    { label: "B · short hawk cry (fast falling sawtooth)", play: (c) => {
+        const t = c.currentTime, dur = 0.32;
+        const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
+        o.type = "sawtooth";
+        o.frequency.setValueAtTime(2400, t); o.frequency.exponentialRampToValueAtTime(900, t + dur);
+        f.type = "bandpass"; f.frequency.value = 2200; f.Q.value = 5;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.28, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.02);
+    }},
+    { label: "C · warbling screech (vibrato on the cry)", play: (c) => {
+        const t = c.currentTime, dur = 0.55;
+        const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
+        const lfo = c.createOscillator(), lg = c.createGain();
+        o.type = "sawtooth";
+        o.frequency.setValueAtTime(1300, t); o.frequency.exponentialRampToValueAtTime(1700, t + 0.15); o.frequency.exponentialRampToValueAtTime(1000, t + dur);
+        lfo.type = "sine"; lfo.frequency.value = 28; lg.gain.value = 120; // wing-beat-ish vibrato
+        lfo.connect(lg); lg.connect(o.frequency);
+        f.type = "bandpass"; f.frequency.value = 1600; f.Q.value = 4;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.27, t + 0.04); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.02); lfo.start(t); lfo.stop(t + dur);
+    }},
+  ],
+  bite: [
+    { label: "A · wet snap (fast click + short crunch)", play: (c) => {
+        const t = c.currentTime;
+        aTone(c, 240, 0.05, "sine", 0.3, 90, t);
+        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
+        f.type = "bandpass"; f.frequency.value = 1200; f.Q.value = 1;
+        g.gain.setValueAtTime(0.45, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t + 0.01); n.stop(t + 0.08);
+    }},
+    { label: "B · heavy chomp (deep thunk + flesh slap)", play: (c) => {
+        const t = c.currentTime;
+        aTone(c, 140, 0.12, "sine", 0.5, 50, t);
+        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
+        f.type = "lowpass"; f.frequency.value = 700;
+        g.gain.setValueAtTime(0.4, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.1);
+    }},
+    { label: "C · double snap (two quick jaw clacks)", play: (c) => {
+        [0, 0.07].forEach((d) => {
+          const t = c.currentTime + d;
+          const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
+          f.type = "highpass"; f.frequency.value = 900;
+          g.gain.setValueAtTime(0.4, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+          n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.05);
+          aTone(c, 200, 0.05, "square", 0.25, 80, t);
+        });
+    }},
+  ],
+  bigstep: [
+    { label: "A · soft deep boom (sub sine, no click)", play: (c) => {
+        const t = c.currentTime;
+        const o = c.createOscillator(), g = c.createGain();
+        o.type = "sine"; o.frequency.setValueAtTime(70, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.35);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+        o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.42);
+    }},
+    { label: "B · earthy thud (lowpass noise + sub)", play: (c) => {
+        const t = c.currentTime;
+        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
+        f.type = "lowpass"; f.frequency.setValueAtTime(220, t); f.frequency.exponentialRampToValueAtTime(70, t + 0.25);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.45, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.3);
+        aTone(c, 55, 0.28, "sine", 0.35, 34, t);
+    }},
+    { label: "C · distant rumble-step (longer felt boom)", play: (c) => {
+        const t = c.currentTime;
+        const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
+        o.type = "triangle"; o.frequency.setValueAtTime(58, t); o.frequency.exponentialRampToValueAtTime(30, t + 0.5);
+        f.type = "lowpass"; f.frequency.value = 160;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.42, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+        o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.57);
+    }},
+  ],
+  lose: [
+    { label: "A · low brass-ish fall (sawtooth, slower)", play: (c) => {
+        [196, 165, 131, 98].forEach((fq, i) => setTimeout(() => aTone(c, fq, 0.55, "sawtooth", 0.28, fq * 0.9), i * 200));
+    }},
+    { label: "B · two-note minor stab (deep, final)", play: (c) => {
+        const t = c.currentTime;
+        aTone(c, 220, 0.5, "triangle", 0.3, null, t);
+        aTone(c, 175, 0.7, "triangle", 0.3, null, t + 0.18); // minor third down
+        aTone(c, 110, 0.9, "sine", 0.25, null, t + 0.36);    // low root under it
+    }},
+    { label: "C · slow detune wail (pitch sags down)", play: (c) => {
+        const t = c.currentTime, dur = 1.2;
+        [262, 264].forEach((fq) => { // slightly detuned pair -> mournful beating
+          const o = c.createOscillator(), g = c.createGain();
+          o.type = "sawtooth"; o.frequency.setValueAtTime(fq, t); o.frequency.exponentialRampToValueAtTime(fq * 0.5, t + dur);
+          g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22, t + 0.08); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+          const f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 1400;
+          o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.02);
+        });
+    }},
+  ],
+};
+
+// Each sound: how it is invoked through the REAL api, exactly as the game does.
+// `play(audio)` runs the actual engine method.
+const GROUPS = [
+  {
+    title: "Player",
+    desc: "Movement, melee, and damage feedback for the human you control.",
+    items: [
+      {
+        name: "Footstep — walk", kind: "sample",
+        src: "Kenney CC0 — Impact Sounds (footstep_0..3.mp3, random variant + pitch jitter)",
+        role: "Per footfall while walking (cadence ~0.5s). Soft thud + dirt scuff.",
+        play: (a) => a.footstep(0.12, false, false), // AUDIO.footstepWalkVolume
+      },
+      {
+        name: "Footstep — sprint", kind: "sample",
+        src: "Kenney CC0 — Impact Sounds (same pack, faster rate + louder)",
+        role: "Per footfall while sprinting (Shift, cadence ~0.28s). Harder + brighter.",
+        play: (a) => a.footstep(0.24, true, false), // AUDIO.footstepSprintVolume
+      },
+      {
+        name: "Footstep — wading", kind: "sample",
+        src: "Kenney CC0 footstep + procedural wet-splat layer",
+        role: "Per footfall while crossing the pond. Dry step plus a watery splat layer.",
+        play: (a) => a.footstep(0.3, false, true), // AUDIO.footstepWadeVolume
+      },
+      {
+        name: "Panting — light", kind: "sample",
+        src: "OpenGameArt CC0 — \"Breathing tired\" (pant.mp3), looped",
+        role: "Breath loop fading in as you start sprinting/dashing (low intensity).",
+        play: () => auditionPanting(0.15),
+      },
+      {
+        name: "Panting — heavy", kind: "sample",
+        src: "OpenGameArt CC0 — \"Breathing tired\" (pant.mp3), faster + louder",
+        role: "Breath loop near stamina exhaustion — faster, heavier (high intensity).",
+        play: () => auditionPanting(1.0),
+      },
+      {
+        name: "Swing", kind: "proc",
+        src: "Procedural — bandpass noise sweep 280→900 Hz",
+        role: "Player's melee punch/kick swing (every attack). A low airy whoosh.",
+        play: (a) => a.swing(),
+      },
+      {
+        name: "Thud", kind: "proc",
+        src: "Procedural — sine pitch-drop 110→55 Hz + lowpass noise slap",
+        role: "Melee impact when a punch/kick actually connects. A meaty body knock.",
+        play: (a) => a.thud(),
+      },
+      {
+        name: "Whoosh — dash", kind: "proc",
+        src: "Procedural — bandpass noise sweep 600→2600 Hz",
+        role: "Dash / dodge-roll (F). A quick airy swish, distinct from the splash.",
+        play: (a) => a.whoosh(),
+        alts: "whoosh",
+      },
+      {
+        name: "Splash", kind: "proc",
+        src: "Procedural — lowpass noise burst 3500→400 Hz + watery blip",
+        role: "Player wading into the pond. A bright splash sweeping down.",
+        play: (a) => a.splash(),
+        alts: "splash",
+      },
+      {
+        name: "Hurt", kind: "proc",
+        src: "Procedural — sawtooth 140→80 Hz",
+        role: "Player takes damage (any bite / charge hit). A dissonant low buzz.",
+        play: (a) => a.hurt(),
+        alts: "hurt",
+      },
+    ],
+  },
+  {
+    title: "Dinos",
+    desc: "Creature vocalisations fire periodically (distance-attenuated to you) and on key events. vocalise() prefers the per-species sample, deepening predators by 'menace' as they close.",
+    items: [
+      {
+        name: "Vocalise — T-Rex", kind: "sample",
+        src: "Mixkit (royalty-free) — growl/thunder pitched down (trex.mp3), lifted +25% rate",
+        role: "Apex predator. Ambient roars as it hunts; also on prey-bite/feed events.",
+        play: (a) => a.vocalise("trex", 1.0, 0.4),
+      },
+      {
+        name: "Vocalise — Raptor", kind: "sample",
+        src: "Mixkit (royalty-free) — creature shriek (raptor.mp3)",
+        role: "Raptor pack. Yips on pack lock-on and as ambient calls. Higher, shrieky.",
+        play: (a) => a.vocalise("raptor", 1.0, 0.2),
+      },
+      {
+        name: "Vocalise — Triceratops", kind: "sample",
+        src: "Mixkit (royalty-free) — animal bellow (herbivore_a.mp3)",
+        role: "Herbivore ambient bellow. Triceratops + Parasaur share sample A.",
+        play: (a) => a.vocalise("triceratops", 1.0, 0),
+      },
+      {
+        name: "Vocalise — Parasaurolophus", kind: "sample",
+        src: "Mixkit (royalty-free) — animal bellow (herbivore_a.mp3, same as Triceratops)",
+        role: "Herbivore ambient bellow. Shares sample A with the Triceratops.",
+        play: (a) => a.vocalise("parasaur", 1.0, 0),
+      },
+      {
+        name: "Vocalise — Stegosaurus", kind: "sample",
+        src: "Mixkit (royalty-free) — creature low (herbivore_b.mp3)",
+        role: "Herbivore ambient bellow. Stegosaurus + Apatosaurus share sample B.",
+        play: (a) => a.vocalise("stegosaurus", 1.0, 0),
+      },
+      {
+        name: "Vocalise — Apatosaurus", kind: "sample",
+        src: "Mixkit (royalty-free) — creature low (herbivore_b.mp3, same as Stegosaurus)",
+        role: "Herbivore ambient bellow. Shares sample B with the Stegosaurus.",
+        play: (a) => a.vocalise("apatosaurus", 1.0, 0),
+      },
+      {
+        name: "Big step", kind: "sample",
+        src: "Mixkit — low bellow REPURPOSED as a footfall (bigstep.mp3) — wrong: reads as 'bricks'. No dedicated footfall sample exists in candidates; needs a procedural deep boom or a sourced thud.",
+        role: "Giant-sauropod footfall thud on nearby big dinos' step cadence (~1.2s). Gain lowered in-engine after the 'too loud' note.",
+        play: (a) => a.bigStep(1.0),
+        alts: "bigstep",
+      },
+      {
+        name: "Bite", kind: "proc",
+        src: "Procedural — square pitch-drop 180→60 Hz + highpass noise burst",
+        role: "Predator chomp: T-Rex biting prey, and the triceratops charge cue.",
+        play: (a) => a.bite(),
+        alts: "bite",
+      },
+      {
+        name: "Screech", kind: "proc",
+        src: "Procedural — sawtooth 900→2200→700 Hz through a bandpass",
+        role: "Pterosaur dive telegraph — a shrill cry warning of a swoop from above.",
+        play: (a) => a.screech(),
+        alts: "screech",
+      },
+      {
+        name: "Roar (procedural)", kind: "proc",
+        src: "Procedural — detuned saws ~70Hz sweeping down, lowpass, + breath noise",
+        role: "Predator roar fallback (used if a sample is missing) + cursed-egg / feed cue.",
+        play: (a) => a.roar(1.0, 0.4),
+      },
+      {
+        name: "Creature call (procedural)", kind: "proc",
+        src: "Procedural — two-tone hooting moan ~180 Hz through a lowpass",
+        role: "Herbivore call fallback (used if a herbivore sample is missing).",
+        play: (a) => a.creatureCall(1.0, 1),
+      },
+    ],
+  },
+  {
+    title: "Pickups / UI",
+    desc: "Reward, heal, and game-end cues. bank() and beacon() still fire in the current build but are being removed with the old banking/ward loop.",
+    items: [
+      {
+        name: "Pickup — egg", kind: "proc",
+        src: "Procedural — triangle/sine blip 660→990 Hz",
+        role: "Collecting an ordinary egg. A bright ascending blip.",
+        play: (a) => a.pickup(false),
+      },
+      {
+        name: "Pickup — golden egg", kind: "proc",
+        src: "Procedural — egg blip + 1320/1760/2093 Hz sparkle arpeggio",
+        role: "Collecting a rare golden egg. The blip plus an extra reward sparkle.",
+        play: (a) => a.pickup(true),
+      },
+      {
+        name: "Heal", kind: "proc",
+        src: "Procedural — sine swell 330→495 + 495→660 Hz",
+        role: "Eating meat to heal. A warm restorative swell.",
+        play: (a) => a.heal(),
+      },
+      {
+        name: "Win", kind: "proc",
+        src: "Procedural — rising triangle arpeggio 523/659/784/1047 Hz",
+        role: "Victory / sanctuary reached. A bright ascending fanfare.",
+        play: (a) => a.win(),
+      },
+      {
+        name: "Lose", kind: "proc",
+        src: "Procedural — falling sawtooth 330/247/196/147 Hz",
+        role: "Game over (eaten). A descending dejected motif.",
+        play: (a) => a.lose(),
+        alts: "lose",
+      },
+      {
+        name: "Tension", kind: "proc",
+        src: "Procedural — sine heartbeat pulse 50–80 Hz (intensity-scaled)",
+        role: "Heartbeat pulse that quickens as a predator closes in.",
+        play: (a) => a.tension(0.8),
+      },
+      {
+        name: "Bank", kind: "removing",
+        src: "Procedural — warm major chord 440/554/660 Hz (being removed)",
+        role: "Banking an egg at the nest. From the old banking loop — slated for removal.",
+        play: (a) => a.bank(),
+      },
+      {
+        name: "Beacon", kind: "removing",
+        src: "Procedural — rising triangle arpeggio 523/659/784 Hz (being removed)",
+        role: "Ward beacon igniting. From the old ward loop — slated for removal.",
+        play: (a) => a.beacon(),
+      },
+    ],
+  },
+];
+
+const KIND_TAG = {
+  sample: { cls: "sample", label: "Real sample" },
+  proc: { cls: "proc", label: "Procedural" },
+  removing: { cls: "removing", label: "Being removed" },
+};
+
+const main = document.getElementById("main");
+let activeBtn = null;
+
+function flash(btn) {
+  // brief visual on a one-shot sound (no 'ended' event from the engine)
+  if (activeBtn) { activeBtn.classList.remove("playing"); activeBtn.textContent = "▶"; }
+  btn.classList.add("playing"); btn.textContent = "♪";
+  activeBtn = btn;
+  setTimeout(() => {
+    if (btn.classList.contains("playing")) { btn.classList.remove("playing"); btn.textContent = "▶"; }
+    if (activeBtn === btn) activeBtn = null;
+  }, 700);
+}
+
+for (const g of GROUPS) {
+  const sec = document.createElement("section"); sec.className = "group";
+  const h = document.createElement("h2"); h.textContent = g.title; sec.appendChild(h);
+  const d = document.createElement("p"); d.className = "desc"; d.textContent = g.desc; sec.appendChild(d);
+
+  for (const it of g.items) {
+    const wrap = document.createElement("div"); wrap.className = "rowwrap";
+    const row = document.createElement("div"); row.className = "row";
+
+    const btn = document.createElement("button"); btn.className = "play"; btn.textContent = "▶";
+    btn.title = "Play " + it.name;
+    btn.addEventListener("click", () => {
+      if (!unlocked) {
+        audio.unlock(); // resume AudioContext + load real samples (fire-and-forget)
+        unlocked = true;
+        statusEl.textContent = "Audio unlocked. Samples loading in the background — give them a moment, then audition.";
+      }
+      try { it.play(audio); flash(btn); }
+      catch (e) { statusEl.textContent = "Error playing " + it.name + ": " + e.message; console.error(e); }
+    });
+
+    const meta = document.createElement("div"); meta.className = "meta";
+    const nm = document.createElement("div"); nm.className = "name"; nm.textContent = it.name;
+    const role = document.createElement("div"); role.className = "role"; role.textContent = it.role;
+    meta.appendChild(nm); meta.appendChild(role);
+
+    const tags = document.createElement("div"); tags.className = "tags";
+    const t = KIND_TAG[it.kind];
+    const tag = document.createElement("span"); tag.className = "tag " + t.cls; tag.textContent = t.label;
+    const srcTag = document.createElement("span"); srcTag.className = "tag src"; srcTag.textContent = it.src;
+    tags.appendChild(tag); tags.appendChild(srcTag);
+
+    row.appendChild(btn); row.appendChild(meta); row.appendChild(tags);
+    wrap.appendChild(row);
+
+    // Flagged-as-bad sounds get a candidate-alternatives strip to A/B against.
+    const altList = it.alts && ALT_SOUNDS[it.alts];
+    if (altList) {
+      const toggle = document.createElement("button"); toggle.className = "altsToggle";
+      toggle.textContent = `▾ ${altList.length} alternatives`;
+      tags.appendChild(toggle);
+
+      const altsEl = document.createElement("div"); altsEl.className = "alts";
+      const hdr = document.createElement("div"); hdr.className = "hdr";
+      hdr.textContent = "Candidate replacements (audition-only — not yet wired in)";
+      altsEl.appendChild(hdr);
+      for (const alt of altList) {
+        const arow = document.createElement("div"); arow.className = "alt";
+        const ab = document.createElement("button"); ab.textContent = "▶"; ab.title = "Play " + alt.label;
+        ab.addEventListener("click", () => {
+          const c = altEnsure();
+          if (c.state === "suspended") c.resume();
+          try { alt.play(c); } catch (e) { statusEl.textContent = "Error: " + e.message; console.error(e); }
+        });
+        const lbl = document.createElement("div"); lbl.className = "lbl"; lbl.textContent = alt.label;
+        arow.appendChild(ab); arow.appendChild(lbl); altsEl.appendChild(arow);
+      }
+      toggle.addEventListener("click", () => {
+        const open = altsEl.classList.toggle("open");
+        toggle.textContent = `${open ? "▴" : "▾"} ${altList.length} alternatives`;
+      });
+      wrap.appendChild(altsEl);
+    }
+
+    sec.appendChild(wrap);
+  }
+  main.appendChild(sec);
+}
+</script>
+</body>
+</html>

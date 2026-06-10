@@ -1,5 +1,41 @@
 # Progress
 
+## Done (session 20) — AUDIO AUDIT DASHBOARD + first round of fixes
+User flagged the game audio as "some of it sounds childish" and wants to audit
+every sound and flag the bad ones.
+- **`audio-dashboard.html`** (repo root, no build step). Imports the REAL engine
+  (`createAudio()` from `src/audio.js`) and drives the ACTUAL methods the game
+  loop calls, so what plays is exactly what the game plays. 29 rows in 3 groups
+  (PLAYER / DINOS / PICKUPS-UI). Each row: Play button, name, REAL SAMPLE (with
+  CREDITS.md source) vs PROCEDURAL tag, and a one-line in-game-role note (derived
+  from the `audio.*` call sites in `game.js`). `bank`/`beacon` marked BEING
+  REMOVED (still fire in the build but slated to go with the old loops). Dark
+  theme, unlocks the AudioContext on first click.
+  - ⚠ **THE DASHBOARD MAKES SOUND** on every Play click (it is an audio auditor).
+    Banner on the page warns of this. (The GAME is still only ever opened with
+    `?mute`.)
+  - Verified in Chrome: 0 console errors on load; all 29 main buttons fire (28
+    create audio nodes, panting-heavy reuses the one persistent loop source and
+    just ramps gain — matches in-game).
+- **First fixes from the live audit** (user listened and flagged):
+  - **Wading footstep** ("needs to sound like water"): replaced the dull lowpass
+    "wet splat" layer in `footstep(..., wading)` with a bright bandpass spray
+    sweep (2600→700 Hz) + a pitched water-drop "plip" — reads as water now.
+  - **Big step too loud + "sounds like bricks"**: halved the in-engine gain
+    ceiling (`bigStep` 0.8 → 0.4). The sample itself is a REPURPOSED herbivore
+    bellow (no real footfall sample exists in `assets/audio/candidates/`) — the
+    "bricks" character can't be fixed by a swap; needs a procedural deep boom or
+    a sourced thud. Flagged in the dashboard.
+- **Candidate alternatives in the dashboard** for every sound the user flagged
+  as bad (hurt, whoosh-dash, splash, screech, bite, big step, lose). Each gets a
+  "▾ N alternatives" toggle revealing 3 audition-only synth candidates (run on a
+  separate AudioContext, NOT yet wired into `src/audio.js`). Pick a winner per
+  sound and a follow-up ports it into the engine. All 21 candidate buttons
+  verified firing, 0 errors.
+- **Still procedural / unresolved:** the flagged procedural sounds (hurt, whoosh,
+  splash, screech, bite, lose) are unchanged in-engine pending the user's
+  candidate picks; big step needs a real footfall asset sourced.
+
 ## Done (session 19) — SIMPLIFY OBJECTIVES (wishlist item 11) + rename to SAURIAN
 The user-decided objective simplification: the game is now a pure SURVIVAL run.
 - **Eggs → consumables.** The whole return-to-nest/banking loop is gone: nest

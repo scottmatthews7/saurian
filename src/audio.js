@@ -287,15 +287,21 @@ export function createAudio() {
           jitter: 0.08,                          // ±8% pitch per step
         });
         if (wading) {
-          // wet splat layer on top of the dry sample
+          // Watery splash layer over the dry step: a bright spray sizzle (a foot
+          // breaking the surface) plus a quick pitched water-drop "plip", so it
+          // reads as WATER, not a dull wet thud. Same recipe as splash() but
+          // shorter/lighter — it's a footfall, not a plunge.
           const wn = noise(), wg = ctx.createGain(), wf = ctx.createBiquadFilter();
-          wf.type = "lowpass";
-          wf.frequency.setValueAtTime(1800, now());
-          wf.frequency.exponentialRampToValueAtTime(300, now() + 0.18);
-          wg.gain.setValueAtTime(vol * 0.9, now());
-          wg.gain.exponentialRampToValueAtTime(0.0001, now() + 0.2);
+          wf.type = "bandpass"; wf.Q.value = 0.6;
+          wf.frequency.setValueAtTime(2600, now());                    // bright spray on entry
+          wf.frequency.exponentialRampToValueAtTime(700, now() + 0.22); // settling back into the water
+          wg.gain.setValueAtTime(0.0001, now());
+          wg.gain.exponentialRampToValueAtTime(vol * 1.1, now() + 0.01);
+          wg.gain.exponentialRampToValueAtTime(0.0001, now() + 0.24);
           wn.connect(wf); wf.connect(wg); wg.connect(master);
-          wn.start(); wn.stop(now() + 0.2);
+          wn.start(); wn.stop(now() + 0.24);
+          // pitched water-drop blip (the round "plip" of a splash)
+          tone(900, 0.12, "sine", vol * 0.5, 380);
         }
         return;
       }
@@ -392,7 +398,8 @@ export function createAudio() {
     bigStep(gain = 1) {
       if (!ctx || muted || !buffers.bigStep) return;
       playBuffer(buffers.bigStep, {
-        gain: Math.max(0, Math.min(1, gain)) * 0.8,
+        // User feedback: too loud in-game — halved the ceiling (0.8 -> 0.4).
+        gain: Math.max(0, Math.min(1, gain)) * 0.4,
         rate: 0.9, jitter: 0.06,
         attack: 0.01, release: 0.15,
       });
