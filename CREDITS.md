@@ -21,7 +21,7 @@ Files live in `assets/audio/` (in-game defaults) and
 ### Audio pass — organic Freesound replacements
 
 The owner flagged the previous procedural-synth and repurposed sounds (splash, hurt,
-bite, screech, roar, creature call, big steps, stegosaurus/apatosaurus vocals, all UI
+bite, screech, creature call, big steps, stegosaurus/apatosaurus vocals, all UI
 and all pickups except tension) as too synthetic / "8-bit". They were replaced with
 real organic recordings from [Freesound](https://freesound.org). All picks below are
 **CC0 (public domain)** — no attribution legally required, credited here as good
@@ -29,23 +29,32 @@ practice. HQ preview MP3s were used. The matching procedural recipe is kept in
 `src/audio.js` as a load-failure fallback for each. The runner-up A/B candidates live in
 `assets/audio/candidates/*_alt.mp3` and are auditionable in `audio-dashboard.html`.
 
+**Owner audition pass (latest):** the T-Rex / predator vocal was promoted to the
+DeqstersLab "Monster Guttural Growl, Dry" (#734900) as the in-game default — this
+guttural rumble IS the T-Rex voice; there is **no separate roar** (the old `roar`
+method and dashboard row were removed; every predator cue now plays the creature's own
+`vocalise()`). The PJ_Bear "ominous_growl" (#708960) is now the A/B alternative.
+Bite, screech and the big-step thud were re-sourced to more organic clips: a wet
+meaty flesh squelch (bite), a harsh reptilian creature screech-rasp (screech), and a
+deep hollow organic earth-boom (big step) — none clicky/robotic or clean birdsong.
+
 | Sound (engine method) | File | Freesound | Author | Licence |
 |---|---|---|---|---|
 | Splash (`splash`) | `splash.mp3` | "water splash 2" [#398039](https://freesound.org/s/398039/) | swordofkings128 | CC0 |
 | Splash — alt | `candidates/splash_alt.mp3` | "Water Splash" [#829676](https://freesound.org/s/829676/) | AardsReal | CC0 |
 | Hurt (`hurt`) | `hurt.mp3` | "AdultMale PainGrunt 18" [#547197](https://freesound.org/s/547197/) | MrFossy | CC0 |
 | Hurt — alt | `candidates/hurt_alt.mp3` | "AdultMale PainGrunt 07" [#547205](https://freesound.org/s/547205/) | MrFossy | CC0 |
-| Bite (`bite`) | `bite.mp3` | "Open Mouth Chomp" [#457475](https://freesound.org/s/457475/) | princessemilu | CC0 |
-| Bite — alt | `candidates/bite_alt.mp3` | "Crispy bite" [#718593](https://freesound.org/s/718593/) | JoMungus | CC0 |
-| Screech (`screech`) | `screech.mp3` | "Hawk Screech" [#804810](https://freesound.org/s/804810/) | designerschoice | CC0 |
-| Screech — alt | `candidates/screech_alt.mp3` | "Eagle Cry" [#381200](https://freesound.org/s/381200/) | kaydinhamby | CC0 |
-| T-Rex rumble / Roar (`vocalise("trex")`, `roar`) | `trex.mp3` | "ominous_growl" [#708960](https://freesound.org/s/708960/) | PJ_Bear | CC0 |
-| T-Rex — alt | `candidates/trex_alt.mp3` | "Monster Guttural Growl, Dry" [#734900](https://freesound.org/s/734900/) | DeqstersLab | CC0 |
+| Bite (`bite`) | `bite.mp3` | "squelch watermelon" [#739184](https://freesound.org/s/739184/) | MaddieCooper | CC0 |
+| Bite — alt | `candidates/bite_alt.mp3` | "Squelching SFX [9]" [#649978](https://freesound.org/s/649978/) | SoundDesignForYou | CC0 |
+| Screech (`screech`) | `screech.mp3` | "Creepy Creature Screeching 1_2" [#483771](https://freesound.org/s/483771/) | Joao_Janz | CC0 |
+| Screech — alt | `candidates/screech_alt.mp3` | "Creepy Creature Screeching 1_3" [#483778](https://freesound.org/s/483778/) | Joao_Janz | CC0 |
+| T-Rex rumble (`vocalise("trex")`) | `trex.mp3` | "Monster Guttural Growl, Dry" [#734900](https://freesound.org/s/734900/) | DeqstersLab | CC0 |
+| T-Rex — alt | `candidates/trex_alt.mp3` | "ominous_growl" [#708960](https://freesound.org/s/708960/) | PJ_Bear | CC0 |
 | Stegosaurus (`vocalise("stegosaurus")`) | `stegosaurus.mp3` | "Bull Bellowing" [#768389](https://freesound.org/s/768389/) | TheKingOfGeeks360 | CC0 |
 | Apatosaurus (`vocalise("apatosaurus")`) | `apatosaurus.mp3` | "Elephant sound" [#819668](https://freesound.org/s/819668/) | ikbenraar | CC0 |
 | Creature call (`creatureCall`) | `creaturecall.mp3` | "Moo 1" [#700378](https://freesound.org/s/700378/) | manofham | CC0 |
-| Big step (`bigStep`) | `bigstep.mp3` | "Giant step" [#721601](https://freesound.org/s/721601/) | DasWaff | CC0 |
-| Big step — alt | `candidates/bigstep_alt.mp3` | "Big robot footstep" [#813056](https://freesound.org/s/813056/) | AudioPapkin | CC0 |
+| Big step (`bigStep`) | `bigstep.mp3` | "Boom_01" [#336487](https://freesound.org/s/336487/) | Faulkin | CC0 |
+| Big step — alt | `candidates/bigstep_alt.mp3` | "DinoSteps1" [#77027](https://freesound.org/s/77027/) | andysm | CC0 |
 | Pickup — egg (`pickup(false)`) | `pickup.mp3` | "Kalimba C3" [#536549](https://freesound.org/s/536549/) | dvdfu | CC0 |
 | Pickup — golden (`pickup(true)`) | `pickup_golden.mp3` | "crystal bell" [#614832](https://freesound.org/s/614832/) | arseniiv | CC0 |
 | Heal (`heal`) | `heal.mp3` | "temple bowl" [#810426](https://freesound.org/s/810426/) | midge-f | CC0 |
@@ -57,10 +66,12 @@ practice. HQ preview MP3s were used. The matching procedural recipe is kept in
 melee Swing & Thud (procedural), the Kenney footsteps, OpenGameArt panting, the Raptor
 and Triceratops/Parasaur vocals.
 
-**T-Rex note:** `trex.mp3` is an organic low growl played back slowed
-(`AUDIO.trexRumbleRate = 0.85`, deepened further by `menace`) to approximate the eerie
-closed-mouth infrasound rumble hypothesised for tyrannosaurs (Julia Clarke et al. —
-crocodilian rumble + bittern boom), rather than a Hollywood open-mouth roar.
+**T-Rex note:** `trex.mp3` (now the DeqstersLab guttural growl) is an organic low growl
+played back slowed (`AUDIO.trexRumbleRate = 0.85`, deepened further by `menace`) to
+approximate the eerie closed-mouth infrasound rumble hypothesised for tyrannosaurs
+(Julia Clarke et al. — crocodilian rumble + bittern boom), rather than a Hollywood
+open-mouth roar. There is no roar sample or roar method — this rumble is the only
+predator voice.
 
 Notes:
 - **Kenney** and the **OpenGameArt "Breathing tired"** assets are CC0 — no

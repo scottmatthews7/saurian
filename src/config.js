@@ -818,7 +818,7 @@ export const AUDIO = {
   footstepWadeVolume: 0.3,      // a wet stomp when wading through the pond
 
   // --- Ambient creature vocalisations (periodic roars/calls in the loop) ---
-  // The arena periodically vocalises: predators roar, herbivores call. Each is
+  // The arena periodically vocalises: predators growl/rumble, herbivores call. Each is
   // distance-attenuated to the player (closer = louder) and the predator gets
   // more frequent + louder as it closes. Intervals are randomised within a band
   // so calls don't sound metronomic.

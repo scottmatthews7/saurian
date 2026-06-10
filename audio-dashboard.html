@@ -169,20 +169,20 @@ const ALT_SOUNDS = {
     { label: "Alt · AardsReal Water Splash (shorter) [CC0]", play: () => playAltFile(`${C}/candidates/splash_alt.mp3`, 0.7) },
   ],
   screech: [
-    { label: "Default (in engine) · designerschoice Hawk Screech [CC0]", play: () => playAltFile(`${C}/screech.mp3`, 0.55) },
-    { label: "Alt · kaydinhamby Eagle Cry [CC0]", play: () => playAltFile(`${C}/candidates/screech_alt.mp3`, 0.55) },
+    { label: "Default (in engine) · Joao_Janz Creepy Creature Screeching 1_2 (reptilian rasp) [CC0]", play: () => playAltFile(`${C}/screech.mp3`, 0.55) },
+    { label: "Alt · Joao_Janz Creepy Creature Screeching 1_3 [CC0]", play: () => playAltFile(`${C}/candidates/screech_alt.mp3`, 0.55) },
   ],
   bite: [
-    { label: "Default (in engine) · princessemilu Open Mouth Chomp [CC0]", play: () => playAltFile(`${C}/bite.mp3`, 0.9) },
-    { label: "Alt · JoMungus Crispy bite (wet crunch) [CC0]", play: () => playAltFile(`${C}/candidates/bite_alt.mp3`, 0.9) },
+    { label: "Default (in engine) · MaddieCooper squelch watermelon (wet flesh chomp) [CC0]", play: () => playAltFile(`${C}/bite.mp3`, 0.9) },
+    { label: "Alt · SoundDesignForYou Squelching SFX [9] [CC0]", play: () => playAltFile(`${C}/candidates/bite_alt.mp3`, 0.9) },
   ],
   trex: [
-    { label: "Default (in engine) · PJ_Bear ominous_growl, slowed to a rumble [CC0]", play: () => playAltFile(`${C}/trex.mp3`, 0.85) },
-    { label: "Alt · DeqstersLab Monster Guttural Growl, Dry [CC0]", play: () => playAltFile(`${C}/candidates/trex_alt.mp3`, 0.85) },
+    { label: "Default (in engine) · DeqstersLab Monster Guttural Growl, Dry, slowed to a rumble [CC0]", play: () => playAltFile(`${C}/trex.mp3`, 0.85) },
+    { label: "Alt · PJ_Bear ominous_growl [CC0]", play: () => playAltFile(`${C}/candidates/trex_alt.mp3`, 0.85) },
   ],
   bigstep: [
-    { label: "Default (in engine) · DasWaff Giant step [CC0]", play: () => playAltFile(`${C}/bigstep.mp3`, 0.9) },
-    { label: "Alt · AudioPapkin Big robot footstep [CC0]", play: () => playAltFile(`${C}/candidates/bigstep_alt.mp3`, 0.9) },
+    { label: "Default (in engine) · Faulkin Boom_01 (deep hollow earth thud) [CC0]", play: () => playAltFile(`${C}/bigstep.mp3`, 0.9) },
+    { label: "Alt · andysm DinoSteps1 (deeper, longer subsonic boom) [CC0]", play: () => playAltFile(`${C}/candidates/bigstep_alt.mp3`, 0.9) },
   ],
 };
 
@@ -263,8 +263,8 @@ const GROUPS = [
     items: [
       {
         name: "Vocalise — T-Rex", kind: "sample",
-        src: "Freesound CC0 — PJ_Bear \"ominous_growl\" (#708960), slowed to an eerie closed-mouth rumble",
-        role: "Apex predator. Ambient roars as it hunts; also on prey-bite/feed events.",
+        src: "Freesound CC0 — DeqstersLab \"Monster Guttural Growl, Dry\" (#734900), slowed to an eerie closed-mouth rumble",
+        role: "Apex predator's voice (no roar — the guttural rumble IS the T-Rex). Ambient growls as it hunts; also on lock-on / prey-bite / feed events.",
         play: (a) => a.vocalise("trex", 1.0, 0.4),
         alts: "trex",
       },
@@ -300,31 +300,24 @@ const GROUPS = [
       },
       {
         name: "Big step", kind: "sample",
-        src: "Freesound CC0 — DasWaff \"Giant step\" (#721601) — a real heavy ground impact (replaces the repurposed bellow)",
+        src: "Freesound CC0 — Faulkin \"Boom_01\" (#336487) — a deep hollow organic earth thud (re-sourced: deeper/heavier, not clicky)",
         role: "Giant-sauropod footfall thud on nearby big dinos' step cadence (~1.2s). Gain kept low in-engine.",
         play: (a) => a.bigStep(1.0),
         alts: "bigstep",
       },
       {
         name: "Bite", kind: "sample",
-        src: "Freesound CC0 — princessemilu \"Open Mouth Chomp\" (#457475)",
+        src: "Freesound CC0 — MaddieCooper \"squelch watermelon\" (#739184) — a wet, meaty flesh chomp (re-sourced)",
         role: "Predator chomp: T-Rex biting prey, and the triceratops charge cue.",
         play: (a) => a.bite(),
         alts: "bite",
       },
       {
         name: "Screech", kind: "sample",
-        src: "Freesound CC0 — designerschoice \"Hawk Screech\" (#804810)",
-        role: "Pterosaur dive telegraph — a real raptor-bird screech warning of a swoop.",
+        src: "Freesound CC0 — Joao_Janz \"Creepy Creature Screeching 1_2\" (#483771) — a harsh reptilian rasp (re-sourced)",
+        role: "Pterosaur dive telegraph — a harsh reptilian screech-rasp warning of a swoop.",
         play: (a) => a.screech(),
         alts: "screech",
-      },
-      {
-        name: "Roar", kind: "sample",
-        src: "Freesound CC0 — PJ_Bear \"ominous_growl\" (#708960), slowed (same as the T-Rex vocal)",
-        role: "Predator roar (cursed-egg / feed cue + sample-missing fallback). Eerie low growl.",
-        play: (a) => a.roar(1.0, 0.4),
-        alts: "trex",
       },
       {
         name: "Creature call", kind: "sample",

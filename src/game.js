@@ -157,7 +157,7 @@ export async function startGame() {
   // sinks back under. Reuses the existing splash/bite SFX + spray bursts.
   aquatic.onSurface = (pos) => {
     audio.splash();
-    audio.roar();
+    audio.vocalise("trex", 1.0, 0.4);   // low predator growl on the breach (no roar)
     fx.pickupBurst(pos, new B2.Color4(0.45, 0.7, 0.95, 1));
   };
   aquatic.onBite = () => { /* player.onHurt already fires audio.hurt + shake + flash */ };
@@ -169,7 +169,9 @@ export async function startGame() {
   // Predators are a list so later waves can add a second T-Rex.
   const predators = [];
   const wirePredator = (p) => {
-    p.onRoar = () => audio.roar();
+    // The predator's own guttural voice when it locks on (T-Rex rumble / raptor
+    // screech) — there is no separate roar.
+    p.onRoar = () => audio.vocalise(p.kind, 1.0, 0.3);
     // The T-Rex bit a herbivore (herd predation): a chomp SFX + a red spray so
     // the player reads the predator culling the herd elsewhere on the field.
     p.onPreyBite = (pos) => {
@@ -177,10 +179,10 @@ export async function startGame() {
       fx.pickupBurst(pos, new B2.Color4(0.75, 0.18, 0.15, 1));
     };
     // It felled its prey and settled in to FEED — the vulnerable window. A
-    // distant roar growl + a dark spray mark the gorging so the player can read
-    // (and rush) the opening on the radar.
+    // distant guttural growl + a dark spray mark the gorging so the player can
+    // read (and rush) the opening on the radar.
     p.onFeed = (pos) => {
-      audio.roar();
+      audio.vocalise(p.kind, 1.0, 0.3);
       fx.pickupBurst(pos, new B2.Color4(0.45, 0.08, 0.1, 1));
     };
     predators.push(p);
@@ -271,7 +273,7 @@ export async function startGame() {
       if (!duskAnnounced && dusk >= DUSK.duskThreshold) {
         duskAnnounced = true;
         hud.popup("DUSK FALLS — predators grow bolder", "warn");
-        audio.roar();
+        audio.vocalise("trex", 1.0, 0.4);   // a low predator growl marks the turn
       }
 
       // difficulty ramp: every 30s predators get a bit faster
@@ -286,7 +288,7 @@ export async function startGame() {
           createTrex(scene, world.shadow, world.heightAt).then((p2) => {
             p2.speedBonus = game.wave * TREX.chaseSpeedRamp;
             wirePredator(p2);
-            audio.roar();
+            audio.vocalise("trex", 1.0, 0.4);   // the new T-Rex announces itself with a growl
           });
         }
         // A coordinated RAPTOR PACK joins from its wave — fast flanking hunters
@@ -296,7 +298,7 @@ export async function startGame() {
           const packN = RAPTOR.packMin + Math.floor(Math.random() * (RAPTOR.packMax - RAPTOR.packMin + 1));
           createRaptorPack(scene, world.shadow, world.heightAt, packN).then((members) => {
             members.forEach((m) => { m.speedBonus = game.wave * TREX.chaseSpeedRamp; wirePredator(m); });
-            audio.roar();
+            audio.vocalise("raptor", 1.0, 0.2);   // the pack yips on arrival (its own screech)
             hud.popup("RAPTOR PACK — they hunt together!", "warn");
           });
         }

@@ -127,22 +127,20 @@ export function createAudio() {
       if (master) master.gain.value = muted ? 0 : AUDIO.masterVolume;
       return muted;
     },
-    // A guttural T-Rex roar: detuned saws sweeping down, filtered, plus breath.
-    // `gain` (0..1) attenuates the whole roar so a distant predator is fainter;
-    // `menace` (0..1) deepens + lengthens it (pushed up as a T-Rex closes /
-    // enrages) so the apex predator sounds more threatening the nearer it gets.
     // Play a creature's vocalisation by kind, distance-attenuated by `gain` and
-    // intensified by `menace` (0..1). Prefers the real per-species sample
-    // (T-Rex rumble / raptor screech / herbivore bellow); falls back to the
-    // procedural roar/call. `menace` deepens + slows the predator sample.
+    // intensified by `menace` (0..1). Prefers the real per-species sample (the
+    // T-Rex guttural growl/rumble / raptor screech / herbivore bellow); falls
+    // back to a procedural growl/call. The T-Rex has NO open-mouth roar — the
+    // guttural rumble IS its voice (owner verdict), played slowed by
+    // trexRumbleRate; `menace` deepens + slows the predator sample further.
     vocalise(kind, gain = 1, menace = 0) {
       if (!ctx || muted) return;
       const vol = Math.max(0, Math.min(1, gain));
       if (vol <= 0.001) return;
+      const m = Math.max(0, Math.min(1, menace));
       const buf = buffers.creatures && buffers.creatures[kind];
+      const predator = kind === "trex" || kind === "raptor";
       if (buf) {
-        const m = Math.max(0, Math.min(1, menace));
-        const predator = kind === "trex" || kind === "raptor";
         // T-Rex sample is an organic growl played back slowed (trexRumbleRate < 1)
         // toward the eerie closed-mouth rumble; menace deepens it further.
         const baseRate = kind === "trex" ? AUDIO.trexRumbleRate : 1;
@@ -154,27 +152,10 @@ export function createAudio() {
         });
         return;
       }
-      // procedural fallback
-      if (kind === "trex" || kind === "raptor") api.roar(vol, menace);
-      else api.creatureCall(vol, kind === "apatosaurus" ? 0.7 : 1);
-    },
-    roar(gain = 1, menace = 0) {
-      if (!ctx || muted) return;
-      const m = Math.max(0, Math.min(1, menace));
-      const vol = Math.max(0, Math.min(1, gain));
-      if (vol <= 0.001) return;
-      // Prefer the organic T-Rex growl, deepened toward the eerie closed-mouth
-      // rumble (slowed; menace deepens it further). Falls back to the synth below.
-      const buf = buffers.creatures && buffers.creatures.trex;
-      if (buf) {
-        playBuffer(buf, {
-          gain: vol * 0.9,
-          rate: AUDIO.trexRumbleRate * (1 - m * 0.12),
-          jitter: 0.04, attack: 0.02, release: 0.14,
-        });
-        return;
-      }
-      const dur = 1.1 + m * 0.5;                 // more menace = a longer bellow
+      // Procedural fallback (sample not loaded / blocked). Herbivores fall back to
+      // the hoot; predators to a low guttural growl synth — NOT a Hollywood roar.
+      if (!predator) { api.creatureCall(vol, kind === "apatosaurus" ? 0.7 : 1); return; }
+      const dur = 1.1 + m * 0.5;                 // more menace = a longer growl
       const pitchMul = 1 - m * 0.25;             // and a deeper one
       const filter = ctx.createBiquadFilter();
       filter.type = "lowpass";
