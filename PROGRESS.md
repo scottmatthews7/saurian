@@ -519,7 +519,42 @@
   feed→flank-bite→crowd-break scenario inside a **single** `evaluate_script`
   guarded by a `location.href` `:8131` check + the `window.__game` handle.
 
-## Next (session 14)
+## Done (session 14) — polish / bug-hardening pass (no new features)
+- **BUG FIX — stuck movement key on focus loss.** The input layer held keys in a
+  Set keyed on `keyup`; if the window lost focus (alt-tab, devtools, a peer
+  stealing the tab) the `keyup` never fired and a held WASD key stuck — the raptor
+  ran forever after focus returned. Added a `window blur → keys.clear()` so focus
+  always returns to a neutral stance (`input.js`). Most valuable given the
+  documented tab-hijack environment.
+- **BUG FIX — dropped eggs could land in the pond or outside the arena.** A T-Rex
+  bite fumbles a carried egg back into the valley (`eggs.dropCarried`); it scattered
+  to a raw `pos ± 3u` with no pond/rim guard, unlike `rollEgg` — so a fumble near
+  the rim or pond edge could drop an egg into the water (drains health to retrieve)
+  or past the playable circle. Now retries a few angles to avoid the pond, clamps
+  inward to stay in-arena, and sits the egg on the ground at the *actual* drop point
+  (`groundFn(x,z)`) instead of floating at the bite-point height.
+  **Verified live:** 30 rim drops, all stayed in-arena and out of the pond.
+- **BUG FIX — animation-group/skeleton leak on soft restart.** `dino.dispose()`
+  disposed only meshes + root; the loaded model's animation groups and skeleton
+  leaked. Soft restart disposes any later-wave T-Rex, so the clips accumulated
+  run-on-run. Now disposes anim groups + skeletons too. **Verified live:** spawning
+  a 2nd T-Rex took anim-groups 66→72; the reset disposed it back to *exactly* 66
+  (no growth across cycles).
+- **BUG FIX — in-flight pterosaur dive survived a soft restart.** `updateThreats`
+  is paused at game-over, leaving a diving bird mid-swoop (nose-down, dive glow on,
+  shadow showing); the next run inherited that half-finished dive. Added
+  `world.resetThreats()` (aborts the dive via `endDive`, re-arms the timer), called
+  from `resetGame`.
+- **Verified (session 14):** all 16 src modules pass `node --check`; all four
+  headless tests (`dusk`/`cursed_egg`/`beacons`/`herd_hunt`) still pass; live
+  in-browser on an isolated context (own server :8137, **0 console errors/warnings**,
+  648 meshes, ~80-112 FPS): run starts, dropCarried invariants hold, reset returns
+  a clean winnable run (HP 100, banked 0, 1 predator), dispose is leak-free.
+- **Env note (unchanged):** parallel peers grab the selected tab within ~1-2s;
+  verification used single comprehensive evals guarded by a `location.href` :8137
+  check + the `window.__game` handle, then closed my own context tab.
+
+## Next (session 15)
 - A herbivore "stampede" when one of the herd is taken (the rest bolt as a flock);
   or a brief feeding-frenzy heal-steal: bite the feeding T-Rex AND grab the meat.
 - Beacon upkeep could feed a "warmth" meter that the raptor radiates while near a

@@ -17,6 +17,10 @@ export function createInput(canvas) {
     if (k === "f") dashQueued = true;
   });
   window.addEventListener("keyup", (e) => keys.delete(norm(e)));
+  // If the window loses focus (alt-tab, devtools, a peer stealing the tab) the
+  // keyup never arrives and a held movement key sticks — the raptor would run
+  // forever. Clear all held keys on blur so focus returns to a neutral stance.
+  window.addEventListener("blur", () => keys.clear());
   canvas.addEventListener("pointerdown", (e) => {
     if (e.button === 0) attackQueued = true;
   });
