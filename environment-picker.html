@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dino Arena — Environment Picker</title>
+<style>
+  :root { --bg:#10130f; --panel:#1b211a; --ink:#e8efe2; --dim:#9fb094; --accent:#cdae5e; --pick:#7fae54; }
+  * { box-sizing: border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  #wrap { display:grid; grid-template-columns: 1fr 340px; height:100vh; }
+  #stage { position:relative; }
+  #c { width:100%; height:100%; display:block; }
+  #panel { background:var(--panel); padding:18px 18px 28px; overflow-y:auto; border-left:1px solid #2c352a; }
+  h1 { font-size:16px; margin:0 0 4px; letter-spacing:.04em; }
+  .sub { color:var(--dim); font-size:12px; margin:0 0 16px; line-height:1.4; }
+  .cat { margin-bottom:18px; }
+  .cat > .lbl { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--accent); margin-bottom:8px; }
+  .opts { display:flex; flex-wrap:wrap; gap:6px; }
+  button.opt { background:#232c20; color:var(--ink); border:1px solid #33402d; border-radius:8px;
+    padding:8px 10px; font-size:12px; cursor:pointer; transition:.12s; }
+  button.opt:hover { border-color:var(--pick); }
+  button.opt.active { background:var(--pick); color:#0c1208; border-color:var(--pick); font-weight:600; }
+  button.opt .def { font-size:9px; color:var(--accent); display:block; margin-top:2px; letter-spacing:.06em; }
+  button.opt.active .def { color:#0c1208; }
+  #hud { position:absolute; left:14px; bottom:12px; font-size:11px; color:var(--dim);
+    background:rgba(0,0,0,.4); padding:6px 10px; border-radius:6px; }
+  #summary { margin-top:14px; font-size:11px; color:var(--dim); line-height:1.5;
+    background:#161c14; padding:10px 12px; border-radius:8px; border:1px solid #2c352a; }
+  #summary b { color:var(--ink); }
+  .note { font-size:11px; color:var(--dim); margin-top:10px; line-height:1.4; }
+  kbd { background:#2a332600; border:1px solid #3a4632; border-radius:4px; padding:1px 5px; font-size:10px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="hud">Drag to orbit · scroll to zoom · <span id="fps">–</span> fps</div>
+  </div>
+  <div id="panel">
+    <h1>Environment Picker</h1>
+    <p class="sub">Pick a variant per category — the scene swaps live. ★ marks
+      the current best-guess default shipped in the game. Tell the coordinator
+      your picks; they wire the finals into <code>world.js</code>/<code>config.js</code>.</p>
+    <div id="cats"></div>
+    <div id="summary"></div>
+    <p class="note">All assets CC0 (ambientCG textures, Poly Haven HDRIs) — see
+      <b>CREDITS.md</b>. This is a no-build standalone page; serve the folder and
+      open <kbd>/environment-picker.html</kbd>.</p>
+  </div>
+</div>
+
+<script src="lib/babylon.js"></script>
+<script src="lib/babylonjs.loaders.min.js"></script>
+<script>
+const B = BABYLON;
+const TEX = "assets/textures/";
+const ENVDIR = "assets/env/";
+
+// ---- Variant catalogue. `default:true` marks the shipped best guess. --------
+const CATS = {
+  ground: { label: "Ground texture", options: [
+    { id:"grass",  name:"Lush grass",     default:true,  alb:"grass_albedo.jpg",     nrm:"grass_normal.jpg",     rgh:"grass_roughness.jpg",     tint:[0.66,0.72,0.52] },
+    { id:"soil",   name:"Bare soil",                      alb:"soil_albedo.jpg",      nrm:"soil_normal.jpg",      rgh:"soil_roughness.jpg",      tint:[0.60,0.52,0.42], _missing:true },
+    { id:"dry",    name:"Dry / rocky",                    alb:"dryground_albedo.jpg", nrm:"dryground_normal.jpg", rgh:"dryground_roughness.jpg", tint:[0.62,0.58,0.46] },
+  ]},
+  trees: { label: "Trees style", options: [
+    { id:"cards",    name:"Textured leaf cards", default:true },
+    { id:"broadleaf",name:"Rounded broadleaf blobs" },
+    { id:"sparse",   name:"Sparse / cleared" },
+  ]},
+  grass: { label: "Grass / ferns", options: [
+    { id:"cards", name:"Textured blade cards", default:true },
+    { id:"tufts", name:"Simple tufts" },
+    { id:"none",  name:"Bare ground" },
+  ]},
+  rocks: { label: "Rocks style", options: [
+    { id:"pbr",    name:"Displaced PBR boulders", default:true },
+    { id:"smooth", name:"Smooth low-poly" },
+    { id:"none",   name:"No rocks" },
+  ]},
+  sky: { label: "Sky / HDRI", options: [
+    { id:"gradient",name:"Painted gradient (no HDRI)", default:true },
+    { id:"puresky", name:"Partly cloudy (HDRI)", hdr:"sky.hdr" },
+    { id:"overcast",name:"Bright overcast (HDRI)", hdr:"sky2.hdr" },
+  ]},
+};
+
+// soil set was dropped from the game build; hide that option if missing.
+CATS.ground.options = CATS.ground.options.filter(o => !o._missing);
+
+const choice = {};
+for (const k in CATS) choice[k] = (CATS[k].options.find(o=>o.default) || CATS[k].options[0]).id;
+
+// ---- Scene -----------------------------------------------------------------
+const canvas = document.getElementById("c");
+const engine = new B.Engine(canvas, true, { preserveDrawingBuffer:true, stencil:true });
+const scene = new B.Scene(engine);
+scene.clearColor = new B.Color4(0.55,0.66,0.62,1);
+scene.fogMode = B.Scene.FOGMODE_EXP2;
+scene.fogDensity = 0.006;
+scene.fogColor = new B.Color3(0.70,0.74,0.72);
+
+const cam = new B.ArcRotateCamera("cam", -1.0, 1.15, 38, new B.Vector3(0,3,0), scene);
+cam.attachControl(canvas, true);
+cam.lowerRadiusLimit = 8; cam.upperRadiusLimit = 90; cam.wheelPrecision = 8;
+cam.fov = 0.9;
+
+const hemi = new B.HemisphericLight("h", new B.Vector3(0,1,0), scene);
+hemi.intensity = 0.55; hemi.groundColor = new B.Color3(0.3,0.35,0.25);
+const sun = new B.DirectionalLight("s", new B.Vector3(-0.5,-1,-0.4), scene);
+sun.position = new B.Vector3(40,80,40); sun.intensity = 1.5;
+const shadow = new B.ShadowGenerator(1024, sun);
+shadow.useBlurExponentialShadowMap = true; shadow.blurKernel = 24; shadow.darkness = 0.4;
+
+// post-processing (mirrors the game's env.js stack so the preview matches)
+const pipe = new B.DefaultRenderingPipeline("pp", true, scene, [cam]);
+pipe.imageProcessing.toneMappingEnabled = true;
+pipe.imageProcessing.toneMappingType = B.ImageProcessingConfiguration.TONEMAPPING_ACES;
+pipe.imageProcessing.exposure = 1.1; pipe.imageProcessing.contrast = 1.18;
+const cc = new B.ColorCurves(); cc.globalSaturation = 80; cc.globalHue = 8;
+cc.shadowsHue = 210; cc.shadowsSaturation = 24;
+pipe.imageProcessing.colorCurves = cc; pipe.imageProcessing.colorCurvesEnabled = true;
+pipe.imageProcessing.vignetteEnabled = true; pipe.imageProcessing.vignetteWeight = 1.2;
+pipe.bloomEnabled = true; pipe.bloomThreshold = 0.82; pipe.bloomWeight = 0.28;
+pipe.fxaaEnabled = true;
+try {
+  const ssao = new B.SSAO2RenderingPipeline("ssao", scene, { ssaoRatio:0.75, blurRatio:1 }, [cam]);
+  ssao.radius = 2.2; ssao.totalStrength = 1.0; ssao.samples = 16;
+} catch(e) {}
+
+const FOLIAGE_GREENS = [[0.62,0.70,0.46],[0.50,0.60,0.38],[0.70,0.74,0.52],[0.44,0.54,0.34]];
+const rngFactory = (seed) => () => { seed |= 0; seed = (seed + 0x6D2B79F5)|0;
+  let t = Math.imul(seed ^ (seed>>>15), 1|seed); t = (t + Math.imul(t ^ (t>>>7), 61|t)) ^ t;
+  return ((t ^ (t>>>14))>>>0)/4294967296; };
+
+let groundMesh, builtGround=null, builtSky=null;
+const groups = { trees:[], grass:[], rocks:[] };
+
+function heightAt(x,z){ return Math.sin(x*0.08)*Math.cos(z*0.07)*0.8; }
+
+// ---- GROUND ----------------------------------------------------------------
+function buildGround() {
+  if (groundMesh) { groundMesh.material.dispose(true,true); groundMesh.dispose(); }
+  const opt = CATS.ground.options.find(o=>o.id===choice.ground);
+  groundMesh = B.MeshBuilder.CreateGround("g", { width:90, height:90, subdivisions:60, updatable:true }, scene);
+  const pos = groundMesh.getVerticesData(B.VertexBuffer.PositionKind);
+  for (let i=0;i<pos.length;i+=3){ pos[i+1] = heightAt(pos[i],pos[i+2]); }
+  groundMesh.updateVerticesData(B.VertexBuffer.PositionKind, pos);
+  groundMesh.createNormals(true);
+  groundMesh.receiveShadows = true;
+  const tx = (f)=>{ const t=new B.Texture(TEX+f,scene); t.uScale=t.vScale=14; t.anisotropicFilteringLevel=8; return t; };
+  const m = new B.PBRMaterial("gm", scene);
+  m.albedoTexture = tx(opt.alb); m.bumpTexture = tx(opt.nrm);
+  m.metallic = 0; m.roughness = 1;
+  m.metallicTexture = tx(opt.rgh); m.useRoughnessFromMetallicTextureGreen = true; m.useMetallnessFromMetallicTextureBlue = true;
+  m.albedoColor = new B.Color3(opt.tint[0],opt.tint[1],opt.tint[2]);
+  groundMesh.material = m;
+}
+
+// ---- SKY -------------------------------------------------------------------
+function buildSky() {
+  if (builtSky) { builtSky.forEach(x=>x&&x.dispose&&x.dispose()); }
+  if (scene.environmentTexture) { scene.environmentTexture.dispose(); scene.environmentTexture = null; }
+  builtSky = [];
+  const opt = CATS.sky.options.find(o=>o.id===choice.sky);
+  if (opt.hdr) {
+    const hdr = new B.HDRCubeTexture(ENVDIR+opt.hdr, scene, 256, false, true, false, true);
+    scene.environmentTexture = hdr; scene.environmentIntensity = 0.85;
+    const sb = scene.createDefaultSkybox(hdr, true, 1000, 0.12, true);
+    builtSky.push(hdr, sb);
+  } else {
+    // painted gradient dome
+    const dome = B.MeshBuilder.CreateSphere("dome", { diameter:600, sideOrientation:B.Mesh.BACKSIDE }, scene);
+    const dt = new B.DynamicTexture("gd", { width:8, height:256 }, scene, false);
+    const ctx = dt.getContext();
+    const g = ctx.createLinearGradient(0,0,0,256);
+    g.addColorStop(0,"rgb(120,150,190)"); g.addColorStop(0.8,"rgb(200,210,205)"); g.addColorStop(1,"rgb(220,215,200)");
+    ctx.fillStyle=g; ctx.fillRect(0,0,8,256); dt.update();
+    const dm = new B.StandardMaterial("dm", scene); dm.backFaceCulling=false; dm.disableLighting=true;
+    dm.emissiveTexture = dt; dome.material = dm; dome.infiniteDistance=true;
+    builtSky.push(dome, dt, dm);
+  }
+}
+
+// ---- card helpers (mirror world.js) ----------------------------------------
+function cardMat(name, alb, opac, tint) {
+  const m = new B.StandardMaterial(name, scene);
+  m.diffuseTexture = new B.Texture(TEX+alb, scene);
+  m.opacityTexture = new B.Texture(TEX+opac, scene); m.opacityTexture.getAlphaFromRGB = true;
+  m.diffuseColor = new B.Color3(tint[0],tint[1],tint[2]); m.specularColor = B.Color3.Black();
+  m.backFaceCulling = false; m.transparencyMode = B.Material.MATERIAL_ALPHATEST; m.alphaCutOff = 0.4;
+  return m;
+}
+function cluster(name, mat, quads, w, h, uB, vB, pitch) {
+  const parts=[];
+  for (let q=0;q<quads;q++){ const p=B.MeshBuilder.CreatePlane(name+q,{width:w,height:h},scene);
+    p.rotation.y=(q/quads)*Math.PI; if(pitch)p.rotation.x=pitch; p.bakeCurrentTransformIntoVertices();
+    const uv=p.getVerticesData(B.VertexBuffer.UVKind);
+    for(let i=0;i<uv.length;i+=2){ uv[i]=uB[0]+uv[i]*(uB[1]-uB[0]); uv[i+1]=vB[0]+uv[i+1]*(vB[1]-vB[0]); }
+    p.setVerticesData(B.VertexBuffer.UVKind, uv); parts.push(p); }
+  const m=B.Mesh.MergeMeshes(parts,true,true,undefined,false,false); m.name=name; m.material=mat; m.isVisible=false; return m;
+}
+
+// ---- TREES -----------------------------------------------------------------
+function clearGroup(g){ groups[g].forEach(m=>{ if(m.material&&m.material.dispose)m.material.dispose(true,true); m.dispose(); }); groups[g]=[]; }
+const TREE_POS = (() => { const r=rngFactory(7); const a=[]; for(let i=0;i<14;i++){ const ang=r()*6.28, rad=8+r()*30; a.push([Math.cos(ang)*rad, Math.sin(ang)*rad, 0.7+r()*1.2]); } return a; })();
+
+function buildTrees() {
+  clearGroup("trees");
+  const opt = choice.trees;
+  if (opt === "sparse") { // just a couple of trunks, no canopy mass
+  }
+  // trunks (bark PBR) always present unless sparse=fewer
+  const trunkMat = new B.PBRMaterial("bkM", scene);
+  trunkMat.albedoTexture = new B.Texture(TEX+"bark_albedo.jpg", scene); trunkMat.albedoTexture.uScale=trunkMat.albedoTexture.vScale=2;
+  trunkMat.bumpTexture = new B.Texture(TEX+"bark_normal.jpg", scene); trunkMat.bumpTexture.uScale=trunkMat.bumpTexture.vScale=2;
+  trunkMat.metallic=0; trunkMat.roughness=1; trunkMat.albedoColor = new B.Color3(0.42,0.34,0.26);
+  groups.trees.push(trunkMat);
+  const trunkSrc = B.MeshBuilder.CreateCylinder("tk",{height:4,diameterTop:0.42,diameterBottom:0.95,tessellation:8},scene);
+  trunkSrc.material = trunkMat; trunkSrc.isVisible=false; groups.trees.push(trunkSrc);
+
+  let leafSrcs=[];
+  if (opt === "cards") {
+    const rows=[[0.04,0.30],[0.36,0.62],[0.70,0.97]];
+    FOLIAGE_GREENS.forEach((t,k)=>{ const m=cardMat("lc"+k,"leaf_albedo.png","leaf_opacity.png",t); groups.trees.push(m);
+      leafSrcs.push(cluster("lcl"+k,m,3,5.5,2.4,[0.02,0.98],rows[k%3],-0.45)); });
+    leafSrcs.forEach(s=>groups.trees.push(s));
+  } else if (opt === "broadleaf") {
+    FOLIAGE_GREENS.forEach((t,k)=>{ const m=new B.StandardMaterial("bl"+k,scene); m.diffuseColor=new B.Color3(t[0]*0.6,t[1]*0.6,t[2]*0.6); m.specularColor=B.Color3.Black(); groups.trees.push(m);
+      const b=B.MeshBuilder.CreateSphere("bls"+k,{diameter:5,segments:8},scene); b.material=m; b.isVisible=false; leafSrcs.push(b); groups.trees.push(b); });
+  }
+  const count = opt==="sparse" ? 5 : 14;
+  const r = rngFactory(13);
+  for (let i=0;i<count;i++){
+    const [x,z,s] = TREE_POS[i % TREE_POS.length];
+    const y = heightAt(x,z);
+    const tk = trunkSrc.createInstance("trunk"+i); tk.position.set(x,y+2*s,z); tk.scaling.set(s,s*1.1,s); shadow.addShadowCaster(tk);
+    if (opt==="sparse" || leafSrcs.length===0) continue;
+    if (opt==="cards") {
+      const top=y+3.8*s, cH=3.6*s, cR=1.9*s;
+      for (let c=0;c<5;c++){ const src=leafSrcs[(i+c)%leafSrcs.length]; const l=src.createInstance("lf"+i+"_"+c);
+        const tier=c/5, ring=cR*(1-tier*0.8)*(0.5+r()*0.5), a=r()*6.28;
+        l.position.set(x+Math.cos(a)*ring, top+tier*cH, z+Math.sin(a)*ring); l.scaling.setAll(s*(0.7+r()*0.4)*(1-tier*0.3)); l.rotation.y=r()*6.28; shadow.addShadowCaster(l); }
+    } else { // broadleaf
+      const src=leafSrcs[i%leafSrcs.length]; const l=src.createInstance("lf"+i); l.position.set(x,y+5.4*s,z); l.scaling.set(s*1.3,s*1.0,s*1.3); shadow.addShadowCaster(l);
+      const l2=src.createInstance("lf2"+i); l2.position.set(x+0.5,y+6.6*s,z-0.4); l2.scaling.setAll(s*0.8); shadow.addShadowCaster(l2);
+    }
+  }
+}
+
+// ---- GRASS -----------------------------------------------------------------
+function buildGrass() {
+  clearGroup("grass");
+  const opt = choice.grass;
+  if (opt === "none") return;
+  const r = rngFactory(29);
+  if (opt === "cards") {
+    const cols=[[0,0.28],[0.30,0.58],[0.60,0.88],[0.12,0.42]];
+    const srcs=[]; FOLIAGE_GREENS.forEach((t,k)=>{ const m=cardMat("gc"+k,"grass_blade_albedo.png","grass_blade_opacity.png",t); groups.grass.push(m);
+      const s=cluster("gcl"+k,m,2,1.6,1.3,cols[k%4],[0,1],0); srcs.push(s); groups.grass.push(s); });
+    for (let i=0;i<700;i++){ const x=(r()-0.5)*84, z=(r()-0.5)*84; const s=srcs[(r()*srcs.length)|0]; const g=s.createInstance("gr"+i);
+      const sc=0.6+r()*0.9; g.position.set(x,heightAt(x,z)+sc*0.55,z); g.scaling.set(sc*(0.8+r()*0.6),sc*(0.8+r()*0.7),sc*(0.8+r()*0.6)); g.rotation.y=r()*3.14; }
+  } else { // tufts
+    const m=new B.StandardMaterial("tf",scene); m.diffuseColor=new B.Color3(0.34,0.42,0.24); m.specularColor=B.Color3.Black(); groups.grass.push(m);
+    const src=B.MeshBuilder.CreateCylinder("tfs",{height:1,diameterTop:0,diameterBottom:0.5,tessellation:4},scene); src.material=m; src.isVisible=false; groups.grass.push(src);
+    for (let i=0;i<500;i++){ const x=(r()-0.5)*84, z=(r()-0.5)*84; const sc=0.6+r()*1.0; const g=src.createInstance("tf"+i); g.position.set(x,heightAt(x,z)+sc*0.5,z); g.scaling.setAll(sc); }
+  }
+}
+
+// ---- ROCKS -----------------------------------------------------------------
+function buildRocks() {
+  clearGroup("rocks");
+  const opt = choice.rocks;
+  if (opt === "none") return;
+  const r = rngFactory(41);
+  let mat, shapes=[];
+  if (opt === "pbr") {
+    mat = new B.PBRMaterial("rk", scene);
+    mat.albedoTexture = new B.Texture(TEX+"rock_albedo.jpg", scene); mat.albedoTexture.uScale=mat.albedoTexture.vScale=1.4;
+    mat.bumpTexture = new B.Texture(TEX+"rock_normal.jpg", scene); mat.bumpTexture.uScale=mat.bumpTexture.vScale=1.4;
+    mat.metallic=0; mat.roughness=1; mat.albedoColor=new B.Color3(0.66,0.64,0.60); groups.rocks.push(mat);
+    for (let v=0;v<5;v++){ const ico=B.MeshBuilder.CreateIcoSphere("rs"+v,{radius:1,subdivisions:3,flat:true},scene);
+      const vp=ico.getVerticesData(B.VertexBuffer.PositionKind);
+      for (let i=0;i<vp.length;i+=3){ const nx=vp[i],ny=vp[i+1],nz=vp[i+2];
+        const d=1+0.32*Math.sin(nx*3.1+v*2)*Math.cos(nz*2.7+v)+0.20*Math.sin(ny*4.3+v)*Math.sin(nx*2.1)+0.12*Math.cos(nz*5.7+v*3);
+        vp[i]=nx*d; vp[i+1]=ny*d*0.82; vp[i+2]=nz*d; }
+      ico.setVerticesData(B.VertexBuffer.PositionKind,vp); ico.createNormals(true); ico.material=mat; ico.isVisible=false; shapes.push(ico); groups.rocks.push(ico); }
+  } else { // smooth low-poly
+    mat = new B.StandardMaterial("rks", scene); mat.diffuseColor=new B.Color3(0.40,0.39,0.37); mat.specularColor=new B.Color3(0.06,0.06,0.06); groups.rocks.push(mat);
+    const p=B.MeshBuilder.CreatePolyhedron("rkp",{type:1,size:1},scene); p.material=mat; p.isVisible=false; shapes.push(p); groups.rocks.push(p);
+  }
+  for (let i=0;i<14;i++){ const x=(r()-0.5)*80, z=(r()-0.5)*80; const s=0.7+r()*1.9; const rk=shapes[i%shapes.length].createInstance("rock"+i);
+    const buried = opt==="pbr" ? s*0.4 : 0;
+    rk.position.set(x, heightAt(x,z)+s*0.45-buried, z); rk.scaling.set(s*(0.85+r()*0.35),s*(0.6+r()*0.4),s*(0.85+r()*0.35)); rk.rotation.set(r()*6,r()*6,r()*6); shadow.addShadowCaster(rk); }
+}
+
+// ---- UI --------------------------------------------------------------------
+function rebuild(cat) {
+  if (cat==="ground") buildGround();
+  else if (cat==="sky") buildSky();
+  else if (cat==="trees") buildTrees();
+  else if (cat==="grass") buildGrass();
+  else if (cat==="rocks") buildRocks();
+  renderSummary();
+}
+function buildUI() {
+  const root = document.getElementById("cats");
+  for (const k in CATS) {
+    const cat = CATS[k];
+    const wrap = document.createElement("div"); wrap.className="cat";
+    const lbl = document.createElement("div"); lbl.className="lbl"; lbl.textContent=cat.label; wrap.appendChild(lbl);
+    const opts = document.createElement("div"); opts.className="opts";
+    cat.options.forEach(o => {
+      const b = document.createElement("button"); b.className="opt"+(choice[k]===o.id?" active":"");
+      b.innerHTML = o.name + (o.default?'<span class="def">★ DEFAULT</span>':'');
+      b.onclick = () => { choice[k]=o.id; [...opts.children].forEach(c=>c.classList.remove("active")); b.classList.add("active"); rebuild(k); };
+      opts.appendChild(b);
+    });
+    wrap.appendChild(opts); root.appendChild(wrap);
+  }
+}
+function renderSummary() {
+  const parts = Object.keys(CATS).map(k => {
+    const o = CATS[k].options.find(x=>x.id===choice[k]);
+    return `<b>${CATS[k].label}:</b> ${o ? o.name : choice[k]}`;
+  });
+  document.getElementById("summary").innerHTML = "Current picks —<br>" + parts.join("<br>");
+}
+
+buildUI();
+buildSky(); buildGround(); buildTrees(); buildGrass(); buildRocks(); renderSummary();
+
+let fc=0, ft=performance.now();
+engine.runRenderLoop(()=>{ scene.render(); if(++fc>=20){ const n=performance.now(); document.getElementById("fps").textContent=Math.round(1000*fc/(n-ft)); fc=0; ft=n; }});
+window.addEventListener("resize", ()=>engine.resize());
+</script>
+</body>
+</html>

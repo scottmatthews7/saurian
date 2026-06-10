@@ -1,4 +1,5 @@
 import { buildWorld } from "./world.js";
+import { buildEnv } from "./env.js";
 import { createPlayer, createFollowCamera } from "./player.js";
 import { createTrex, createHerd, createRaptorPack, setObstacles, setDusk, setLure } from "./ai.js";
 import { createEggs } from "./eggs.js";
@@ -186,16 +187,9 @@ export async function startGame() {
   });
   hud.setMuteLabel(audio.muted);
 
-  // post-processing: subtle bloom + tonemapping for "decent visuals"
-  const pipeline = new B.DefaultRenderingPipeline("pipe", true, scene, [camRig.cam]);
-  pipeline.bloomEnabled = true;
-  pipeline.bloomThreshold = 0.75;
-  pipeline.bloomWeight = 0.35;
-  pipeline.imageProcessing.toneMappingEnabled = true;
-  pipeline.imageProcessing.toneMappingType = B.ImageProcessingConfiguration.TONEMAPPING_ACES;
-  pipeline.imageProcessing.contrast = 1.15;
-  pipeline.imageProcessing.exposure = 1.05;
-  pipeline.fxaaEnabled = true;
+  // Environment realism pass (HDRI/IBL + SSAO + ACES/colour-grade + bloom + DoF
+  // + vignette/grain). All owned by env.js so the realism work merges cleanly.
+  buildEnv(scene, camRig.cam);
 
   if (loadingEl) loadingEl.style.display = "none";
 

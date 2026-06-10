@@ -1,4 +1,4 @@
-import { ARENA, DAYNIGHT, DUSK, ATMOSPHERE, WATER, PTERO_DIVE } from "./config.js";
+import { ARENA, DAYNIGHT, DUSK, ATMOSPHERE, WATER, PTERO_DIVE, ENV } from "./config.js";
 import { buildFlyer } from "./flyer.js";
 
 // Smooth basin profile for the pond: 1 at the centre, easing to 0 at the rim.
@@ -10,6 +10,17 @@ function basinFactor(x, z) {
   return t * t * (3 - 2 * t); // smoothstep
 }
 
+// Dry rocky biome membership: 1 at the zone centre, feathering to 0 across
+// edgeFeather just outside the radius, so the arid patch blends into the green.
+function dryZoneFactor(x, z) {
+  const Z = ENV.dryZone;
+  const d = Math.hypot(x - Z.centerX, z - Z.centerZ);
+  if (d <= Z.radius) return 1;
+  if (d >= Z.radius + Z.edgeFeather) return 0;
+  const t = 1 - (d - Z.radius) / Z.edgeFeather;
+  return t * t * (3 - 2 * t);
+}
+
 // Builds terrain, sky, lighting, fog, foliage and the day/night cycle.
 // Returns handles the rest of the game needs (ground mesh for collisions,
 // shadow generator, an update fn for the day/night cycle).
@@ -18,10 +29,13 @@ export function buildWorld(scene) {
   const B = window.BABYLON;
 
   // --- Sky / clear + fog ---------------------------------------------------
+  // Richer, depth-graded exp2 fog in a desaturated sage-grey haze (ENV) so the
+  // distance fades softly instead of hitting a wall. The HDRI sky (env.js)
+  // sits behind the painted gradient dome below.
   scene.clearColor = new B.Color4(0.55, 0.72, 0.86, 1);
   scene.fogMode = B.Scene.FOGMODE_EXP2;
-  scene.fogDensity = ARENA.fogDensity;
-  scene.fogColor = new B.Color3(0.62, 0.74, 0.84);
+  scene.fogDensity = ENV.fogDensity;
+  scene.fogColor = new B.Color3(ENV.fogColor[0], ENV.fogColor[1], ENV.fogColor[2]);
 
   // Gradient skydome: a vertical zenith->horizon gradient painted into a
   // texture (reads far better than a flat fill), tinted by the day/night cycle
@@ -58,8 +72,14 @@ export function buildWorld(scene) {
     subdivisions: 120, updatable: true,
   }, scene);
 
-  // Gentle height noise via layered sines (deterministic, cheap).
+  // Gentle height noise via layered sines (deterministic, cheap). We also bake
+  // a per-vertex GRASS<->SOIL blend into vertex colours: lush desaturated grass
+  // on the flats, earthy soil on the steep rim slopes and the pond edge. The
+  // PBR material multiplies its real albedo by these so one tiled texture set
+  // reads as a varied natural ground (no flat colour, no neon green).
   const positions = ground.getVerticesData(B.VertexBuffer.PositionKind);
+  const colors = new Float32Array((positions.length / 3) * 4);
+  const gT = ENV.grassTint, sT = ENV.soilTint;
   for (let i = 0; i < positions.length; i += 3) {
     const x = positions[i], z = positions[i + 2];
     const d = Math.sqrt(x * x + z * z);
@@ -70,16 +90,35 @@ export function buildWorld(scene) {
     h = h * Math.min(1, d / ARENA.radius * 1.2) + rim;
     h -= basinFactor(x, z) * WATER.depth; // carve the pond basin
     positions[i + 1] = h;
+    // Soil weight: high on the raised rim and right around the pond shoreline,
+    // plus a little procedural mottling so patches of bare earth show through.
+    const rimSoil = Math.min(1, Math.max(0, (d - ARENA.radius * 0.78) / (ARENA.radius * 0.4)));
+    const pondSoil = basinFactor(x, z) > 0.02 ? 0.6 : 0;
+    const mottle = 0.18 * (0.5 + 0.5 * Math.sin(x * 0.4 + 1.7) * Math.cos(z * 0.37));
+    const soil = Math.min(1, rimSoil + pondSoil + mottle);
+    let r = gT[0] * (1 - soil) + sT[0] * soil;
+    let g = gT[1] * (1 - soil) + sT[1] * soil;
+    let b = gT[2] * (1 - soil) + sT[2] * soil;
+    // Dry rocky biome: blend toward the arid ground tint inside the zone.
+    const dz = dryZoneFactor(x, z);
+    if (dz > 0) {
+      const dGT = ENV.dryZone.groundTint;
+      r = r * (1 - dz) + dGT[0] * dz;
+      g = g * (1 - dz) + dGT[1] * dz;
+      b = b * (1 - dz) + dGT[2] * dz;
+    }
+    const ci = (i / 3) * 4;
+    colors[ci] = r; colors[ci + 1] = g; colors[ci + 2] = b; colors[ci + 3] = 1;
   }
   ground.updateVerticesData(B.VertexBuffer.PositionKind, positions);
+  ground.setVerticesData(B.VertexBuffer.ColorKind, colors);
   ground.createNormals(true);
   ground.checkCollisions = true;
   ground.receiveShadows = true;
 
-  const groundMat = new B.StandardMaterial("groundMat", scene);
-  groundMat.diffuseTexture = makeGroundTexture(scene);
-  groundMat.specularColor = new B.Color3(0.05, 0.05, 0.05);
+  const groundMat = makeGroundPBR(scene);
   ground.material = groundMat;
+  ground.useVertexColors = true;
 
   // sample terrain height for placement
   const heightAt = (x, z) => {
@@ -114,7 +153,8 @@ export function buildWorld(scene) {
   const inWater = (x, z) => Math.hypot(x - WATER.centerX, z - WATER.centerZ) < WATER.radius - 1;
   const waterCenter = { x: WATER.centerX, z: WATER.centerZ, radius: WATER.radius };
 
-  const obstacles = scatterFoliage(scene, shadow, heightAt);
+  const foliage = scatterFoliage(scene, shadow, heightAt);
+  const obstacles = foliage.obstacles;
   const atmosphere = buildAtmosphere(scene, heightAt);
 
   // --- Day/night cycle + run-scoped dusk arc -------------------------------
@@ -127,6 +167,7 @@ export function buildWorld(scene) {
   // stays bright on the title screen. Atmosphere + water still animate either way.
   const update = (dt, advanceDayClock = true) => {
     atmosphere.update(dt);
+    foliage.windUpdate(dt);   // subtle canopy + ground-cover sway
     // subtle water shimmer
     t_water += dt;
     waterMat.emissiveColor.b = 0.16 + 0.05 * Math.sin(t_water * 1.5);
@@ -160,7 +201,15 @@ export function buildWorld(scene) {
     const skyG = (0.16 + day * 0.56) - warm * 0.06;
     const skyB = (0.28 + day * 0.62) - warm * 0.22;
     skyMat.emissiveColor.set(skyR, skyG, skyB);
-    scene.fogColor.set(skyR * 1.05, skyG * 1.05, skyB * 1.0);
+    // Fog stays in the desaturated sage-grey haze (ENV.fogColor) but drifts a
+    // little with the sky/dusk so it never fights the time-of-day — a richer,
+    // depth-graded haze rather than a bright cartoon wall.
+    const fc = ENV.fogColor;
+    scene.fogColor.set(
+      fc[0] * 0.7 + skyR * 0.3,
+      fc[1] * 0.7 + skyG * 0.3,
+      fc[2] * 0.7 + skyB * 0.3,
+    );
     scene.clearColor.set(skyR, skyG, skyB, 1);
   };
 
@@ -186,7 +235,7 @@ function buildReeds(scene, shadow, heightAt) {
   const reedSrc = B.MeshBuilder.CreateCylinder("reedSrc",
     { height: 2.2, diameterTop: 0.04, diameterBottom: 0.18, tessellation: 4 }, scene);
   const reedMat = new B.StandardMaterial("reedMat", scene);
-  reedMat.diffuseColor = new B.Color3(0.36, 0.46, 0.18);
+  reedMat.diffuseColor = new B.Color3(0.34, 0.40, 0.22); // desaturated sage reed
   reedMat.specularColor = B.Color3.Black();
   reedSrc.material = reedMat;
   reedSrc.isVisible = false;
@@ -230,34 +279,43 @@ function makeSkyGradient(scene) {
   return dt;
 }
 
-// Procedural mottled grass texture so the ground reads as a living field
-// rather than a flat colour. Painted once into a DynamicTexture and tiled.
-function makeGroundTexture(scene) {
+// Photoreal PBR ground material: tiled CC0 albedo + normal + roughness + AO
+// (ambientCG, see CREDITS.md), tinted toward a desaturated natural palette and
+// modulated per-vertex (grass <-> soil) by the baked vertex colours. Replaces
+// the old flat painted DynamicTexture. Lit by the HDRI environment (env.js) +
+// the directional sun, so it picks up real normal-mapped relief and AO.
+function makeGroundPBR(scene) {
   const B = window.BABYLON;
-  const S = 512;
-  const dt = new B.DynamicTexture("groundTex", { width: S, height: S }, scene, true);
-  const ctx = dt.getContext();
-  // base grass
-  ctx.fillStyle = "#5a8038";
-  ctx.fillRect(0, 0, S, S);
-  // layered blotches: lighter grass, darker grass, dry dirt
-  const blob = (color, count, rMin, rMax) => {
-    ctx.fillStyle = color;
-    for (let i = 0; i < count; i++) {
-      const x = Math.random() * S, y = Math.random() * S;
-      const r = rMin + Math.random() * (rMax - rMin);
-      ctx.globalAlpha = 0.18 + Math.random() * 0.22;
-      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-    }
+  const base = ENV.texturePath;
+  const tile = ENV.groundTiling;
+  const tex = (file, isData = false) => {
+    const t = new B.Texture(base + file, scene, null, false);
+    t.uScale = t.vScale = tile;
+    t.anisotropicFilteringLevel = 8;  // crisp grazing-angle detail across the big plane
+    return t;
   };
-  blob("#6f9a44", 320, 6, 26);   // light grass
-  blob("#46682c", 300, 6, 30);   // dark grass
-  blob("#7a6438", 90, 4, 18);    // dry dirt
-  blob("#8aa758", 200, 2, 8);    // bright flecks
-  ctx.globalAlpha = 1;
-  dt.update();
-  dt.uScale = dt.vScale = 8;  // tile across the large ground plane
-  return dt;
+
+  const mat = new B.PBRMaterial("groundPBR", scene);
+  mat.albedoTexture = tex(ENV.grassTextures.albedo);
+  mat.bumpTexture = tex(ENV.grassTextures.normal);
+  mat.bumpTexture.level = ENV.groundNormalStrength;
+  // ambientCG normals are OpenGL convention (NormalGL), which Babylon expects.
+  // Dielectric ground: no metalness, roughness driven by the standalone map.
+  mat.metallic = 0;
+  // ambientCG Roughness.jpg is a standalone greyscale map. Feed it as the
+  // metallicTexture and tell PBR to read roughness from green (== red == value
+  // for a greyscale source) and metalness from blue (=0 here).
+  mat.metallicTexture = tex(ENV.grassTextures.roughness);
+  mat.useRoughnessFromMetallicTextureGreen = true;
+  mat.useRoughnessFromMetallicTextureAlpha = false;
+  mat.useMetallnessFromMetallicTextureBlue = true;
+  // Baked AO map via the ambient slot.
+  mat.ambientTexture = tex(ENV.grassTextures.ao);
+  mat.ambientTextureStrength = 1.0;
+  mat.useAmbientInGrayScale = true;
+  // IBL contribution scaled to taste (matte outdoor ground).
+  mat.environmentIntensity = ENV.iblIntensity;
+  return mat;
 }
 
 // Visual set dressing that lives above the playfield: a circling pterosaur
@@ -493,101 +551,324 @@ function buildAtmosphere(scene, heightAt) {
   };
 }
 
+// An alpha-cut card material: a CC0 cutout atlas (Color + separate Opacity),
+// cut by ALPHA-TEST (not blending — sort-free + cheap), double-sided, tinted
+// per palette entry. Lit by the scene so cards catch the sun + IBL.
+function makeCardMaterial(scene, name, albedoFile, opacityFile, tint) {
+  const B = window.BABYLON;
+  const base = ENV.texturePath;
+  const m = new B.StandardMaterial(name, scene);
+  const alb = new B.Texture(base + albedoFile, scene);
+  m.diffuseTexture = alb;
+  m.opacityTexture = new B.Texture(base + opacityFile, scene);
+  m.opacityTexture.getAlphaFromRGB = true;   // opacity map is greyscale RGB
+  m.diffuseColor = new B.Color3(tint[0], tint[1], tint[2]);
+  m.specularColor = B.Color3.Black();
+  m.backFaceCulling = false;                  // cards visible from both sides
+  m.transparencyMode = B.Material.MATERIAL_ALPHATEST;
+  m.alphaCutOff = ENV.alphaCutOff;
+  m.useAlphaFromDiffuseTexture = false;
+  return m;
+}
+
+// A crossed-quad card cluster (N planes fanned about Y) so a billboard reads as
+// a 3D clump from any angle, not a flat sprite. `vBand`=[v0,v1] crops the UVs to
+// ONE row of the atlas (the atlases stack their cutouts vertically, so a V-crop
+// isolates a single full grass blade / leaf spray rather than slicing through
+// all of them). `pitch` tilts the quads (drooping conifer sprays vs upright
+// grass). Returns an invisible source mesh ready to instance.
+function makeCardClusterSource(scene, name, mat, quads, w, h, uBand, vBand, pitch) {
+  const B = window.BABYLON;
+  const [u0, u1] = uBand, [v0, v1] = vBand;
+  const parts = [];
+  for (let q = 0; q < quads; q++) {
+    const p = B.MeshBuilder.CreatePlane(name + "_q" + q, { width: w, height: h }, scene);
+    p.rotation.y = (q / quads) * Math.PI;     // fan the quads around Y
+    if (pitch) p.rotation.x = pitch;          // droop/tilt
+    p.bakeCurrentTransformIntoVertices();
+    // crop UVs to the chosen atlas sub-region (isolate ONE cutout: grass blades
+    // separate along U/columns, leaf sprays stack along V/rows).
+    const uv = p.getVerticesData(B.VertexBuffer.UVKind);
+    for (let i = 0; i < uv.length; i += 2) {
+      uv[i] = u0 + uv[i] * (u1 - u0);
+      uv[i + 1] = v0 + uv[i + 1] * (v1 - v0);
+    }
+    p.setVerticesData(B.VertexBuffer.UVKind, uv);
+    parts.push(p);
+  }
+  const merged = B.Mesh.MergeMeshes(parts, true, true, undefined, false, false);
+  merged.name = name;
+  merged.material = mat;
+  merged.isVisible = false;
+  merged.alwaysSelectAsActiveMesh = true;
+  return merged;
+}
+
 function scatterFoliage(scene, shadow, heightAt) {
   const B = window.BABYLON;
   const rng = mulberry32(1337);
   const rand = (a, b) => a + rng() * (b - a);
+  const tex = (file, tile) => { const t = new B.Texture(ENV.texturePath + file, scene); t.uScale = t.vScale = tile; t.anisotropicFilteringLevel = 8; return t; };
   // Solid obstacle footprints (centre + repulsion radius) the AI steers around.
   const obstacles = [];
   const inPond = (x, z) => Math.hypot(x - WATER.centerX, z - WATER.centerZ) < WATER.radius + 2;
   const inArena = (x, z) => Math.sqrt(x * x + z * z) < ARENA.radius - 4 && !inPond(x, z);
+  // Things that sway in the wind (cards tilt about Z).
+  const swayers = [];
 
-  // --- Trees (stylised: trunk + foliage cones), instanced -----------------
-  const trunk = B.MeshBuilder.CreateCylinder("trunkSrc", { height: 4, diameterTop: 0.5, diameterBottom: 0.9, tessellation: 6 }, scene);
-  const trunkMat = new B.StandardMaterial("trunkMat", scene);
-  trunkMat.diffuseColor = new B.Color3(0.32, 0.22, 0.13);
-  trunkMat.specularColor = B.Color3.Black();
-  trunk.material = trunkMat;
+  // --- Trunks: real CC0 BARK PBR (albedo + normal + roughness) ------------
+  const trunk = B.MeshBuilder.CreateCylinder("trunkSrc", { height: 4, diameterTop: 0.42, diameterBottom: 0.95, tessellation: 8 }, scene);
+  const barkMat = new B.PBRMaterial("barkMat", scene);
+  barkMat.albedoTexture = tex(ENV.barkTextures.albedo, ENV.barkTiling);
+  barkMat.bumpTexture = tex(ENV.barkTextures.normal, ENV.barkTiling);
+  barkMat.metallic = 0; barkMat.roughness = 1;
+  barkMat.metallicTexture = tex(ENV.barkTextures.roughness, ENV.barkTiling);
+  barkMat.useRoughnessFromMetallicTextureGreen = true;
+  barkMat.useMetallnessFromMetallicTextureBlue = true;
+  barkMat.albedoColor = new B.Color3(ENV.trunkColor[0], ENV.trunkColor[1], ENV.trunkColor[2]);
+  barkMat.environmentIntensity = ENV.iblIntensity;
+  trunk.material = barkMat;
   trunk.isVisible = false;
 
-  // Three leaf source cones in varied greens for colour variety across the
-  // forest; each tree picks one and stacks a smaller second tier on top.
-  const leafGreens = [
-    new B.Color3(0.18, 0.42, 0.2),
-    new B.Color3(0.14, 0.34, 0.16),
-    new B.Color3(0.24, 0.48, 0.22),
-  ];
-  const leafSources = leafGreens.map((col, k) => {
-    const m = B.MeshBuilder.CreateCylinder("leavesSrc" + k, { height: 5, diameterTop: 0, diameterBottom: 5, tessellation: 7 }, scene);
-    const mat = new B.StandardMaterial("leafMat" + k, scene);
-    mat.diffuseColor = col;
-    mat.specularColor = B.Color3.Black();
-    m.material = mat;
-    m.isVisible = false;
-    return m;
+  // Bleached/grey bark for dead + gnarled trees (same bark maps, drier tint).
+  const deadBarkMat = new B.PBRMaterial("deadBarkMat", scene);
+  deadBarkMat.albedoTexture = tex(ENV.barkTextures.albedo, ENV.barkTiling);
+  deadBarkMat.bumpTexture = tex(ENV.barkTextures.normal, ENV.barkTiling);
+  deadBarkMat.metallic = 0; deadBarkMat.roughness = 1;
+  deadBarkMat.albedoColor = new B.Color3(ENV.deadTrunkColor[0], ENV.deadTrunkColor[1], ENV.deadTrunkColor[2]);
+  deadBarkMat.environmentIntensity = ENV.iblIntensity;
+  // Dead trunk source (instances can't override their source's material, so
+  // gnarled trees need their own bleached-bark trunk source to instance from).
+  const deadTrunk = B.MeshBuilder.CreateCylinder("deadTrunkSrc", { height: 4, diameterTop: 0.30, diameterBottom: 0.85, tessellation: 7 }, scene);
+  deadTrunk.material = deadBarkMat; deadTrunk.isVisible = false;
+  // A bare branch-stub source (thin tapered bark cylinder) for gnarled/dead
+  // trees — instanced, angled per branch.
+  const branch = B.MeshBuilder.CreateCylinder("branchSrc", { height: 3, diameterTop: 0.08, diameterBottom: 0.3, tessellation: 5 }, scene);
+  branch.material = deadBarkMat; branch.isVisible = false;
+
+  // --- Canopy: textured alpha-cut LEAF cards (green leaf sprays) -----------
+  // One drooping-spray cluster source per palette green; each crops to one row
+  // of the leaf atlas (a single full branch spray) so cards read as foliage.
+  const leafRows = [[0.04, 0.30], [0.36, 0.62], [0.70, 0.97]]; // the 3 sprays in the atlas
+  const leafSources = [];
+  ENV.foliageGreens.forEach((tint, k) => {
+    const mat = makeCardMaterial(scene, "leafCardMat" + k, ENV.leafCardAlbedo, ENV.leafCardOpacity, tint);
+    const row = leafRows[k % leafRows.length];
+    leafSources.push(makeCardClusterSource(scene, "leafClu" + k, mat, 3, 5.5, 2.4, [0.02, 0.98], row, -0.45));
   });
+  // Big upright frond cards for palms (steep pitch, large).
+  const frondSources = ENV.foliageGreens.map((tint, k) =>
+    makeCardClusterSource(scene, "frondClu" + k, makeCardMaterial(scene, "frondMat" + k, ENV.leafCardAlbedo, ENV.leafCardOpacity, tint),
+      2, 6.5, 3.0, [0.02, 0.98], leafRows[k % leafRows.length], -0.15));
+  const pickGreen = (base) => leafSources[(base + (rng() < 0.4 ? 1 + (rng() < 0.5 ? 1 : 0) : 0)) % leafSources.length];
+
+  // Per-species crown builders. Each gets the trunk-top + scale and stacks
+  // textured cards (or bare branches) into a distinct silhouette.
+  function addCard(src, x, y, z, cs, ampMul, tag) {
+    const l = src.createInstance(tag);
+    l.position.set(x, y, z); l.scaling.setAll(cs); l.rotation.y = rng() * Math.PI * 2;
+    l.isPickable = false; shadow.addShadowCaster(l);
+    swayers.push({ mesh: l, base: 0, phase: rng() * Math.PI * 2, amp: ENV.windStrength * ampMul });
+    return l;
+  }
+  const SPECIES = {
+    // tall, narrow, multi-tier drooping crown
+    conifer(x, y, z, s, base, i) {
+      const top = y + 3.8 * s, H = 4.0 * s, R = 1.7 * s, n = ENV.cardsPerCanopy + 1;
+      for (let c = 0; c < n; c++) {
+        const tier = c / n, ring = R * (1 - tier * 0.85) * rand(0.4, 1.0), a = rng() * 6.283;
+        addCard(pickGreen(base), x + Math.cos(a) * ring, top + tier * H + rand(-0.2, 0.2) * s, z + Math.sin(a) * ring,
+          s * rand(0.7, 1.15) * (1 - tier * 0.35), rand(0.8, 1.4), "leaves" + i + "_" + c);
+      }
+    },
+    // shorter trunk, wide rounded low dome of cards
+    broadleaf(x, y, z, s, base, i) {
+      const top = y + 3.0 * s, H = 2.6 * s, R = 2.6 * s, n = ENV.cardsPerCanopy + 2;
+      for (let c = 0; c < n; c++) {
+        const tier = c / n, ring = R * (1 - tier * 0.55) * rand(0.5, 1.0), a = rng() * 6.283;
+        addCard(pickGreen(base), x + Math.cos(a) * ring, top + tier * H + rand(-0.2, 0.2) * s, z + Math.sin(a) * ring,
+          s * rand(0.85, 1.3) * (1 - tier * 0.2), rand(0.9, 1.5), "leaves" + i + "_" + c);
+      }
+    },
+    // bare gnarled/dead: a few splayed branch stubs, no foliage (or a wisp)
+    gnarled(x, y, z, s, base, i) {
+      const nB = 3 + Math.floor(rng() * 3);
+      for (let b = 0; b < nB; b++) {
+        const br = branch.createInstance("branch" + i + "_" + b);
+        const a = rng() * 6.283, lean = rand(0.5, 1.1);
+        br.position.set(x, y + (2.5 + rng() * 1.5) * s, z);
+        br.scaling.set(s * rand(0.6, 1.0), s * rand(0.7, 1.2), s * rand(0.6, 1.0));
+        br.rotation.set(Math.cos(a) * lean, rng() * 6.283, Math.sin(a) * lean);
+        br.isPickable = false; shadow.addShadowCaster(br);
+      }
+      // a sparse dead wisp at the top sometimes
+      if (rng() < 0.3) addCard(pickGreen(base), x, y + 4.5 * s, z, s * 0.7, 1.2, "leaves" + i + "_w");
+    },
+    // tall thin trunk, crown only at the very top: big fronds fanning up/out
+    palm(x, y, z, s, base, i) {
+      const top = y + 5.2 * s, n = 6;
+      for (let c = 0; c < n; c++) {
+        const a = (c / n) * 6.283 + rng() * 0.4;
+        const f = frondSources[(base + c) % frondSources.length].createInstance("leaves" + i + "_" + c);
+        f.position.set(x + Math.cos(a) * 1.1 * s, top + rand(-0.2, 0.3) * s, z + Math.sin(a) * 1.1 * s);
+        f.scaling.setAll(s * rand(0.85, 1.1));
+        f.rotation.y = a; f.rotation.x = -0.5 - rng() * 0.3; // arch outward+down
+        f.isPickable = false; shadow.addShadowCaster(f);
+        swayers.push({ mesh: f, base: f.rotation.z, phase: rng() * 6.283, amp: ENV.windStrength * 1.6 });
+      }
+    },
+  };
+  // weighted species roll
+  const wEntries = Object.entries(ENV.treeTypeWeights);
+  const wTotal = wEntries.reduce((a, [, w]) => a + w, 0);
+  const rollSpecies = () => {
+    let r = rng() * wTotal;
+    for (const [k, w] of wEntries) { if ((r -= w) <= 0) return k; }
+    return wEntries[0][0];
+  };
 
   for (let i = 0; i < ARENA.treeCount; i++) {
     let x, z;
     do { x = rand(-ARENA.radius, ARENA.radius); z = rand(-ARENA.radius, ARENA.radius); }
     while (!inArena(x, z) || Math.sqrt(x * x + z * z) < 18);
-    const s = rand(0.8, 1.6);
     const y = heightAt(x, z);
-    const t = trunk.createInstance("trunk" + i);
-    t.position.set(x, y + 2 * s, z); t.scaling.setAll(s); t.checkCollisions = true;
+    const dz = dryZoneFactor(x, z);
+    // Dry zone biases toward gnarled/dead trees; green areas use the weighted mix.
+    const species = (dz > 0.4 && rng() < ENV.dryZone.deadTreeBias) ? "gnarled" : rollSpecies();
+    // palms a touch taller/thinner; gnarled a touch shorter; others varied
+    const s = rand(0.7, 1.9) * (species === "palm" ? 1.15 : species === "gnarled" ? 0.9 : 1);
+    const t = (species === "gnarled" ? deadTrunk : trunk).createInstance("trunk" + i);
+    t.position.set(x, y + 2 * s, z);
+    const thin = species === "palm" ? 0.6 : species === "gnarled" ? 0.8 : 1;
+    t.scaling.set(s * rand(0.85, 1.15) * thin, s * rand(0.9, 1.3) * (species === "palm" ? 1.4 : 1), s * rand(0.85, 1.15) * thin);
+    t.checkCollisions = true;
     shadow.addShadowCaster(t);
     obstacles.push({ x, z, r: 1.1 * s });
-    const src = leafSources[i % leafSources.length];
-    const l = src.createInstance("leaves" + i);
-    l.position.set(x, y + 5.0 * s, z); l.scaling.setAll(s * rand(0.9, 1.3));
-    l.rotation.y = rand(0, Math.PI);
-    shadow.addShadowCaster(l);
-    // a smaller second tier crowns the tree for a fuller conifer silhouette
-    const l2 = src.createInstance("leavesTop" + i);
-    l2.position.set(x, y + 7.6 * s, z); l2.scaling.setAll(s * rand(0.55, 0.75));
-    l2.rotation.y = rand(0, Math.PI);
-    shadow.addShadowCaster(l2);
+    SPECIES[species](x, y, z, s, i % leafSources.length, i);
   }
 
-  // --- Rocks --------------------------------------------------------------
-  const rockSrc = B.MeshBuilder.CreatePolyhedron("rockSrc", { type: 1, size: 1 }, scene);
-  const rockMat = new B.StandardMaterial("rockMat", scene);
-  rockMat.diffuseColor = new B.Color3(0.42, 0.42, 0.45);
-  rockMat.specularColor = new B.Color3(0.1, 0.1, 0.1);
-  rockSrc.material = rockMat;
-  rockSrc.isVisible = false;
+  // --- Rocks: real CC0 ROCK PBR on IRREGULAR displaced geometry ------------
+  // Smooth dodecahedra are gone. Each rock is a subdivided icosphere whose
+  // vertices are noise-displaced (jagged, no two alike), wearing a tiled rock
+  // albedo+normal+roughness PBR material. Rocks sit PARTIALLY BURIED (their
+  // centre dropped below ground) at varied sizes/orientations.
+  const rockMat = new B.PBRMaterial("rockMat", scene);
+  rockMat.albedoTexture = tex(ENV.rockTextures.albedo, ENV.rockTiling);
+  rockMat.bumpTexture = tex(ENV.rockTextures.normal, ENV.rockTiling);
+  rockMat.metallic = 0; rockMat.roughness = 1;
+  rockMat.metallicTexture = tex(ENV.rockTextures.roughness, ENV.rockTiling);
+  rockMat.useRoughnessFromMetallicTextureGreen = true;
+  rockMat.useMetallnessFromMetallicTextureBlue = true;
+  rockMat.albedoColor = new B.Color3(ENV.rockColor[0], ENV.rockColor[1], ENV.rockColor[2]);
+  rockMat.environmentIntensity = ENV.iblIntensity;
+  // A small library of distinct displaced boulder shapes, instanced for perf.
+  const rockShapes = [];
+  for (let v = 0; v < ENV.rockVariants; v++) {
+    const ico = B.MeshBuilder.CreateIcoSphere("rockSrc" + v, { radius: 1, subdivisions: 3, flat: true }, scene);
+    const vp = ico.getVerticesData(B.VertexBuffer.PositionKind);
+    for (let i = 0; i < vp.length; i += 3) {
+      const nx = vp[i], ny = vp[i + 1], nz = vp[i + 2];
+      // layered value noise via sines keyed on the variant for distinct shapes
+      const d = 1
+        + 0.32 * Math.sin(nx * 3.1 + v * 2.0) * Math.cos(nz * 2.7 + v)
+        + 0.20 * Math.sin(ny * 4.3 + v) * Math.sin(nx * 2.1)
+        + 0.12 * Math.cos(nz * 5.7 + v * 3);
+      vp[i] = nx * d; vp[i + 1] = ny * d * 0.82; vp[i + 2] = nz * d; // squash slightly
+    }
+    ico.setVerticesData(B.VertexBuffer.PositionKind, vp);
+    ico.createNormals(true);
+    ico.material = rockMat;
+    ico.isVisible = false;
+    rockShapes.push(ico);
+  }
+  const placeRock = (x, z, idx) => {
+    const s = rand(0.7, 2.6);
+    const r = rockShapes[idx % rockShapes.length].createInstance("rock" + idx);
+    // partially buried: drop the centre below the surface so it emerges from soil
+    r.position.set(x, heightAt(x, z) + s * 0.45 - s * 0.4, z);
+    r.scaling.set(s * rand(0.85, 1.2), s * rand(0.6, 1.0), s * rand(0.85, 1.2));
+    r.rotation.set(rand(0, 6), rand(0, 6), rand(0, 6));
+    r.checkCollisions = s > 1.3;
+    if (s > 1.3) obstacles.push({ x, z, r: s * 0.9 });
+    shadow.addShadowCaster(r);
+  };
+  // Base scatter across the arena.
   for (let i = 0; i < ARENA.rockCount; i++) {
     let x, z;
     do { x = rand(-ARENA.radius, ARENA.radius); z = rand(-ARENA.radius, ARENA.radius); }
     while (!inArena(x, z));
-    const s = rand(0.6, 2.4);
-    const r = rockSrc.createInstance("rock" + i);
-    r.position.set(x, heightAt(x, z) + s * 0.4, z);
-    r.scaling.set(s, s * rand(0.6, 1), s * rand(0.8, 1.2));
-    r.rotation.set(rand(0, 1), rand(0, 6), rand(0, 1));
-    r.checkCollisions = s > 1.2;
-    if (s > 1.2) obstacles.push({ x, z, r: s });
-    shadow.addShadowCaster(r);
+    placeRock(x, z, i);
+  }
+  // Dry rocky biome: denser boulders clustered in the arid zone.
+  const dzExtra = Math.round(ARENA.rockCount * (ENV.dryZone.rockDensityMul - 1));
+  for (let i = 0; i < dzExtra; i++) {
+    let x, z, tries = 0;
+    do {
+      const a = rng() * Math.PI * 2, rr = Math.sqrt(rng()) * ENV.dryZone.radius;
+      x = ENV.dryZone.centerX + Math.cos(a) * rr; z = ENV.dryZone.centerZ + Math.sin(a) * rr;
+    } while (!inArena(x, z) && ++tries < 6);
+    if (inArena(x, z)) placeRock(x, z, ARENA.rockCount + i);
   }
 
-  // --- Grass tufts (thin instanced quads) ---------------------------------
-  const blade = B.MeshBuilder.CreateCylinder("bladeSrc", { height: 1, diameterTop: 0, diameterBottom: 0.5, tessellation: 4 }, scene);
-  const grassMat = new B.StandardMaterial("grassMat", scene);
-  grassMat.diffuseColor = new B.Color3(0.3, 0.55, 0.24);
-  grassMat.specularColor = B.Color3.Black();
-  blade.material = grassMat;
-  blade.isVisible = false;
-  for (let i = 0; i < ARENA.grassPatches; i++) {
-    let x = rand(-ARENA.radius, ARENA.radius), z = rand(-ARENA.radius, ARENA.radius);
-    if (!inArena(x, z)) continue;
-    const s = rand(0.6, 1.6);
-    const g = blade.createInstance("grass" + i);
-    g.position.set(x, heightAt(x, z) + s * 0.5, z);
-    g.scaling.set(s, s, s);
+  // --- Grass: textured alpha-cut GRASS-BLADE cards ------------------------
+  // Crossed-quad clumps of real cutout grass blades (Foliage001 atlas), tinted
+  // per palette green + size-varied so the ground cover is irregular and lush,
+  // not solid cones. One source per palette green × atlas slice; both the
+  // mid-field "patches" and the dense near "ground cover" instance off these.
+  // Grass blades separate along U (columns) in the Foliage001 atlas, so crop a
+  // narrow U band (a few blades) at full V (the tall blade). Two crossed quads.
+  const grassCols = [[0.0, 0.28], [0.30, 0.58], [0.60, 0.88], [0.12, 0.42]];
+  const grassSources = [];
+  ENV.foliageGreens.forEach((tint, k) => {
+    const mat = makeCardMaterial(scene, "grassCardMat" + k, ENV.grassCardAlbedo, ENV.grassCardOpacity, tint);
+    const col = grassCols[k % grassCols.length];
+    grassSources.push(makeCardClusterSource(scene, "grassClu" + k, mat, 2, 1.6, 1.3, col, [0.0, 1.0], 0));
+  });
+  const coverSwayers = [];
+  const placeGrassCard = (x, z, sMin, sMax, idx, tag) => {
+    const src = grassSources[Math.floor(rng() * grassSources.length)];
+    const s = rand(sMin, sMax);
+    const g = src.createInstance(tag + idx);
+    g.position.set(x, heightAt(x, z) + s * 0.55, z);
+    g.scaling.set(s * rand(0.8, 1.4), s * rand(0.8, 1.5), s * rand(0.8, 1.4)); // clumped + height-varied
+    g.rotation.y = rng() * Math.PI;
     g.isPickable = false;
+    coverSwayers.push({ mesh: g, base: 0, phase: rng() * Math.PI * 2, amp: ENV.windStrength * rand(1.0, 1.8) });
+    return g;
+  };
+  // Dry zone keeps grass sparse (arid). Returns true if this spot should be
+  // skipped given the zone's grassDensityMul.
+  const dryThins = (x, z) => {
+    const dz = dryZoneFactor(x, z);
+    return dz > 0 && rng() > (1 - dz) + dz * ENV.dryZone.grassDensityMul;
+  };
+  // Mid-field scatter (uniform, like the old grassPatches).
+  for (let i = 0; i < ARENA.grassPatches; i++) {
+    const x = rand(-ARENA.radius, ARENA.radius), z = rand(-ARENA.radius, ARENA.radius);
+    if (!inArena(x, z) || dryThins(x, z)) continue;
+    placeGrassCard(x, z, 0.7, 1.7, i, "grass");
+  }
+  // Dense near ground cover, distance-faded for perf (lush foreground, cheap far).
+  for (let i = 0; i < ENV.groundCoverCount; i++) {
+    const x = rand(-ARENA.radius, ARENA.radius), z = rand(-ARENA.radius, ARENA.radius);
+    if (!inArena(x, z) || dryThins(x, z)) continue;
+    const d = Math.sqrt(x * x + z * z);
+    const fade = 1 - Math.min(1, Math.max(0,
+      (d - ENV.groundCoverFadeStart) / (ENV.groundCoverFadeEnd - ENV.groundCoverFadeStart)));
+    if (rng() > fade) continue;            // probabilistic thinning with distance
+    placeGrassCard(x, z, 0.5, 1.1, i, "cover");
   }
 
-  return obstacles;
+  // Wind sway: ease each registered card's tilt with a phase-offset sine so the
+  // whole valley breathes gently. Cheap (a sin per swayer).
+  let wt = 0;
+  const windUpdate = (dt) => {
+    wt += dt * ENV.windSpeed;
+    for (const sw of swayers) sw.mesh.rotation.z = sw.base + Math.sin(wt + sw.phase) * sw.amp;
+    for (const sw of coverSwayers) sw.mesh.rotation.z = sw.base + Math.sin(wt + sw.phase) * sw.amp;
+  };
+
+  return { obstacles, windUpdate };
 }
 
 // small deterministic PRNG

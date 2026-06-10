@@ -42,7 +42,7 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
    beard is baked into the texture, SOURCE a clean-shaven fair-haired CC0 character
    instead and swap it in (keep the rig/anim wiring working). Tell the user which.
 
-2. **Environment realism pass (HIGH PRIORITY — player wants PHOTOREALISM).**
+2. **[DONE — session 17, env-pass branch] Environment realism pass (HIGH PRIORITY — player wants PHOTOREALISM).**
    Push the ENVIRONMENT as close to photoreal as Babylon-in-a-browser allows
    (dinos stay low-poly — expect some mismatch; make the world itself genuinely
    high-fidelity):

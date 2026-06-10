@@ -369,6 +369,138 @@ export const BEACONS = {
   wardDuskBonus: 0.5,      // +50% ward radius at deepest dusk (18 -> 27 units), a deliberate counter to the dusk speed/sight boldness
 };
 
+// ENVIRONMENT REALISM (wishlist item 2). Owns the photoreal world pass: PBR
+// ground textures, HDRI image-based lighting, the desaturated natural palette,
+// and the post-processing stack (SSAO, ACES + colour grade, bloom, depth of
+// field, fog). Kept in one block so the env pass merges cleanly. All values are
+// deliberate art-direction choices for a naturalistic primeval-valley look —
+// not derived from any benchmark.
+export const ENV = {
+  // --- PBR ground textures (CC0, ambientCG — see CREDITS.md) -------------
+  // A tiled real grass material set (albedo + normal + roughness + AO) replaces
+  // the old flat painted colour. The grass↔soil variation is layered on top via
+  // baked vertex colours (grassTint↔soilTint below) rather than a second
+  // texture, which keeps it to one material/draw and reads well at this scale.
+  texturePath: "assets/textures/",
+  grassTextures: {
+    albedo: "grass_albedo.jpg", normal: "grass_normal.jpg",
+    roughness: "grass_roughness.jpg", ao: "grass_ao.jpg",
+  },
+  groundTiling: 18,        // UV repeats across the ground plane (close-up detail without obvious tiling)
+  groundNormalStrength: 0.9, // 0..1+ scale on the normal map's perturbation
+  // Desaturated natural ground tints multiplied onto the albedo to push the
+  // palette toward olive/sage/moss + earthy brown (kills the cartoon-bright
+  // green of the old material). <1 darkens/desaturates the photo albedo.
+  grassTint: [0.66, 0.72, 0.52],  // olive-sage
+  soilTint: [0.60, 0.52, 0.42],   // warm earthy brown
+
+  // --- HDRI environment (CC0, Poly Haven — see CREDITS.md) ---------------
+  hdriPath: "assets/env/sky.hdr",
+  hdriSize: 256,           // prefiltered cube size for IBL (256 is plenty for a matte world; keeps load/VRAM low)
+  iblIntensity: 0.85,      // environment lighting intensity multiplier
+  skyboxBlur: 0.12,        // micro-blur on the visible sky so it reads as a soft distant sky, not a sharp photo
+  // USER PICK: the visible SKY is the painted GRADIENT dome (world.js), not the
+  // HDRI skybox. The HDRI is still loaded for image-based lighting + reflections
+  // (it grounds the PBR materials), but its skybox mesh is hidden so the chosen
+  // gradient sky shows through. Flip to true to see the photographic HDRI dome.
+  showHdriSkybox: false,
+
+  // --- Fog (richer, depth-graded) ----------------------------------------
+  fogDensity: 0.0085,      // exp2 fog — softer/further than the old 0.012 so distance reads with depth, not a wall
+  fogColor: [0.70, 0.74, 0.72],  // desaturated sage-grey haze (matches the palette)
+
+  // --- Post-processing pipeline ------------------------------------------
+  // ACES tonemap + a gentle filmic colour grade, SSAO for contact shadowing,
+  // bloom on highlights, a shallow depth of field, and a faint vignette/grain
+  // for a photographic finish. Tuned for "markedly more realistic" while
+  // staying performant on a Mac (target 60fps).
+  exposure: 1.1,
+  contrast: 1.18,
+  // Colour grade (ColorCurves): a touch of global desaturation + a cool-shadow
+  // / warm-highlight split for a filmic, naturalistic look.
+  globalSaturation: 78,    // <100 desaturates globally (kills cartoon vividness)
+  globalHue: 8,            // slight warm hue shift
+  highlightsSaturation: 64,
+  shadowsHue: 210,         // push shadows slightly cool/blue
+  shadowsSaturation: 24,
+  bloomThreshold: 0.82,
+  bloomWeight: 0.28,
+  bloomScale: 0.5,
+  // SSAO2 — screen-space ambient occlusion for grounded contact shadows.
+  ssaoRatio: 0.75,         // render SSAO at 75% res for perf (full-res is wasteful for a soft AO)
+  ssaoRadius: 2.2,         // world-space sample radius
+  ssaoStrength: 1.1,       // occlusion darkening strength
+  ssaoSamples: 16,         // samples per pixel (16 is a good quality/perf balance)
+  ssaoBlur: 2,             // bilateral blur passes
+  // Depth of field — a subtle cinematic focus, foreground/horizon softened.
+  dofFocusDistance: 18000, // mm — focus plane ~18m out (the gameplay middle distance)
+  dofFocalLength: 50,      // mm — a natural ~50mm lens
+  dofFStop: 6.0,           // higher = deeper focus (subtle blur, not a macro toy look)
+  vignetteWeight: 1.4,     // gentle darkened corners
+  grainIntensity: 6,       // faint film grain for a photographic texture
+
+  // --- Textured foliage (alpha-cut billboards, CC0 ambientCG) -------------
+  // Kills the smooth "playmobil" solid-colour cones/spheres. Trunks get real
+  // bark albedo+normal+roughness; canopies + grass become alpha-cut TEXTURED
+  // CARDS (cross-quad clusters of cutout leaf/grass sprays) with per-instance
+  // green tint + size variety so each plant is irregular, not a clone. All
+  // instanced; ground cover fades out with distance for perf.
+  barkTextures: {
+    albedo: "bark_albedo.jpg", normal: "bark_normal.jpg", roughness: "bark_roughness.jpg",
+  },
+  barkTiling: 2,           // bark UV repeats up the trunk
+  // Rocks: real CC0 rock PBR on noise-displaced icosphere boulders (no smooth
+  // dodecahedra), partially buried, varied sizes/orientations.
+  rockTextures: {
+    albedo: "rock_albedo.jpg", normal: "rock_normal.jpg", roughness: "rock_roughness.jpg",
+  },
+  rockTiling: 1.4,         // rock UV repeats across a boulder
+  rockColor: [0.66, 0.64, 0.60], // desaturated warm-grey stone tint on the albedo
+  rockVariants: 5,         // distinct displaced boulder shapes (instanced)
+  // Alpha-cut atlases: a Color + a separate Opacity map (cut via alpha-test,
+  // not blending — cheap and sort-free).
+  leafCardAlbedo: "leaf_albedo.png",       // green conifer foliage sprays (LeafSet019)
+  leafCardOpacity: "leaf_opacity.png",
+  grassCardAlbedo: "grass_blade_albedo.png", // green grass blades (Foliage001)
+  grassCardOpacity: "grass_blade_opacity.png",
+  alphaCutOff: 0.4,        // alpha-test threshold for the cutout cards
+  cardsPerCanopy: 5,       // textured leaf cards crossed per tree (irregular, broken-up crown)
+  windStrength: 0.06,      // radians of canopy/grass sway amplitude
+  windSpeed: 1.3,          // sway frequency (rad/sec)
+  groundCoverCount: 1100,  // grass-card clump instances (instanced — cheap)
+  groundCoverFadeStart: 45, // world units from centre where ground cover starts thinning
+  groundCoverFadeEnd: 82,   // fully faded beyond this (keeps far ground uncluttered + fast)
+  // Per-instance desaturated green tints multiplied onto the leaf/grass cards
+  // so no two plants share an exact colour — sage/moss/olive, never neon.
+  foliageGreens: [
+    [0.62, 0.70, 0.46],   // sage
+    [0.50, 0.60, 0.38],   // moss
+    [0.70, 0.74, 0.52],   // dry olive
+    [0.44, 0.54, 0.34],   // deep olive
+  ],
+  trunkColor: [0.42, 0.34, 0.26], // bark tint multiplied onto the albedo
+  deadTrunkColor: [0.40, 0.36, 0.30], // greyer, sun-bleached bark for dead/gnarled trees
+  // USER PICK: more TREE VARIETY — distinct species silhouettes, not one model
+  // rescaled. Each tree rolls a type from this weighted set; the dry zone biases
+  // toward gnarled/dead. (weights are relative; conifer + broadleaf dominate the
+  // green areas, gnarled/palm add silhouette variety.)
+  treeTypeWeights: { conifer: 4, broadleaf: 4, gnarled: 2, palm: 1.5 },
+  // DRY ROCKY BIOME ZONE — an arid patch of the map: drier ground tint, denser
+  // boulders, sparse dead/gnarled trees, thinner grass. A distinct biome beside
+  // the green valley. (Pairs with a future bigger-map + hills item; for now a
+  // convincing zone treatment via tint + placement density, not a heavy
+  // full-resolution ground-texture splat.)
+  dryZone: {
+    centerX: 46, centerZ: -40,  // offset toward one corner of the arena
+    radius: 34,                 // world units of the arid patch
+    edgeFeather: 12,            // soft blend band so the biome edge isn't a hard ring
+    groundTint: [0.60, 0.54, 0.42], // drier earthy tint blended into the ground vertex colours here
+    rockDensityMul: 2.6,        // boulders are this much denser inside the zone
+    grassDensityMul: 0.25,      // ground cover thins to this fraction inside the zone (arid)
+    deadTreeBias: 0.85,         // probability a tree inside the zone is gnarled/dead
+  },
+};
+
 export const CAMERA = {
   distance: 14,
   height: 7,
