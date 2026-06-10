@@ -42,7 +42,8 @@ const CLIP_ALIASES = {
     Idle: "|Idle",     // matches CharacterArmature|Idle (not Idle_Gun etc.)
     Walk: "|Walk",
     Run: "|Run",       // CharacterArmature|Run — first match wins over Run_Left etc.
-    Jump: "|Roll",     // no jump clip; the dodge-roll reads as a leap
+    Roll: "|Roll",     // dodge-roll — used by the DASH (not the jump: a roll
+                       // frozen mid-air read as a broken half-somersault)
     Attack: "|Punch_Right",  // bare-handed melee: right punch…
     Attack2: "|Punch_Left",  // …left punch…
     Attack3: "|Kick_Right",  // …and a kick, cycled per swing

@@ -142,6 +142,7 @@ export async function createPlayer(scene, shadow, input) {
       state.facing = Math.atan2(state.dashDir.x, state.dashDir.z);
       dino.setYaw(state.facing);
       dino.flash(0.2, new B.Color3(0.4, 0.9, 1));
+      dino.play("Roll", { loop: false, speed: 1.2 }); // the dash IS a dodge-roll
       if (state.onDash) state.onDash(collider.position.clone());
     }
 
@@ -150,7 +151,9 @@ export async function createPlayer(scene, shadow, input) {
     if (input.consumeJump() && state.grounded && state.attacking <= 0) {
       state.velY = PLAYER.jumpSpeed;
       state.grounded = false;
-      dino.play("Jump", { loop: false });
+      // The human model has no jump clip. A slow-motion run stride reads as a
+      // natural leap (the old Roll mapping froze mid-somersault in the air).
+      dino.play("Run", { speed: 0.35 });
     }
 
     const horiz = moving ? move.scale(speed * dt) : B.Vector3.Zero();
@@ -193,8 +196,10 @@ export async function createPlayer(scene, shadow, input) {
       // attack clip already playing
     } else if (!state.grounded) {
       // jump clip plays out
-    } else if (moving || state.dashActive > 0) {
-      dino.play("Run", { speed: state.dashActive > 0 ? 1.8 : (sprint ? 1.4 : 1.0) });
+    } else if (state.dashActive > 0) {
+      // mid-dash: the Roll one-shot is playing — don't stomp it with Run
+    } else if (moving) {
+      dino.play("Run", { speed: sprint ? 1.4 : 1.0 });
     } else {
       dino.play("Idle");
     }
