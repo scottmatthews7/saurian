@@ -34,6 +34,10 @@ export async function createPlayer(scene, shadow, input) {
     biteConnected: false,// true once a swing has dealt damage (drives the bite "chomp" SFX/feel)
     roarTimer: 0,        // roar cooldown remaining (sec)
     onRoar: null,        // fired when a roar successfully triggers (game applies the AoE + FX)
+    dashTimer: 0,        // dash cooldown remaining (sec)
+    dashActive: 0,       // remaining dash-burst duration (sec); >0 means mid-dash
+    dashDir: { x: 0, z: 1 }, // unit heading the current dash drives along
+    onDash: null,        // fired when a dash triggers (game applies FX/SFX)
     moving: false,
     sprinting: false,
     stamina: PLAYER.staminaMax,
@@ -61,6 +65,8 @@ export async function createPlayer(scene, shadow, input) {
     state.invuln = Math.max(0, state.invuln - dt);
     state.attacking = Math.max(0, state.attacking - dt);
     state.roarTimer = Math.max(0, state.roarTimer - dt);
+    state.dashTimer = Math.max(0, state.dashTimer - dt);
+    state.dashActive = Math.max(0, state.dashActive - dt);
 
     // Intimidating roar (Q): off-cooldown only. The game wires onRoar to apply
     // the area effect (stagger the T-Rex, panic the herd) and the FX/SFX.
@@ -123,6 +129,27 @@ export async function createPlayer(scene, shadow, input) {
     }
     dino.setYaw(state.facing);
 
+    // DASH / dodge roll (F): a short fast burst along the heading with brief
+    // invulnerability. Off-cooldown, costs stamina, and not while exhausted or
+    // mid-bite — so it trades against sprint rather than being free. Dashes
+    // toward the current move input if any, else straight ahead (facing).
+    if (input.consumeDash() && state.dashTimer <= 0 && state.dashActive <= 0
+        && !state.exhausted && state.stamina >= PLAYER.dashCost && state.attacking <= 0) {
+      state.dashTimer = PLAYER.dashCooldown;
+      state.dashActive = PLAYER.dashSeconds;
+      state.stamina = Math.max(0, state.stamina - PLAYER.dashCost);
+      state.invuln = Math.max(state.invuln, PLAYER.dashIFrames);
+      const dx = moving ? move.x : Math.sin(state.facing);
+      const dz = moving ? move.z : Math.cos(state.facing);
+      const dl = Math.hypot(dx, dz) || 1;
+      state.dashDir.x = dx / dl; state.dashDir.z = dz / dl;
+      // snap-face the dash direction so the burst reads cleanly
+      state.facing = Math.atan2(state.dashDir.x, state.dashDir.z);
+      dino.setYaw(state.facing);
+      dino.flash(0.2, new B.Color3(0.4, 0.9, 1));
+      if (state.onDash) state.onDash(collider.position.clone());
+    }
+
     // gravity + jump
     state.velY += PLAYER.gravity * dt;
     if (input.consumeJump() && state.grounded && state.attacking <= 0) {
@@ -132,6 +159,13 @@ export async function createPlayer(scene, shadow, input) {
     }
 
     const horiz = moving ? move.scale(speed * dt) : B.Vector3.Zero();
+    // Dash burst: while a dash is active, drive a strong push along the locked
+    // dash heading (independent of held keys) so it always covers ground.
+    if (state.dashActive > 0) {
+      const d = PLAYER.dashSpeed * dt;
+      horiz.x = state.dashDir.x * d;
+      horiz.z = state.dashDir.z * d;
+    }
     // Bite lunge: a short forward burst at the start of the attack window so
     // the bite has weight and can close distance onto a backing-away target.
     if (state.attacking > ATTACK_LOCK - PLAYER.lungeSeconds) {
@@ -164,8 +198,8 @@ export async function createPlayer(scene, shadow, input) {
       // attack clip already playing
     } else if (!state.grounded) {
       // jump clip plays out
-    } else if (moving) {
-      dino.play("Run", { speed: sprint ? 1.4 : 1.0 });
+    } else if (moving || state.dashActive > 0) {
+      dino.play("Run", { speed: state.dashActive > 0 ? 1.8 : (sprint ? 1.4 : 1.0) });
     } else {
       dino.play("Idle");
     }
@@ -225,6 +259,8 @@ export async function createPlayer(scene, shadow, input) {
     state.biteId = 0;
     state.biteConnected = false;
     state.roarTimer = 0;
+    state.dashTimer = 0;
+    state.dashActive = 0;
     state.stamina = PLAYER.staminaMax;
     state.exhausted = false;
     state.carrying = 0;

@@ -14,6 +14,8 @@ export function createHUD() {
   const staminaBar = el("staminaFill");
   const roarBar = el("roarFill");
   const roarReady = el("roarReady");
+  const dashBar = el("dashFill");
+  const dashReady = el("dashReady");
   const vignette = el("vignette");
   const duskFill = el("duskFill");
   const duskIcon = el("duskIcon");
@@ -58,6 +60,13 @@ export function createHUD() {
       const f = Math.max(0, Math.min(1, fraction));
       roarBar.style.width = `${f * 100}%`;
       if (roarReady) roarReady.classList.toggle("on", f >= 1);
+    },
+    // Dash charge: fraction 0 (just used) .. 1 (ready); pulses READY when full.
+    setDash(fraction) {
+      if (!dashBar) return;
+      const f = Math.max(0, Math.min(1, fraction));
+      dashBar.style.width = `${f * 100}%`;
+      if (dashReady) dashReady.classList.toggle("on", f >= 1);
     },
     // Time-of-day indicator. `factor` is the dusk factor (0 full day .. 1 deepest
     // dusk). The bar shows daylight *remaining* (depletes as dusk falls); the icon
@@ -107,13 +116,14 @@ export function createHUD() {
         <div class="titleCard">
           <div class="bannerTitle start titleBig">DINO ARENA</div>
           <div class="titleTag">SURVIVAL</div>
-          <div class="titleObjective">Collect <b>${target}</b> glowing eggs and bank them at your nest.<br/>A roaming T-Rex wants you dead. Run, bite, <b>roar</b> to survive.<br/><span class="titleDusk">As <b>dusk</b> falls the predators grow bolder — but late banks pay double.</span><br/><span class="titleCursed">Grab a <b>cursed egg</b> ☠ for a huge score — but every T-Rex hunts you while you carry it.</span></div>
+          <div class="titleObjective">Collect <b>${target}</b> glowing eggs and bank them at your nest.<br/>A roaming T-Rex wants you dead. Run, bite, <b>roar</b>, <b>dash</b> to survive.<br/><span class="titleDusk">As <b>dusk</b> falls the predators grow bolder — but late banks pay double.</span><br/><span class="titleCursed">Grab a <b>cursed egg</b> ☠ for a huge score — but every T-Rex hunts you while you carry it.</span></div>
           <div class="controls">
             ${ctrl("WASD", "Move")}
             ${ctrl("SHIFT", "Sprint")}
             ${ctrl("SPACE", "Jump")}
             ${ctrl("CLICK / J", "Bite")}
             ${ctrl("Q", "Roar")}
+            ${ctrl("F", "Dash")}
             ${ctrl("P", "Pause")}
             ${ctrl("M", "Mute")}
           </div>

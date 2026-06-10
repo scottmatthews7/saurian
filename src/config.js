@@ -64,6 +64,18 @@ export const PLAYER = {
   roarCooldown: 6,      // sec between roars
   roarRadius: 22,       // world units of effect
   roarStagger: 1.4,     // sec a caught T-Rex is frozen/dazed
+  // DASH / dodge roll (F) — a skill-based reactive escape distinct from the
+  // roar (AoE crowd-control) and sprint (sustained, stamina-gated travel). A
+  // short, fast forward burst with brief invulnerability: time it to slip a
+  // T-Rex bite or a pterosaur swoop. It trades against sprint by sharing the
+  // stamina pool, so you can't both dash and sustain a sprint indefinitely.
+  // All values are arcade-feel design choices, tuned alongside the existing
+  // chase numbers (T-Rex base chase 11, dusk peak 13.5, raptor sprint 14):
+  dashSpeed: 30,        // units/sec during the burst — well above any chase speed so it always opens a gap
+  dashSeconds: 0.28,    // burst duration (~8.4 units travelled), enough to clear a bite's reach (attackRange 5)
+  dashIFrames: 0.32,    // invuln window — covers the burst + a sliver after, so a frame-perfect dodge negates a hit
+  dashCost: 35,         // stamina spent per dash (~1.2s of sprint), so dashing eats your escape sprint — a real trade
+  dashCooldown: 1.6,    // sec between dashes — reactive (far shorter than roar's 6s) but not a constant glide
 };
 
 export const TREX = {

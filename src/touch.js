@@ -35,6 +35,7 @@ export function createTouchControls(input) {
     <div id="joyZone"><div id="joyBase"><div id="joyKnob"></div></div></div>
     <div id="touchBtns">
       <div class="touchBtn" id="btnRoar">ROAR</div>
+      <div class="touchBtn" id="btnDash">DASH</div>
       <div class="touchBtn" id="btnJump">JUMP</div>
       <div class="touchBtn bite" id="btnBite">BITE</div>
     </div>`;
@@ -46,6 +47,7 @@ export function createTouchControls(input) {
   const btnJump = root.querySelector("#btnJump");
   const btnBite = root.querySelector("#btnBite");
   const btnRoar = root.querySelector("#btnRoar");
+  const btnDash = root.querySelector("#btnDash");
 
   const radius = TOUCH.joyRadius;
   let joyId = null;       // active pointer id for the joystick
@@ -101,6 +103,7 @@ export function createTouchControls(input) {
   tap(btnBite, () => input.queueAttack());
   tap(btnJump, () => input.queueJump());
   tap(btnRoar, () => input.queueRoar());
+  tap(btnDash, () => input.queueDash());
 
   return { mounted: true, root };
 }

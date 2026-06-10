@@ -145,6 +145,20 @@ export function createAudio() {
       n.start(); n.stop(now() + 0.4);
       tone(520, 0.18, "sine", 0.18, 240);
     },
+    // Dash whoosh: a quick bright noise sweep through a rising bandpass — a
+    // short airy "swish" distinct from the watery splash, selling the burst.
+    whoosh() {
+      if (!ctx || muted) return;
+      const n = noise(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+      f.type = "bandpass"; f.Q.value = 1.2;
+      f.frequency.setValueAtTime(600, now());
+      f.frequency.exponentialRampToValueAtTime(2600, now() + 0.22);
+      g.gain.setValueAtTime(0.0001, now());
+      g.gain.exponentialRampToValueAtTime(0.28, now() + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, now() + 0.26);
+      n.connect(f); f.connect(g); g.connect(master);
+      n.start(); n.stop(now() + 0.28);
+    },
     // Pterosaur screech: a shrill rising-then-falling cry warning of a dive.
     screech() {
       if (!ctx || muted) return;

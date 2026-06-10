@@ -108,6 +108,11 @@ export async function startGame() {
   };
   // Universal hurt feedback fires for any damage source (bite or charge hit).
   player.onHurt = () => { audio.hurt(); fx.addShake(JUICE.camShakeOnHit); hud.hitFlash(); };
+  // Dash: a quick whoosh + a cyan dust kick at the launch point.
+  player.onDash = (pos) => {
+    audio.whoosh();
+    fx.pickupBurst(pos, new B2.Color4(0.45, 0.85, 1, 1));
+  };
   // Intimidating roar: stagger any T-Rex in range and panic nearby herbivores.
   player.onRoar = (pos) => {
     audio.roar();
@@ -324,6 +329,7 @@ export async function startGame() {
       hud.setHealth(player.health, PLAYER.maxHealth);
       hud.setStamina(player.stamina, PLAYER.staminaMax, player.exhausted);
       hud.setRoar(1 - player.roarTimer / PLAYER.roarCooldown);
+      hud.setDash(1 - player.dashTimer / PLAYER.dashCooldown);
       hud.setTrex(primary ? primary.health : 0, TREX.maxHealth);
       hud.setEggs(eggs.banked, EGGS.targetToWin, eggs.carrying, eggs.remaining());
 
