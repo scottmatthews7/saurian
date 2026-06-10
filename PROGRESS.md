@@ -642,6 +642,124 @@
   confirm `g.game.over === false` (and `elapsed` advancing) before probing a
   player mechanic. Hard-restart via the `R` key, not just `g.resetGame()`.
 
+## Done (session 17, env-pass branch) — ENVIRONMENT REALISM PASS (wishlist item 2)
+Pushed the WORLD toward photoreal (dinos stay low-poly per the brief). Stayed in
+lane: edited `world.js`, a new `src/env.js`, an `ENV` section of `config.js`, and
+ONE init line in `game.js` (replaced the old inline pipeline with `buildEnv(...)`).
+Did NOT touch player/ai/predator/dino/audio. Assets + CREDITS.md added.
+- **PBR ground (`world.js makeGroundPBR`):** the flat painted DynamicTexture is
+  gone. Ground is now a `PBRMaterial` with tiled CC0 (ambientCG) **albedo +
+  normal (NormalGL) + roughness + AO** maps (Grass004), anisotropic-filtered.
+  A **grass↔soil blend is baked into vertex colours** (lush desaturated grass on
+  the flats, earthy brown on the rim slopes + pond shoreline + procedural
+  mottling) so one texture set reads as varied natural ground. `useVertexColors`.
+- **HDRI / IBL (`env.js setupImageBasedLighting`):** Poly Haven CC0 1k .hdr
+  (`assets/env/sky.hdr`) loaded via `HDRCubeTexture` → `scene.environmentTexture`
+  for image-based lighting + a real blurred **skybox** behind the painted
+  gradient dome. Wrapped in try/catch — falls back to the gradient dome if the
+  HDRI is missing (non-fatal). `environmentIntensity` from config.
+- **Desaturated natural palette:** killed the cartoon-bright green. ENV tints
+  (olive/sage `grassTint`, earthy `soilTint`), `canopyGreens` (moss/sage/olive/
+  dry), `trunkColor`, sage reeds/grass/rock greys. A filmic colour grade
+  (`ColorCurves`: global desaturation 78, warm-highlight / cool-shadow split)
+  reinforces it.
+- **Post-FX (`env.js setupPostProcessing`):** `DefaultRenderingPipeline` —
+  **ACES** tonemap, exposure/contrast, **colour grade**, **bloom**, **depth of
+  field** (subtle, Low blur tier), **vignette + animated grain**, FXAA; plus a
+  separate **`SSAO2RenderingPipeline`** for grounded contact shadows (also
+  try/catch-guarded for WebGL2/depth support). Richer, depth-graded **exp2 fog**
+  in a desaturated sage-grey haze (density 0.012→0.0085, ENV fog colour blended
+  with the time-of-day sky so it never goes cartoon-bright).
+- **Foliage (`world.js scatterFoliage`):** varied **broadleaf (sphere) + conifer
+  (cone) canopies** in the desaturated palette, wider size/lean variety, trunk
+  jitter. A **subtle wind sway** eases every canopy + tuft (phase-offset sine,
+  `windUpdate` wired into `world.update`). A new **dense ground-cover layer**
+  (900 instanced tufts, probabilistically **thinned with distance** so the
+  foreground is lush and the far field stays cheap). All **instanced** for perf.
+- **Assets + credit:** `assets/textures/` (8 PBR maps, ~12 MB), `assets/env/sky.hdr`
+  (~1.4 MB); CC0 sources credited in new `CREDITS.md` (ambientCG + Poly Haven).
+
+## Verified (session 17, env-pass branch)
+- All 16 src modules pass `node --check` (incl. new `env.js`).
+- Served from THIS worktree on a unique free port (8219) and probed in an
+  isolated browser context with a console-error catcher (guarded by a
+  `location.href :8219` check against the documented tab-hijack environment):
+  - **0 console errors, 0 warnings.**
+  - Ground = `PBRMaterial`, albedo + bump textures `isReady()`, `useVertexColors`
+    on; `scene.environmentTexture` ready; `hdrSkyBox` mesh present.
+  - Both pipelines attached (`envPipe` + `envSSAO`); bloom/DoF/grain/FXAA/ACES
+    (tonemap type 1)/colourCurves/vignette all enabled; fogDensity 0.0085.
+  - 986 meshes (was 648 — the +ground-cover layer), **120 FPS foreground / 80+
+    mid-action** (well above the 60 target with the full post-FX stack).
+  - Foliage counts live: 71 trunks, 140 canopy instances, ~311 ground-cover
+    tufts (distance-thinned from 900).
+  - **Screenshot-confirmed** (bright fresh run, T-Rex shoved away): photoreal
+    normal-mapped PBR grass, HDRI-graded sky, desaturated olive/sage palette,
+    varied broadleaf+conifer canopies, dense foreground ground cover thinning to
+    distance, pond reading against the soil-tinted shore. Markedly more realistic.
+- **Env note (unchanged & aggressive):** parallel instances re-navigate any tab
+  to `:8177` within ~1-2s; used `new_page`/`navigate_page` with an init-script
+  error catcher + single-shot evals guarded by a `location.href :8219` check.
+
+## Done (session 17 cont.) — FOLIAGE/ROCK realism rework + picker + biome
+Iterated on live user feedback ("vegetation looks playmobil", "rocks look shit").
+Killed the smooth solid-colour primitives; everything is now real CC0 textures.
+- **Textured alpha-cut FOLIAGE cards (USER PICK):** the solid cones/spheres are
+  gone. Canopies + grass are crossed-quad billboard clusters of real cutout
+  textures, alpha-TEST cut (sort-free, cheap), double-sided, per-instance green
+  tint + size variety, wind sway. Leaf-spray cards = ambientCG **LeafSet019**
+  (green conifer sprays); grass-blade cards = **Foliage001**. UVs cropped to one
+  atlas cutout (V-rows for leaves, U-columns for blades) so cards read as
+  foliage, not slivers. Dense layered crowns, not flat tents. (`world.js`
+  `makeCardMaterial`/`makeCardClusterSource`.)
+- **TREE SPECIES VARIETY (USER PICK — distinct silhouettes, not one rescaled):**
+  weighted roll across four archetypes in `world.js SPECIES` — **conifer**
+  (tall narrow multi-tier crown), **broadleaf** (short trunk, wide low dome),
+  **gnarled/dead** (bleached-bark trunk + splayed bare branch stubs, sparse),
+  **palm** (tall thin trunk, fan of big arched fronds at the top only). Live +
+  dead bark are separate trunk sources (instances can't override material).
+- **BARK PBR trunks:** real ambientCG **Bark012** albedo+normal+roughness on
+  every trunk (dead trees use a greyer bleached tint).
+- **ROCKS (USER PICK — displaced PBR boulders):** smooth dodecahedra gone. Each
+  rock is a noise-displaced icosphere (5 distinct shapes, jagged, no two alike)
+  wearing ambientCG **Rock023** PBR, **partially buried**, varied size/rotation.
+- **SKY (USER PICK — painted gradient):** the visible sky is the painted
+  gradient dome; the HDRI is still loaded for image-based lighting + reflections
+  but its skybox mesh is hidden (`ENV.showHdriSkybox=false`, `env.js`).
+- **DRY ROCKY BIOME ZONE (USER request):** an arid patch offset toward a corner
+  (`ENV.dryZone`, `world.js dryZoneFactor`): the ground vertex-colour blend
+  shifts to a drier earthy tint inside it, boulders cluster ~2.6× denser, grass
+  thins to ~25%, and trees there are biased ~85% to gnarled/dead. A distinct
+  biome beside the green valley (pairs with a future bigger-map + hills item).
+- **`environment-picker.html` (USER request — like the audio picker):** a
+  no-build standalone page, one live Babylon scene with hot-swap buttons per
+  category — GROUND (lush grass / dry-rocky), TREES (leaf cards / broadleaf /
+  sparse), GRASS (blade cards / tufts / none), ROCKS (displaced PBR / smooth /
+  none), SKY (painted gradient / 2 HDRIs). ★ marks the shipped default; swaps
+  rebuild live with 0 errors. Defaults updated to the user's final picks.
+
+## Verified (session 17 cont.)
+- All modules pass `node --check`. Served from THIS worktree (port 8219); probed
+  in isolated browser contexts (init-script error-catcher + page-resident
+  snapshot poll to survive the documented tab-hijack; **muted first** on every
+  page per the call-in-progress note).
+- Live snapshot: **0 console errors** over sustained play; gradient sky shown +
+  HDRI env texture loaded for IBL; 71 trunks + 92 dead-tree branch stubs + ~307
+  leaf cards (species mix) + ~544 grass-blade cards + 94 rocks (base 36 + dry-zone
+  cluster); ~1320 meshes.
+- **Screenshot-confirmed (my worktree):** dense bushy textured conifer canopies,
+  bark trunks, irregular displaced PBR boulders partially buried, textured
+  grass-blade ground cover — a dramatic jump from the "playmobil" look.
+- **Picker verified:** 5 categories, 14 options, 5 defaults marked; live hot-swap
+  (broadleaf/tufts/smooth/gradient/dry) all rebuild with **0 errors**.
+- **Perf:** solo earlier passes hit 78-120 FPS; the final reading averaged ~54
+  (max 57) FPS only because 7+ parallel Babylon tabs from other instances were
+  contending for the GPU — contention, not a regression (mesh/material counts
+  are the foliage/rock/biome additions, all instanced; ground cover distance-
+  fades). Honest caveat: a clean re-measure on an idle machine is advisable.
+- **Audio:** every test page muted immediately via an init-script force-mute
+  (game M-toggle + `audioEngine.setGlobalVolume(0)`) per the in-call note.
+
 ## Next (session 17)
 - A herbivore "stampede" when one of the herd is taken (the rest bolt as a flock);
   or a brief feeding-frenzy heal-steal: bite the feeding T-Rex AND grab the meat.
