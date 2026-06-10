@@ -225,10 +225,9 @@ export async function startGame() {
   const BEST_SCORE_KEY = "dinoArenaBestScore";
   const readBest = () => { const v = +localStorage.getItem(BEST_TIME_KEY); return v > 0 ? v : null; };
   const readBestScore = () => { const v = +localStorage.getItem(BEST_SCORE_KEY); return v > 0 ? v : null; };
-  // Footstep cadence reuses the dust interval so puffs and thuds stay in sync.
-  const STEP_INTERVAL = JUICE.dustInterval;
-  let stepTimer = 0;
+  let stepTimer = 0;        // counts down to the next footfall SFX
   let tensionTimer = 0;
+  let vocalTimer = AUDIO.vocalIntervalMax; // counts down to the next ambient creature call
   // Fires a one-shot "the predators grow bolder" cue the first time dusk deepens
   // past DUSK.duskThreshold in a run. A roar + popup so the player reads it.
   let duskAnnounced = false;
@@ -324,14 +323,35 @@ export async function startGame() {
         () => audio.screech(),
         (pos) => fx.pickupBurst(pos, new B2.Color4(0.7, 0.2, 0.2, 1)));
 
-      // footstep dust + sound while running on the ground
+      // footstep dust + sound while moving on the ground
       const pPos = player.dino.root.position;
       fx.footDust(dt, pPos, player.moving && player.grounded);
       fx.dashTrail(pPos, player.dashActive > 0);
-      if (player.sprinting && player.grounded) {
+      // Footstep SFX synced to locomotion: a footfall on cadence, faster +
+      // louder when sprinting, none when idle or airborne. Reset the timer when
+      // not stepping so the first footfall after stopping/landing lands promptly
+      // rather than mid-interval.
+      if (player.moving && player.grounded) {
+        const sprinting = player.sprinting;
+        const interval = sprinting ? AUDIO.footstepSprintInterval : AUDIO.footstepWalkInterval;
+        let volume = sprinting ? AUDIO.footstepSprintVolume : AUDIO.footstepWalkVolume;
+        if (player.wading) volume = AUDIO.footstepWadeVolume;
         stepTimer -= dt;
-        if (stepTimer <= 0) { stepTimer = STEP_INTERVAL; audio.step(); }
+        if (stepTimer <= 0) {
+          stepTimer = interval;
+          audio.footstep(volume, sprinting, player.wading);
+        }
+      } else {
+        stepTimer = 0;
       }
+
+      // Player panting: breath loop fades in while sprinting/dashing, heavier as
+      // stamina drains (and especially near exhaustion), easing back when calm.
+      const exerting = (player.sprinting || player.dashActive > 0) && player.grounded;
+      const breathIntensity = player.exhausted
+        ? 1
+        : 1 - player.stamina / PLAYER.staminaMax; // 0 fresh .. 1 empty
+      audio.panting(exerting, breathIntensity);
 
       // tension heartbeat from the nearest predator chasing the PLAYER — a T-Rex
       // off hunting a herbivore (prey set) is not bearing down on you, so it
@@ -347,6 +367,48 @@ export async function startGame() {
         }
       } else {
         tensionTimer = 0;
+      }
+
+      // Ambient creature vocalisations: the arena periodically roars/calls. Each
+      // call is distance-attenuated to the player (closer = louder). A predator
+      // bearing down on you calls MORE OFTEN and louder + more menacing the
+      // nearer it gets; otherwise a random predator/herbivore calls on a relaxed
+      // randomised cadence so the valley feels alive without being metronomic.
+      vocalTimer -= dt;
+      if (vocalTimer <= 0) {
+        // Distance attenuation helper: full gain on top of you, fading to a
+        // floor by vocalFalloffRange, silent beyond it.
+        const gainFor = (d) => {
+          if (d >= AUDIO.vocalFalloffRange) return 0;
+          const t = 1 - d / AUDIO.vocalFalloffRange;            // 1 near .. 0 far
+          return AUDIO.vocalMinGain + (1 - AUDIO.vocalMinGain) * t;
+        };
+        const trexClosing = chasing != null; // a predator is hunting the player
+        if (trexClosing) {
+          // Menacing predator vocalisation (its own per-species sound),
+          // intensifying with closeness. Faster cadence the nearer it gets.
+          const closeness = Math.max(0, 1 - primaryD / TREX.sightRange);
+          const enraged = primary.enraged ? 0.3 : 0;
+          audio.vocalise(primary.kind, Math.max(AUDIO.vocalMinGain, gainFor(primaryD)),
+            Math.min(1, closeness + enraged));
+          vocalTimer = AUDIO.vocalNearInterval +
+            (1 - closeness) * (AUDIO.vocalIntervalMin - AUDIO.vocalNearInterval);
+        } else {
+          // Calm arena: pick a random live creature and let it call with its own
+          // species sound (T-Rex rumble / herbivore bellow / raptor screech).
+          const callers = [];
+          for (const p of predators) if (!p.dead) callers.push(p);
+          for (const h of herd) if (!h.dead) callers.push(h);
+          if (callers.length) {
+            const pick = callers[(Math.random() * callers.length) | 0];
+            const cp = pick.dino.root.position;
+            const d = Math.hypot(cp.x - pp0.x, cp.z - pp0.z);
+            const g = gainFor(d);
+            if (g > 0) audio.vocalise(pick.kind, g, 0.15);
+          }
+          vocalTimer = AUDIO.vocalIntervalMin +
+            Math.random() * (AUDIO.vocalIntervalMax - AUDIO.vocalIntervalMin);
+        }
       }
 
       // player bite: one clean, frame-rate-independent hit per target per swing.
@@ -394,6 +456,7 @@ export async function startGame() {
       // win / lose
       if (eggs.banked >= EGGS.targetToWin) {
         game.over = true; game.won = true;
+        audio.stopPanting();
         audio.win();
         const t = game.elapsed;
         const prev = readBest();
@@ -410,6 +473,7 @@ export async function startGame() {
           "win");
       } else if (player.dead) {
         game.over = true;
+        audio.stopPanting();
         audio.lose();
         hud.showBanner("DEVOURED", `You lasted ${game.elapsed.toFixed(0)}s · score ${score.points.toLocaleString()} · ${eggs.banked} eggs banked. Press R to retry.`, "lose");
       }
@@ -461,7 +525,7 @@ export async function startGame() {
     score.points = 0; score.combo = 1; score.lastBankAt = -999;
     game.over = false; game.won = false; game.paused = false;
     game.elapsed = 0; game.wave = 0;
-    stepTimer = 0; tensionTimer = 0;
+    stepTimer = 0; tensionTimer = 0; vocalTimer = AUDIO.vocalIntervalMax;
     hud.setScore(0, 1);
     hud.hideBanner();
   };
@@ -488,7 +552,7 @@ export async function startGame() {
   window.addEventListener("resize", () => engine.resize());
 
   // Debug handle for in-browser smoke tests (harmless to leave exposed).
-  window.__game = { engine, scene, game, score, player, predators, herd, eggs, pickups, beacons, world, hud, resetGame };
+  window.__game = { engine, scene, game, score, player, predators, herd, eggs, pickups, beacons, world, hud, audio, resetGame };
 
   return { engine, scene };
 }

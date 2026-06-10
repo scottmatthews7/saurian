@@ -642,6 +642,59 @@
   confirm `g.game.over === false` (and `elapsed` advancing) before probing a
   player mechanic. Hard-restart via the `R` key, not just `g.resetGame()`.
 
+## Done (session 17) — AUDIO PASS (footsteps + per-species dino sounds + panting)
+- **The headline ask — FOOTSTEPS, synced to locomotion.** A footfall fires on
+  cadence from the loop (`game.js`): walk ~0.5s/step, sprint ~0.28s/step (faster
+  + louder), **none when idle or airborne**, a wet stomp when wading. Tied to
+  `player.moving/sprinting/grounded/wading`.
+- **Switched from procedural synth to REAL CC0/royalty-free samples** (the
+  procedural footsteps sounded like drum beats, roars like static). All loaded as
+  WebAudio buffers on unlock, with procedural fallbacks retained if a file is
+  blocked/slow. Sources in `CREDITS.md`:
+  - **Footsteps:** Kenney CC0 grass pack — 4 variants, picked at random per step
+    + ±8% pitch jitter so a run never machine-guns.
+  - **Per-species dino vocalisations** (`audio.vocalise(kind, gain, menace)`,
+    keyed by the dino `kind`): **T-Rex = eerie low closed-mouth RUMBLE** (pitched-
+    down growl/thunder ~148–228 Hz — the Julia-Clarke-et-al. crocodilian/bittern
+    approximation, not an open-mouth roar); **raptor = fast high screech** (ready
+    for the future pack predator); **herbivores = low bellow/grunt**. Distance-
+    attenuated to the player and **more menacing (deeper/slower) as a predator
+    closes**; ambient calls on a randomised cadence when calm.
+  - **Player panting** (`audio.panting(active, intensity)`): a looping breath
+    sample that fades in while sprinting/dashing and gets **faster + heavier as
+    stamina drains** (rate 0.85→1.5, gain scaled by exertion), easing back when
+    calm. Smooth `setTargetAtTime` ramps — no pops.
+- **Smooth envelopes everywhere:** one-shots use short attack/release gain ramps;
+  distance/panting gains glide. Mute (button + M) still gates everything.
+- **`audio-picker.html`** (repo root, no build step): auditions ~4 candidates per
+  category, grouped Footsteps / T-Rex-rumble / T-Rex-classic-roar / Raptor /
+  Herbivore / Panting, with Play buttons + source labels + DEFAULT tags. The user
+  picks finals; swapping one is a one-line path change in `config.AUDIO.samples`.
+  All candidates live in `assets/audio/candidates/`; in-game defaults are copies
+  in `assets/audio/`.
+- `__game` debug handle widened with `audio` (for in-browser audio verification).
+
+## Verified (session 17)
+- All 16 src modules pass `node --check`; all 4 headless tests
+  (`dusk`/`cursed_egg`/`beacons`/`herd_hunt`) still pass.
+- Live in-browser (isolated context `dinoa-probe`, port 8163, page-resident
+  autopilot to survive the tab-hijack, **0 console errors/warnings**):
+  - `trex.mp3` decodes via WebAudio (4.0s) — real samples load.
+  - Footsteps fire on cadence: walk ~0.53s, sprint ~0.26–0.32s, louder when
+    sprinting, **0 when idle/after-stop**; buffers (not procedural) play.
+  - Panting ramps `intensity` 0 (fresh) → 0.65 (stamina drained) while sprinting.
+  - A predator at 14u → `chase` → menacing `trex` vocalise at gain 0.96 / menace
+    0.88 (per-kind routing + closeness intensification proven).
+  - `audio-picker.html`: 20 candidate rows across 6 groups, 8 DEFAULT-tagged,
+    candidate files fetch 200.
+- **Audibility caveat:** could not literally *hear* the audio in this headless
+  verification environment — confirmed real-sample decode + correct call routing/
+  cadence/gain/rate programmatically, and the picker so the user can A/B by ear.
+- **Env note (unchanged):** parallel `dinob`/peer instances grab the selected tab
+  within ~1–2s; long multi-step evals get closed mid-flight. Worked around it with
+  a page-resident `initScript` autopilot writing to `window.__audioProbe` + a tiny
+  single-shot read.
+
 ## Next (session 17)
 - A herbivore "stampede" when one of the herd is taken (the rest bolt as a flock);
   or a brief feeding-frenzy heal-steal: bite the feeding T-Rex AND grab the meat.

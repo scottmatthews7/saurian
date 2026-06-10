@@ -8,10 +8,27 @@ poly.pizza models that download directly (CC0 or CC-BY). For any CC-BY asset,
 add the author + licence to a `CREDITS.md` in this repo. This unlocks
 higher-fidelity rigged dinos than the CC0-only set.
 
-**NEXT UP (do immediately after the current player-fix agent finishes):**
-FOOTSTEP AUDIO — synced to the human's walk vs sprint cadence (faster/louder when
-sprinting), via the existing procedural audio.js. The player has asked for this
-repeatedly; ship it first, standalone, before the bigger items.
+**NEXT UP:** (1) [DONE — session 17] FOOTSTEP + dino AUDIO — real CC0/royalty-free
+samples (Kenney footsteps, Mixkit/OGA creatures + breath), per-species dino sounds,
+distance-attenuated, player panting. Audition + final-pick via `audio-picker.html`.
+(2) OPEN-SOURCE + DEPLOY
+PREP (high priority — player wants the repo PUBLIC + contributions):
+   - LICENSE: MIT for our code. Keep Babylon.js's own licence/notice (it's
+     vendored). Add NOTICE/THIRD_PARTY for Babylon + all CC0/CC-BY model & audio
+     assets with author + licence + link.
+   - On-SCREEN credits line (title screen) listing CC-BY authors — required once
+     public.
+   - CONTRIBUTING.md (how to run, project structure, how to add a dino/feature,
+     coding conventions, the config.js "no magic numbers" rule), CODE_OF_CONDUCT.
+   - README polished for newcomers (what it is, play link, screenshots/GIF, run
+     steps, contribute link).
+   - Deploy: verify ALL asset paths relative; add deploy config — a netlify.toml
+     and/or GitHub Pages workflow — plus DEPLOY.md (itch.io zip + Netlify drop +
+     Pages steps). Confirm it runs from a clean static serve.
+   - .gitignore sane (node_modules, .agentlock, OS cruft).
+   Do NOT push to GitHub from the agent — the coordinator handles the public push
+   after review. PUBLIC REPO NAME: `saurian`. GitHub account: scottmatthews7.
+   (Only dino-arena-a goes public; the README/title can rename the game to Saurian.)
 
 1. **[in progress] Replace player raptor with a rigged human**; sprinting human
    outruns the T-Rex (~30 vs 20 km/h, ~1.5×) but stamina-gated so the tireless
@@ -87,21 +104,44 @@ repeatedly; ship it first, standalone, before the bigger items.
    off raptors (a melee swing that staggers/damages a predator). Show the equipped
    item in-hand on the human. Keep it readable and fun, not fiddly.
 
-6b. **Audio: footsteps + dinosaur sounds.** Footstep audio synced to the human's
-   walk/sprint cadence (and surface), plus richer dinosaur vocalisations — roars,
-   calls, distance-attenuated, more menacing as a predator nears. Extend the
-   existing procedural audio.js; CC0 samples ok if better than procedural.
+6b. **[DONE — session 17] Audio: footsteps + dinosaur sounds.** Real CC0/royalty-free
+   samples (Kenney CC0 footsteps; Mixkit + OpenGameArt CC0 creatures/breath — see
+   CREDITS.md) loaded as WebAudio buffers. Footsteps synced to walk/sprint cadence
+   (faster/louder sprinting, pitch-jittered, none idle/airborne); per-species dino
+   vocalisations (T-Rex eerie low rumble, raptor screech, herbivore bellow) keyed by
+   `kind`, distance-attenuated + more menacing as a predator closes; player panting
+   loop tied to sprint + stamina; smooth gain ramps throughout (no pops). Procedural
+   fallbacks retained. `audio-picker.html` lets the user audition ~4 candidates per
+   category (incl. eerie-rumble vs classic-roar T-Rex) and choose the finals.
 
-7. **Standalone health pickups** — placed in the world / along the A→B route
-   (the old health came from biting herbivores, which won't work as a human).
-   Walk over to heal; fits the pickups-en-route design below.
+7. **Standalone health pickups + SLOW HEALTH REGEN.** Health should slowly
+   regenerate over time when not recently hit (gentle passive recovery — back off
+   from danger and you heal up). Plus health packs placed in the world / along the
+   A→B route for a faster top-up (the old health came from biting herbivores, which
+   won't work as a human). Walk over packs to heal; fits the pickups-en-route loop.
 
-7. **THE BIG PIVOT — level-based A→B gauntlet, pickups en route.**
-   - Each level: spawn at A, reach the goal at B alive = level clear.
-   - Eggs/fossils become OPTIONAL collectibles along the route (score/bonus), not
-     the win condition.
-   - **Procedural map each run** — terrain, obstacle + dino placement, and route
-     regenerate every level.
-   - **Progressive difficulty** — each level harder: more/faster predators, longer
-     or more hazardous route, tighter stamina economy, worse conditions (dusk/rain).
-   - Keep the great physics + chase feel intact.
+7. **THE CORE GAME VISION — "dino porter" (Death-Stranding-with-dinos).**
+   *** DEFERRED — DO NOT BUILD THE CAMPAIGN/LEVEL SYSTEM YET. *** Player wants the
+   moment-to-moment "walk around and survive dinos" gameplay to be genuinely FUN
+   first (movement feel, dinos, combat/tools, audio, environment). Only build this
+   A→B/porter structure once that core loop is fun. This is the eventual frame:
+   Carry a heavy pack of supplies from A to B across dino country, surviving.
+   - **Deliver cargo A→B**: spawn at A loaded with supplies; reach the drop-off at
+     B with as much intact as possible = level clear. This is the win condition.
+   - **Load vs speed is the central tension** (ties into the human/T-Rex chase we
+     built): a heavy pack slows you + drains stamina faster, so you CANNOT outrun
+     the T-Rex while overloaded. Strategic choice — pace/route carefully, or DROP
+     cargo to sprint away (and lose that delivery). Pack weight = real tradeoff.
+   - **Scavenge en route**: eggs (bonus/value), health packs, and extra
+     supplies/cargo to pick up and carry. Backpack inventory (item 6) is how you
+     manage what you're hauling + your tools.
+   - **Procedural route each run** — terrain, hazards, predator placement, A & B
+     positions regenerate every level.
+   - **3 ROUNDS MAX** — the campaign is exactly 3 deliveries, then a real win/
+     "you survived" ending (not endless). Round 1 = approachable, Round 2 = tense,
+     Round 3 = brutal finale.
+   - **Progressive difficulty across the 3 rounds** — each: longer/harder route,
+     more & faster predators (T-Rex + raptor packs + aquatic + air), tighter
+     stamina, worse conditions (dusk/rain), heavier required loads.
+   - Keep the great physics + chase feel intact. Merge items 6 (backpack/tools) and
+     1b/7 here — backpack, cargo, pickups and A→B are ONE coherent loop.

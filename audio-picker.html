@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dino Arena — Audio Picker</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #14181d; color: #e6e9ec; line-height: 1.4;
+  }
+  header {
+    padding: 22px 28px 12px; border-bottom: 1px solid #2a323b;
+  }
+  h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: 0.5px; }
+  header p { margin: 4px 0; color: #97a3ad; font-size: 13px; max-width: 760px; }
+  main { padding: 8px 28px 60px; }
+  .group { margin: 26px 0 0; }
+  .group > h2 {
+    font-size: 15px; text-transform: uppercase; letter-spacing: 1px;
+    color: #ffc777; margin: 0 0 4px; border-bottom: 1px solid #2a323b; padding-bottom: 6px;
+  }
+  .group > .desc { color: #8a96a0; font-size: 12.5px; margin: 0 0 12px; }
+  .row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 9px 12px; border: 1px solid #2a323b; border-radius: 8px;
+    margin-bottom: 8px; background: #1a2026;
+  }
+  .row:hover { background: #1f262d; }
+  button.play {
+    flex: 0 0 auto; width: 44px; height: 44px; border-radius: 50%;
+    border: none; cursor: pointer; font-size: 17px;
+    background: #2e7d5b; color: #fff;
+  }
+  button.play:hover { background: #379a6e; }
+  button.play.playing { background: #c45b4a; }
+  .meta { flex: 1 1 auto; min-width: 0; }
+  .meta .name { font-weight: 600; font-size: 14px; }
+  .meta .name .default {
+    font-size: 10px; font-weight: 700; color: #14181d; background: #ffc777;
+    border-radius: 4px; padding: 1px 6px; margin-left: 8px; vertical-align: middle;
+  }
+  .meta .file { font-size: 11.5px; color: #7e8a94; font-family: ui-monospace, monospace; }
+  .meta .src { font-size: 11.5px; color: #8a96a0; }
+  footer { padding: 18px 28px 40px; color: #6f7a84; font-size: 12px; }
+  a { color: #74b3ff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dino Arena — Audio Picker</h1>
+  <p>Audition each candidate and pick a favourite per category. Tell the coordinator
+     which file you want for each slot and a follow-up will wire them in as the final
+     in-game sounds. The <span style="color:#ffc777;font-weight:700">DEFAULT</span> tag
+     marks what is currently wired into the game.</p>
+  <p>All samples are CC0 or royalty-free (Kenney CC0 footsteps; Mixkit Free SFX;
+     OpenGameArt CC0 breathing). See <code>CREDITS.md</code>. T-Rex offers both the
+     research-accurate eerie low rumble (closed-mouth boom) and a classic cinematic
+     roar — A/B them and choose whichever feels best.</p>
+</header>
+<main id="main"></main>
+<footer>
+  Files live in <code>assets/audio/candidates/</code>. Defaults are copies in
+  <code>assets/audio/</code> referenced by <code>src/config.js → AUDIO.samples</code>.
+</footer>
+<script>
+const GROUPS = [
+  {
+    title: "Footsteps (human, grass)", desc: "Kenney CC0 footstep pack — grass surface. Played per footfall with pitch jitter; sprint plays faster + louder. All four are used in-game as random variants.",
+    items: [
+      { f: "footstep_grass_000.mp3", src: "Kenney CC0 — Impact Sounds", def: true },
+      { f: "footstep_grass_001.mp3", src: "Kenney CC0", def: true },
+      { f: "footstep_grass_002.mp3", src: "Kenney CC0", def: true },
+      { f: "footstep_grass_003.mp3", src: "Kenney CC0", def: true },
+    ],
+  },
+  {
+    title: "T-Rex — eerie low rumble (research-accurate)", desc: "Closed-mouth boom/rumble (pitched-down growl/thunder), per Julia Clarke et al. — felt-in-the-chest, ominous, NOT an open-mouth roar.",
+    items: [
+      { f: "trex_rumble_a.mp3", src: "Mixkit growl, pitched down", def: true },
+      { f: "trex_rumble_b.mp3", src: "Mixkit growl, pitched down" },
+      { f: "trex_rumble_c.mp3", src: "Mixkit thunder, pitched down" },
+    ],
+  },
+  {
+    title: "T-Rex — classic cinematic roar (fallback)", desc: "Traditional big-predator roar, if the eerie rumble doesn't land in-game.",
+    items: [
+      { f: "trex_classic_a.mp3", src: "Mixkit — lion roar" },
+      { f: "trex_classic_b.mp3", src: "Mixkit — lion roar" },
+    ],
+  },
+  {
+    title: "Raptor — fast high screech (pack hunters)", desc: "Higher, shrieky chittering for the future raptor pack predator.",
+    items: [
+      { f: "raptor_screech_a.mp3", src: "Mixkit — creature shriek", def: true },
+      { f: "raptor_screech_b.mp3", src: "Mixkit — creature shriek" },
+      { f: "raptor_screech_c.mp3", src: "Mixkit — creature shriek" },
+      { f: "raptor_screech_d.mp3", src: "Mixkit — creature shriek" },
+    ],
+  },
+  {
+    title: "Herbivores — low bellow / grunt", desc: "Triceratops, Stegosaurus, Apatosaurus, Parasaurolophus. Lower, mournful lowing.",
+    items: [
+      { f: "herb_bellow_a.mp3", src: "Mixkit — animal bellow", def: true },
+      { f: "herb_bellow_b.mp3", src: "Mixkit — creature low" },
+      { f: "herb_bellow_c.mp3", src: "Mixkit — creature low" },
+      { f: "herb_bellow_d.mp3", src: "Mixkit — creature low" },
+    ],
+  },
+  {
+    title: "Player panting / breathing (sprint + stamina)", desc: "Loops while sprinting/dashing, faster + heavier as stamina drains, fades back when calm.",
+    items: [
+      { f: "pant_a.mp3", src: "OpenGameArt CC0 — breathing tired", def: true },
+      { f: "pant_b.mp3", src: "Mixkit — breath" },
+      { f: "pant_c.mp3", src: "Mixkit — breath" },
+    ],
+  },
+];
+
+const DIR = "assets/audio/candidates/";
+let current = null; // {audio, btn}
+const main = document.getElementById("main");
+
+function stopCurrent() {
+  if (current) {
+    current.audio.pause(); current.audio.currentTime = 0;
+    current.btn.classList.remove("playing"); current.btn.textContent = "▶";
+    current = null;
+  }
+}
+
+for (const g of GROUPS) {
+  const sec = document.createElement("section"); sec.className = "group";
+  const h = document.createElement("h2"); h.textContent = g.title; sec.appendChild(h);
+  const d = document.createElement("p"); d.className = "desc"; d.textContent = g.desc; sec.appendChild(d);
+  for (const it of g.items) {
+    const row = document.createElement("div"); row.className = "row";
+    const btn = document.createElement("button"); btn.className = "play"; btn.textContent = "▶";
+    const audio = new Audio(DIR + it.f); audio.preload = "none";
+    audio.addEventListener("ended", () => { btn.classList.remove("playing"); btn.textContent = "▶"; if (current && current.audio === audio) current = null; });
+    btn.addEventListener("click", () => {
+      if (current && current.audio === audio) { stopCurrent(); return; }
+      stopCurrent();
+      audio.play(); btn.classList.add("playing"); btn.textContent = "■";
+      current = { audio, btn };
+    });
+    const meta = document.createElement("div"); meta.className = "meta";
+    meta.innerHTML = `<div class="name">${it.f.replace(/\.mp3$/, "")}${it.def ? '<span class="default">DEFAULT</span>' : ""}</div>`
+      + `<div class="file">${DIR}${it.f}</div>`
+      + `<div class="src">${it.src}</div>`;
+    row.appendChild(btn); row.appendChild(meta); sec.appendChild(row);
+  }
+  main.appendChild(sec);
+}
+</script>
+</body>
+</html>

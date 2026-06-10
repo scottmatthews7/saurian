@@ -355,6 +355,62 @@ export const AUDIO = {
   // Tension heartbeat interval (sec) interpolates from far to point-blank.
   tensionIntervalFar: 1.1,
   tensionIntervalNear: 0.35,
+
+  // --- Footsteps (synced to the human's locomotion in the game loop) ---
+  // Cadence = seconds between footfalls. A human walk cadence is ~0.55s/step,
+  // a run ~0.32s/step (≈110 vs 185 steps/min — real walking/running cadence,
+  // Murray 1967 / running gait literature), so sprinting is faster + louder.
+  // These are the gameplay feel values, not a literal biomech sim.
+  footstepWalkInterval: 0.5,    // sec between steps at walk speed
+  footstepSprintInterval: 0.28, // sec between steps at sprint (faster cadence)
+  footstepWalkVolume: 0.12,     // quieter, softer walk thud
+  footstepSprintVolume: 0.24,   // louder, harder sprint impact
+  footstepWadeVolume: 0.3,      // a wet stomp when wading through the pond
+
+  // --- Ambient creature vocalisations (periodic roars/calls in the loop) ---
+  // The arena periodically vocalises: predators roar, herbivores call. Each is
+  // distance-attenuated to the player (closer = louder) and the predator gets
+  // more frequent + louder as it closes. Intervals are randomised within a band
+  // so calls don't sound metronomic.
+  vocalIntervalMin: 3.5,        // sec — shortest gap between ambient calls (far/calm)
+  vocalIntervalMax: 7.0,        // sec — longest gap between ambient calls
+  vocalNearInterval: 1.6,       // sec — call gap when a predator is right on you
+  vocalFalloffRange: 90,        // u — beyond this an off-screen call is inaudible
+  vocalMinGain: 0.12,           // floor so a distant call is faint but present
+  // Smoothing time-constant (sec) for distance-attenuated roar/call gain ramps —
+  // setTargetAtTime time constant so a call swells in / fades out, never pops.
+  vocalGainGlide: 0.04,
+
+  // --- Player panting / breathing (loop tied to sprint + stamina) ---
+  // A breathing loop fades in while sprinting/dashing and gets heavier as
+  // stamina drains, easing back to silence as it recovers. Smooth gain ramps.
+  pantMaxVolume: 0.5,           // gain at full exertion (empty stamina, sprinting)
+  pantMinRate: 0.85,            // playbackRate (slower breaths) when freshly sprinting
+  pantMaxRate: 1.5,             // playbackRate (fast panting) at/near exhaustion
+  pantFadeGlide: 0.25,          // sec time-constant for the breath fade in/out
+
+  // Real CC0/royalty-free sample files (Kenney CC0 footsteps; Mixkit + OpenGameArt
+  // for creatures/breath — see CREDITS.md). Loaded as WebAudio buffers and played
+  // per event with slight pitch randomisation. Swap a default by repointing a path
+  // here to a file in assets/audio/candidates/ after the user auditions the picker.
+  samples: {
+    footsteps: [
+      "assets/audio/footstep_0.mp3",
+      "assets/audio/footstep_1.mp3",
+      "assets/audio/footstep_2.mp3",
+      "assets/audio/footstep_3.mp3",
+    ],
+    pant: "assets/audio/pant.mp3",
+    // Per-creature-kind vocalisation. Keyed by the dino `kind` string.
+    creatures: {
+      trex: "assets/audio/trex.mp3",            // eerie low closed-mouth rumble
+      raptor: "assets/audio/raptor.mp3",        // higher fast screech (pack hunters)
+      triceratops: "assets/audio/herbivore.mp3",// low bellow / grunt
+      stegosaurus: "assets/audio/herbivore.mp3",
+      apatosaurus: "assets/audio/herbivore.mp3",
+      parasaur: "assets/audio/herbivore.mp3",
+    },
+  },
 };
 
 // On-screen touch controls (phones/tablets). The joystick maps to WASD so all
