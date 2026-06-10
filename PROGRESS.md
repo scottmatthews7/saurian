@@ -467,9 +467,61 @@
   `keydown`/`pointerdown` (the one-shot `startGameLoop` listeners) before any
   position-set scenario, then verify `game.elapsed` is advancing.
 
-## Next (session 13)
-- A wounded/feeding T-Rex could be briefly vulnerable while it eats a kill (a bite
-  window for a brave raptor); or a herbivore "stampede" when one is taken.
+## Done (session 13) — FEEDING FRENZY (the predator's vulnerable window)
+- **New mechanic — a kill-feasting T-Rex is exposed.** Built the top session-13
+  idea: it *closes the herd-predation loop into a skill play*. Until now a T-Rex
+  that culled a herbivore just re-acquired a new target; the kill had no payoff
+  for the player. Now (`ai.js` `state.update` + `feeding`/`feedGlow` state,
+  `config.TREX`, `config.JUICE`, `game.js`, `minimap.js`, `hud.js`, `index.html`):
+  - **Feeding state:** the **killing** prey-bite (prey drops to `dead`) puts the
+    T-Rex into `feedSeconds` (3.5) of feeding — planted at the carcass, head-down
+    (slow `Attack` chew loop), `prey` cleared so it doesn't re-chase a corpse. A
+    new `onFeed` callback fires a bellow + a dark spray at the kill.
+  - **The vulnerable window:** a raptor bite landed while the T-Rex feeds deals
+    `feedVulnMultiplier` (2×) damage — `PLAYER.attackDamage` 34 → **68** on a
+    flank hit. Loud payoff: "FEEDING FRENZY — flank hit!" popup + a heavier
+    `feedHitShake` (0.33 vs the normal 0.22).
+  - **It's a real risk, not a freebie:** crowding the T-Rex inside `feedBreakRange`
+    (2.5 — point-blank, **inside** the raptor's own `attackRange` 5) makes it whirl
+    off the meal to defend. So you bite from the *edge* of your reach; stacking on
+    top of it loses the window. The break also fires on a roar (existing
+    `roarReact` now zeroes `feeding`).
+  - **Readability/juice:** a feeding T-Rex reads as a **pulsing GREEN** radar blip
+    (vs red=chasing-you / amber=hunting-herd / dark-red=patrol) — "rush this NOW";
+    a re-flashed dark-gorging-red glow on the model; the tension heartbeat stays
+    **silent** while it feeds (it isn't bearing down on you). Title screen teaches
+    the whole herd→feed→flank-bite loop in a new green `.titleFeed` line.
+- All tunables in `config.TREX` (`feedSeconds`, `feedVulnMultiplier`,
+  `feedBreakRange`) + `config.JUICE.feedHitShake`, each with provenance tied to the
+  chase/bite economy. No scattered numbers.
+
+## Verified (session 13)
+- All 16 src modules pass `node --check`; `dusk_test` + `cursed_egg_test` +
+  `beacons_test` + `herd_hunt_test` all pass; `herd_hunt_test` extended with a
+  **feeding-frenzy config sanity** block (feeding window long enough to punish;
+  multiplier > 1; break range is point-blank and **inside** the raptor's reach so
+  the flank bite is landable).
+- Live in-browser (isolated context `dinoa-feed-verify`, port 8131, **0 console
+  errors/warnings**): with the raptor parked far away, a T-Rex placed by a 1-HP
+  herbivore **chased it, killed it (`herbDead`), and entered feeding**
+  (`feeding ≈ 3.41`, `prey` cleared); a flank bite from `attackRange`-edge dealt
+  **exactly 68 dmg (= 34 × 2)**; crowding it point-blank (`feedBreakRange`) **broke
+  the meal** (`feeding → 0`). Tab closed after probing.
+- **Env gotcha (new):** the player drives an invisible collider and copies its
+  position onto the visual root each frame — so setting `player.dino.root.position`
+  directly is overwritten next frame, AND a partial set (e.g. `warpTo(x, z)` with
+  the wrong arity) leaves `position.z = NaN`, which silently poisons **every**
+  distance check globally (the AI then never acquires prey, masquerading as a
+  broken feature). `warpTo(x, y, z)` takes all three; always pass a valid ground y.
+  Confirmed by an empirical probe (`distP` came back `null` → traced to z=undefined).
+- **Env gotcha (carried from s12, still true):** parallel `dinob`/peer instances
+  grab the selected tab within ~1-2s. The live test ran the whole acquire→kill→
+  feed→flank-bite→crowd-break scenario inside a **single** `evaluate_script`
+  guarded by a `location.href` `:8131` check + the `window.__game` handle.
+
+## Next (session 14)
+- A herbivore "stampede" when one of the herd is taken (the rest bolt as a flock);
+  or a brief feeding-frenzy heal-steal: bite the feeding T-Rex AND grab the meat.
 - Beacon upkeep could feed a "warmth" meter that the raptor radiates while near a
   lit beacon (regen?); or guttered beacons could be relit faster than first-light.
 - Original session-10 ideas still open below.
