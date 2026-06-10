@@ -1,4 +1,5 @@
 import { ARENA, DAYNIGHT, DUSK, ATMOSPHERE, WATER, PTERO_DIVE } from "./config.js";
+import { buildFlyer } from "./flyer.js";
 
 // Smooth basin profile for the pond: 1 at the centre, easing to 0 at the rim.
 // Carved into the terrain heightmap so the pool sits in a real depression.
@@ -264,41 +265,24 @@ function makeGroundTexture(scene) {
 function buildAtmosphere(scene, heightAt) {
   const B = window.BABYLON;
 
-  // ---- Pterosaur flock (stylised: a body + two flapping wings) ----------
-  const birdMat = new B.StandardMaterial("birdMat", scene);
-  birdMat.diffuseColor = new B.Color3(0.16, 0.15, 0.18);
-  birdMat.specularColor = B.Color3.Black();
-
+  // ---- Pterosaur flock (proper winged flyers — see flyer.js) ------------
+  // Each flock member is a built pterosaur (body, beak, swept crest, membrane
+  // wings) sized up to the flock scale. The dive glow lives on the flyer's
+  // shared dive material, so we keep a handle to it for the telegraph pulse.
   const birds = [];
   for (let i = 0; i < ATMOSPHERE.birdCount; i++) {
-    const root = new B.TransformNode("bird" + i, scene);
-    const body = B.MeshBuilder.CreateCylinder("birdBody" + i,
-      { height: 1.6, diameterTop: 0, diameterBottom: 0.5, tessellation: 5 }, scene);
-    body.rotation.x = Math.PI / 2;
-    body.material = birdMat;
-    body.parent = root;
-    body.isPickable = false;
-    const wingL = B.MeshBuilder.CreateBox("wingL" + i, { width: 2.4, height: 0.06, depth: 0.8 }, scene);
-    const wingR = B.MeshBuilder.CreateBox("wingR" + i, { width: 2.4, height: 0.06, depth: 0.8 }, scene);
-    wingL.material = wingR.material = birdMat;
-    wingL.parent = wingR.parent = root;
-    wingL.position.x = -1.3; wingR.position.x = 1.3;
-    wingL.isPickable = wingR.isPickable = false;
+    const flyer = buildFlyer(scene);
+    flyer.root.scaling.setAll(1.6);   // scale the native ~1.8u body up for the sky flock
     birds.push({
-      root, wingL, wingR, body,
+      root: flyer.root, flyer,
       phase: (i / ATMOSPHERE.birdCount) * Math.PI * 2,
       radius: ATMOSPHERE.birdRadius * (0.7 + 0.3 * (i % 3) / 2),
       height: ATMOSPHERE.birdHeight + (i % 3) * 4,
-      flap: Math.random() * Math.PI * 2,
       diving: false,        // skipped by the passive orbit while it swoops
     });
   }
-
-  // Diving-bird material so a committed swoop reads as a threat (angry red).
-  const diveMat = new B.StandardMaterial("birdDiveMat", scene);
-  diveMat.diffuseColor = new B.Color3(0.5, 0.1, 0.1);
-  diveMat.emissiveColor = new B.Color3(0.5, 0.05, 0.05);
-  diveMat.specularColor = B.Color3.Black();
+  // The shared dive material (red glow) — pulse its emissive during a telegraph.
+  const diveMat = scene.__flyerMats.dive;
 
   // Ground shadow decal under a diving pterosaur — a dodge telegraph that
   // tracks the bird's ground projection and shrinks as it descends.
@@ -385,7 +369,7 @@ function buildAtmosphere(scene, heightAt) {
 
   let tt = 0;
   function endDive(b) {
-    if (b) { b.diving = false; b.body.material = birdMat; b.root.rotation.x = 0; }
+    if (b) { b.diving = false; b.flyer.setDiving(false); b.root.rotation.x = 0; }
     diveShadow.setEnabled(false);
     dive.state = "idle";
     dive.bird = null;
@@ -401,10 +385,7 @@ function buildAtmosphere(scene, heightAt) {
         b.root.position.set(x, b.height + Math.sin(tt * 0.5 + b.phase) * 2, z);
         // face along the tangent of the orbit
         b.root.rotation.y = -a + Math.PI / 2;
-        b.flap += dt * 6;
-        const flap = Math.sin(b.flap) * 0.6;
-        b.wingL.rotation.z = flap;
-        b.wingR.rotation.z = -flap;
+        b.flyer.flap(dt);   // gentle cruise wing-beat
       }
       for (const c of clouds) {
         c.mesh.position.x += c.drift * dt;
@@ -429,7 +410,7 @@ function buildAtmosphere(scene, heightAt) {
             if (d < bd) { bd = d; best = b; }
           }
           if (best) {
-            dive.bird = best; best.diving = true; best.body.material = diveMat;
+            dive.bird = best; best.diving = true; best.flyer.setDiving(true);
             dive.state = "telegraph"; dive.t = D.telegraphTime; dive.hitDone = false;
             if (onScreech) onScreech();
           } else {
@@ -441,9 +422,7 @@ function buildAtmosphere(scene, heightAt) {
 
       const b = dive.bird;
       if (!b) { dive.state = "idle"; return; }
-      b.flap += dt * 14;            // fast, agitated wingbeats during the attack
-      const flap = Math.sin(b.flap) * 0.9;
-      b.wingL.rotation.z = flap; b.wingR.rotation.z = -flap;
+      b.flyer.flap(dt);            // fast, agitated wingbeats during the attack (dive rate)
 
       if (dive.state === "telegraph") {
         // hover and lock onto the player's current spot, pulsing the glow

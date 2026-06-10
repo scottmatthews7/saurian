@@ -1,4 +1,4 @@
-import { TREX, HERBIVORE, TRICERATOPS, ARENA, JUICE, WATER, AI_AVOID, DUSK, EGGS } from "./config.js";
+import { TREX, HERBIVORE, TRICERATOPS, RAPTOR, ARENA, JUICE, WATER, AI_AVOID, DUSK, EGGS, DINO_VARIANTS } from "./config.js";
 import { loadDino } from "./dino.js";
 
 // Solid obstacle footprints ({x, z, r}) the AI steers around. Injected from the
@@ -41,7 +41,30 @@ function avoidObstacles(pos, dx, dz) {
 // AI agents: one apex T-Rex predator with a patrol/chase/attack FSM, and a
 // herd of herbivores that wander and flee from threats (player + trex).
 
-const HERB_KINDS = ["triceratops", "stegosaurus", "apatosaurus", "parasaur"];
+// The herd roster mixes the four original animated herbivores with the new
+// herbivore VARIANTS (wishlist item 4c) so a run shows a wider species spread.
+// Variants reuse a base rig but get their own diet/behaviour from DINO_VARIANTS.
+const HERB_KINDS = [
+  "triceratops", "stegosaurus", "apatosaurus", "parasaur",
+  "spinosaurus", "ankylosaurus", "pachycephalosaurus", "brachiosaurus", "compsognathus",
+];
+
+// Per-kind target model height (world units). Variants carry their own `height`
+// in DINO_VARIANTS; the four originals are listed here. Falls back to 3.
+const HERB_HEIGHTS = { triceratops: 2.6, stegosaurus: 2.8, apatosaurus: 5.5, parasaur: 3.2 };
+function herbHeight(kind) {
+  const v = DINO_VARIANTS[kind];
+  return (v && v.height) || HERB_HEIGHTS[kind] || 3;
+}
+
+// Which herbivore kinds can turn and charge when cornered. The triceratops is
+// the original; the sail-backed Spinosaurus and dome-headed Pachycephalosaurus
+// charge too (DINO_VARIANTS.canCharge). Everything else flees.
+function herbCanCharge(kind) {
+  if (kind === "triceratops") return true;
+  const v = DINO_VARIANTS[kind];
+  return !!(v && v.canCharge);
+}
 
 // Choose the herbivore a T-Rex should hunt this frame (or null to hunt/seek the
 // player). Keeps a committed prey until it dies, escapes past loseRange, or the
@@ -288,6 +311,189 @@ export async function createTrex(scene, shadow, groundFn) {
   return state;
 }
 
+// ---------------------------------------------------------------------------
+// RAPTOR PACK predator (wishlist item 4d). Spawns 2-4 raptors that hunt as a
+// coordinated pack: each member holds a slot on a ring around the player and
+// converges on its flank, so the pack ENCIRCLES rather than stacking on one
+// point. Fast, fragile, weak per bite — the threat is the net, not a lone
+// chaser. Each member exposes the same shape as the T-Rex predator state
+// (`update`/`dead`/`mode`/`prey`/`feeding`/`roarReact`/`reset`/`speedBonus`/
+// `dino`) so the game's predator list, roar, minimap and HUD all just work.
+export async function createRaptorPack(scene, shadow, groundFn, count) {
+  const n = Math.max(RAPTOR.packMin, Math.min(RAPTOR.packMax, count || RAPTOR.packSize));
+  // Shared pack object: a spawn anchor + a "locked on" flag so the pack yips
+  // once as a group, and the member's slot index drives its flank angle.
+  const pack = { calledOut: false };
+  const center = randPointInArena();
+  const members = [];
+  for (let i = 0; i < n; i++) {
+    const m = await createRaptor(scene, shadow, groundFn, pack, i, n, center);
+    members.push(m);
+  }
+  pack.members = members;
+  return members;
+}
+
+async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, center) {
+  const dino = await loadDino(scene, "raptor", RAPTOR.modelHeight, shadow);
+  const jitter = () => (Math.random() - 0.5) * 10;
+  dino.root.position.set(
+    Math.max(-ARENA.radius + 4, Math.min(ARENA.radius - 4, center.x + jitter())),
+    0,
+    Math.max(-ARENA.radius + 4, Math.min(ARENA.radius - 4, center.z + jitter())),
+  );
+  dino.root.position.y = groundFn(dino.root.position.x, dino.root.position.z);
+
+  const state = {
+    dino, kind: "raptor",
+    facing: rand(0, 6),
+    health: RAPTOR.maxHealth,
+    maxHealth: RAPTOR.maxHealth,
+    target: randPointInArena(),
+    mode: "patrol",
+    attackTimer: 0,
+    dead: false,
+    speedBonus: 0,
+    // Predator-interface fields the game/minimap/HUD read but the pack doesn't
+    // use (no enrage, no herd-prey, no feeding-frenzy for the raptor pack — the
+    // pressure is numbers, not a wounded-comeback or a vulnerable gorge window).
+    enraged: false,
+    prey: null,
+    feeding: 0,
+    staggered: 0,
+    lastBiteId: -1,
+    slot, packCount,
+    onBite: null,
+    onRoar: null,
+    onPreyBite: null,
+    onFeed: null,
+  };
+
+  state.update = function (dt, player) {
+    dino.updateFlash(dt);
+    if (state.dead) return;
+    state.attackTimer = Math.max(0, state.attackTimer - dt);
+    const pos = dino.root.position;
+    const pp = player.dino.root.position;
+    const distP = Math.hypot(pp.x - pos.x, pp.z - pos.z);
+
+    // Staggered by the player's roar: dazed in place, pursuit broken.
+    if (state.staggered > 0) {
+      state.staggered = Math.max(0, state.staggered - dt);
+      pos.y = groundFn(pos.x, pos.z);
+      dino.play("Idle");
+      return;
+    }
+
+    const sightRange = RAPTOR.sightRange + DUSK.trexSightBonus * DUSK_FACTOR;
+    const loseRange = RAPTOR.loseInterestRange + DUSK.trexLoseBonus * DUSK_FACTOR;
+    const duskSpeed = DUSK.trexSpeedBonus * DUSK_FACTOR;
+
+    const wasChasing = state.mode === "chase";
+    const seesPlayer = !player.dead && (LURE_ACTIVE || distP < sightRange);
+    if (seesPlayer) state.mode = "chase";
+    else if (state.mode === "chase" && distP > loseRange) state.mode = "patrol";
+    // The pack yips once as a group the first time any member locks on.
+    if (!wasChasing && state.mode === "chase") {
+      if (!pack.calledOut) { pack.calledOut = true; if (state.onRoar) state.onRoar(); }
+    }
+    if (state.mode !== "chase" && pack.members && pack.members.every((m) => m.dead || m.mode !== "chase")) {
+      pack.calledOut = false;   // re-arm the group yip once the whole pack disengages
+    }
+
+    let goal, speed;
+    if (state.mode === "chase") {
+      speed = RAPTOR.chaseSpeed + state.speedBonus + duskSpeed;
+      // FLANKING: aim for this member's slot on a ring around the player so the
+      // pack surrounds the target, until close enough to commit straight in.
+      if (distP > RAPTOR.lungeRange) {
+        // angle of this member's slot, biased by where it currently sits so the
+        // pack naturally fans out around the player rather than crossing over.
+        const baseAngle = (state.slot / state.packCount) * Math.PI * 2;
+        const fromPlayer = Math.atan2(pos.x - pp.x, pos.z - pp.z);
+        // blend the assigned slot angle with the member's current bearing to keep
+        // the encirclement stable as the player moves
+        const ang = lerpAngle(fromPlayer, baseAngle, 0.35);
+        const ringX = pp.x + Math.sin(ang) * RAPTOR.surroundRadius;
+        const ringZ = pp.z + Math.cos(ang) * RAPTOR.surroundRadius;
+        // blend "go to my ring slot" (flank) with "go straight at the player"
+        const f = RAPTOR.flankStrength;
+        goal = {
+          x: ringX * f + pp.x * (1 - f),
+          z: ringZ * f + pp.z * (1 - f),
+        };
+      } else {
+        goal = { x: pp.x, z: pp.z };   // committed — straight in for the bite
+      }
+      if (distP < RAPTOR.attackRange) {
+        speed = 0;
+        if (state.attackTimer <= 0) {
+          state.attackTimer = RAPTOR.attackCooldown;
+          dino.play("Attack", { loop: false, speed: 1.3 });
+          const before = player.health;
+          player.takeDamage(RAPTOR.attackDamage);
+          if (player.health < before && state.onBite) state.onBite();
+        }
+      }
+    } else {
+      goal = state.target;
+      speed = RAPTOR.patrolSpeed;
+      if (Math.hypot(goal.x - pos.x, goal.z - pos.z) < 4) state.target = randPointInArena();
+    }
+
+    const dx0 = goal.x - pos.x, dz0 = goal.z - pos.z;
+    const dist = Math.hypot(dx0, dz0) || 1;
+    const dir = avoidObstacles(pos, dx0 / dist, dz0 / dist);
+    const targetYaw = Math.atan2(dir.dx, dir.dz);
+    state.facing = lerpAngle(state.facing, targetYaw, RAPTOR.turnLerp);
+    dino.setYaw(state.facing);
+
+    if (speed > 0) {
+      pos.x += dir.dx * speed * dt;
+      pos.z += dir.dz * speed * dt;
+      dino.play("Run", { speed: state.mode === "chase" ? 1.5 : 1.0 });
+    } else if (state.attackTimer > RAPTOR.attackCooldown - 0.4) {
+      // mid-bite
+    } else {
+      dino.play("Idle");
+    }
+    pos.y = groundFn(pos.x, pos.z);
+    clampArena(pos);
+  };
+
+  state.takeDamage = function (amount) {
+    if (state.dead) return;
+    state.health = Math.max(0, state.health - amount);
+    dino.flash(JUICE.hitFlashSeconds, new window.BABYLON.Color3(1.0, 0.25, 0.15));
+    if (state.health <= 0) { state.dead = true; dino.play("Death", { loop: false }); }
+  };
+
+  state.roarReact = function (seconds) {
+    if (state.dead) return;
+    state.staggered = Math.max(state.staggered, seconds);
+    state.mode = "patrol";
+    state.target = randPointInArena();
+    dino.flash(0.3, new window.BABYLON.Color3(0.3, 0.4, 0.9));
+  };
+
+  state.reset = function () {
+    const p = randPointInArena();
+    dino.root.position.set(p.x, groundFn(p.x, p.z), p.z);
+    state.health = state.maxHealth;
+    state.mode = "patrol";
+    state.target = randPointInArena();
+    state.attackTimer = 0;
+    state.speedBonus = 0;
+    state.staggered = 0;
+    state.lastBiteId = -1;
+    state.dead = false;
+    pack.calledOut = false;
+    dino.play("Idle");
+  };
+
+  return state;
+}
+
 export async function createHerd(scene, shadow, groundFn) {
   const herd = [];
   for (let i = 0; i < HERBIVORE.count; i++) {
@@ -299,28 +505,40 @@ export async function createHerd(scene, shadow, groundFn) {
 }
 
 async function createHerbivore(scene, shadow, groundFn, kind) {
-  const heights = { triceratops: 2.6, stegosaurus: 2.8, apatosaurus: 5.5, parasaur: 3.2 };
-  const dino = await loadDino(scene, kind, heights[kind] || 3, shadow);
+  const variant = DINO_VARIANTS[kind] || null;
+  const dino = await loadDino(scene, kind, herbHeight(kind), shadow);
+  // Per-variant stat mods: tankier armour (healthMul), quicker little darters
+  // (speedMul). Defaults to the HERBIVORE baseline for the four originals.
+  const maxHealth = Math.round(HERBIVORE.maxHealth * ((variant && variant.healthMul) || 1));
+  const speedMul = (variant && variant.speedMul) || 1;
   const start = randPointInArena();
   dino.root.position.set(start.x, groundFn(start.x, start.z), start.z);
+
+  // A charger uses its own crisper turn rate + a post-charge recover settle so it
+  // doesn't snap from a flat-out charge straight into a reverse sprint (the
+  // judder that read as "doesn't move very well"). Non-chargers keep the herd
+  // default turn. Variant chargers reuse the triceratops locomotion tuning.
+  const canCharge = herbCanCharge(kind);
+  const turnLerp = canCharge ? TRICERATOPS.turnLerp : HERBIVORE.turnLerp;
+  const walkClipSpeed = kind === "triceratops" ? TRICERATOPS.walkClipSpeed : 0.8;
 
   const state = {
     dino, kind,
     facing: rand(0, 6),
     target: randPointInArena(),
     fleeing: false,
-    charging: 0,        // remaining charge-commit time (triceratops only)
+    charging: 0,        // remaining charge-commit time (chargers only)
     chargeCd: 0,
     chargeHitDone: false,
+    recover: 0,         // post-charge settle: decelerate + re-point before normal AI resumes
     dead: false,
-    health: HERBIVORE.maxHealth,
+    maxHealth,
+    health: maxHealth,
     lastBiteId: -1,     // last player swing id that hit this target (one hit per swing)
     panic: 0,           // sec of forced terror-flee directly away from the player (the roar)
     onCharge: null,     // (set by game) called when a charge starts
     onDown: null,       // (position) called when killed by the player
   };
-
-  const canCharge = kind === "triceratops";
 
   state.update = function (dt, player, trex) {
     dino.updateFlash(dt);
@@ -329,6 +547,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     const pp = player.dino.root.position;
     state.chargeCd = Math.max(0, state.chargeCd - dt);
     state.panic = Math.max(0, state.panic - dt);
+    state.recover = Math.max(0, state.recover - dt);
 
     // Roar panic: bolt directly away from the player at flee speed, overriding
     // wander/charge, until the panic timer lapses.
@@ -361,7 +580,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
 
     const distP = Math.hypot(pp.x - pos.x, pp.z - pos.z);
 
-    // --- charge handling (triceratops) ---
+    // --- charge handling (chargers) ---
     if (state.charging > 0) {
       state.charging -= dt;
       // barrel toward the player's current position
@@ -379,6 +598,17 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
         player.takeDamage(TRICERATOPS.chargeDamage);
       }
       dino.play("Run", { speed: 1.5 });
+      if (state.charging <= 0) state.recover = TRICERATOPS.recoverSeconds;  // settle after the charge
+      return;
+    }
+
+    // Post-charge recover: a brief settle where the big body decelerates and
+    // wheels back toward its heading before the flee/wander AI resumes. Without
+    // it the charger snapped instantly into a reverse sprint and juddered.
+    if (state.recover > 0) {
+      dino.setYaw(state.facing);
+      pos.y = groundFn(pos.x, pos.z);
+      dino.play("Walk", { speed: walkClipSpeed * 0.6 });
       return;
     }
 
@@ -396,10 +626,10 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     let goal, speed;
     if (state.fleeing && nearest) {
       goal = { x: pos.x + (pos.x - nearest.x), z: pos.z + (pos.z - nearest.z) };
-      speed = HERBIVORE.fleeSpeed;
+      speed = HERBIVORE.fleeSpeed * speedMul;
     } else {
       goal = state.target;
-      speed = HERBIVORE.wanderSpeed;
+      speed = HERBIVORE.wanderSpeed * speedMul;
       if (Math.hypot(goal.x - pos.x, goal.z - pos.z) < 3) state.target = randPointInArena();
     }
 
@@ -407,7 +637,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     const dist = Math.hypot(dx0, dz0) || 1;
     const dir = avoidObstacles(pos, dx0 / dist, dz0 / dist);
     const targetYaw = Math.atan2(dir.dx, dir.dz);
-    state.facing = lerpAngle(state.facing, targetYaw, HERBIVORE.turnLerp);
+    state.facing = lerpAngle(state.facing, targetYaw, turnLerp);
     dino.setYaw(state.facing);
 
     pos.x += dir.dx * speed * dt;
@@ -415,7 +645,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     pos.y = groundFn(pos.x, pos.z);
     clampArena(pos);
 
-    dino.play(state.fleeing ? "Run" : "Walk", { speed: state.fleeing ? 1.3 : 0.8 });
+    dino.play(state.fleeing ? "Run" : "Walk", { speed: state.fleeing ? 1.3 : walkClipSpeed });
   };
 
   state.takeDamage = function (amount) {
@@ -441,12 +671,13 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
   state.reset = function () {
     const p = randPointInArena();
     dino.root.position.set(p.x, groundFn(p.x, p.z), p.z);
-    state.health = HERBIVORE.maxHealth;
+    state.health = state.maxHealth;
     state.dead = false;
     state.fleeing = false;
     state.charging = 0;
     state.chargeCd = 0;
     state.chargeHitDone = false;
+    state.recover = 0;
     state.lastBiteId = -1;
     state.panic = 0;
     state.target = randPointInArena();

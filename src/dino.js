@@ -2,7 +2,7 @@
 // machine. All six models share the clip set Idle/Walk/Run/Jump/Attack/Death,
 // matched by substring so we don't depend on the species prefix.
 
-import { FACING_OFFSET } from "./config.js";
+import { FACING_OFFSET, DINO_VARIANTS } from "./config.js";
 
 const CLIP_KEYS = ["Idle", "Walk", "Run", "Jump", "Attack", "Death"];
 
@@ -15,6 +15,16 @@ const MODELS = {
   parasaur: "assets/models/parasaur.glb",
   human: "assets/models/human.glb",
 };
+
+// Resolve the glb URL for a kind. Variant species (DINO_VARIANTS) reuse a base
+// kind's rigged+animated mesh (no animated CC0 model exists for them), so they
+// load the base glb and get recoloured/reshaped after import.
+function modelUrl(kind) {
+  if (MODELS[kind]) return MODELS[kind];
+  const v = DINO_VARIANTS[kind];
+  if (v && MODELS[v.base]) return MODELS[v.base];
+  return null;
+}
 
 // Per-kind clip-name overrides. The six Quaternius dinos share the
 // `<Species>_<Key>` convention, so each logical key matches the substring
@@ -39,8 +49,9 @@ const cache = {};
 
 export async function loadDino(scene, kind, targetHeight, shadow) {
   const B = window.BABYLON;
-  const url = MODELS[kind];
+  const url = modelUrl(kind);
   if (!url) throw new Error("unknown dino: " + kind);
+  const variant = DINO_VARIANTS[kind] || null;
 
   const res = await B.SceneLoader.ImportMeshAsync("", "", url, scene);
   const root = new B.TransformNode(kind + "_root", scene);
@@ -61,7 +72,12 @@ export async function loadDino(scene, kind, targetHeight, shadow) {
   });
   const nativeH = Math.max(0.001, max.y - min.y);
   const scale = targetHeight / nativeH;
-  root.scaling.setAll(scale);
+  // A variant reshapes its silhouette via a per-axis stretch on top of the
+  // uniform height-normalised scale, so a reused rig reads as a different
+  // species (e.g. a longer Spinosaurus body, a low broad Ankylosaurus).
+  const st = variant && variant.stretch;
+  if (st) root.scaling.set(scale * (st.x ?? 1), scale * (st.y ?? 1), scale * (st.z ?? 1));
+  else root.scaling.setAll(scale);
 
   // Collect the renderable meshes and remember each material's base emissive
   // so a hit-flash can add to it and then restore exactly.
@@ -72,6 +88,20 @@ export async function loadDino(scene, kind, targetHeight, shadow) {
       shadow.addShadowCaster(m);
     }
     const mat = m.material;
+    // Variant recolour: tint the base albedo and set a faint emissive so the
+    // reused rig reads as its own species. Babylon glb materials are PBR
+    // (albedoColor) or Standard (diffuseColor) — handle both. The emissive base
+    // is captured AFTER tinting so the hit-flash still adds/restores correctly.
+    if (mat && variant) {
+      if (variant.tint) {
+        const c = new B.Color3(variant.tint.r, variant.tint.g, variant.tint.b);
+        if (mat.albedoColor) mat.albedoColor = c;
+        if (mat.diffuseColor) mat.diffuseColor = c;
+      }
+      if (variant.emissive && mat.emissiveColor) {
+        mat.emissiveColor.set(variant.emissive.r, variant.emissive.g, variant.emissive.b);
+      }
+    }
     if (mat && mat.emissiveColor) {
       flashTargets.push({ mat, base: mat.emissiveColor.clone() });
     }

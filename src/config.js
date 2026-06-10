@@ -157,6 +157,139 @@ export const TRICERATOPS = {
   chargeCooldown: 4.0,    // sec between charges
   chargeHitRange: 4.0,    // contact range to land the charge hit
   chargeDuration: 1.6,    // how long a charge commitment lasts
+  // Locomotion polish (wishlist item 3 — "doesn't move very well"). After a
+  // charge the triceratops needs a beat to wheel its bulk back around before it
+  // resumes fleeing/wandering, otherwise it snaps instantly from a flat-out
+  // charge into a reverse sprint and reads as juddering. recoverSeconds is a
+  // short settle where it decelerates and re-points; turnLerp gives the big
+  // quadruped a faster pivot than the herd default (0.08 looked sluggish/sliding
+  // for its size). Both arcade-feel choices tuned by eye against the gait.
+  recoverSeconds: 0.5,    // post-charge settle before normal AI resumes
+  turnLerp: 0.14,         // its own turn rate (> HERBIVORE.turnLerp 0.08 — crisper pivot)
+  walkClipSpeed: 1.05,    // Walk clip playback so the feet track wanderSpeed (was the shared 0.8 — looked like foot-slide on the heavy frame)
+};
+
+// RAPTOR PACK predator (wishlist item 4d). The raptor.glb is free now the player
+// is a human. Raptors hunt in a coordinated pack: fast, weaker than the T-Rex,
+// and they SURROUND the player — each pack member is assigned a slot angle around
+// the target and converges on its flank rather than all piling onto the same
+// point, so they cut off escape lanes. All arcade-feel, anchored on the existing
+// chase economy (T-Rex base chase 11 u/s, player sprint 16.5, walk 7):
+export const RAPTOR = {
+  packSize: 3,            // 2-4 hunt together; 3 is the default pack (see packMin/packMax for the spawn roll)
+  packMin: 2,
+  packMax: 4,
+  modelHeight: 2.0,       // smaller/leaner than the 4.2u T-Rex — reads as quick + light
+  chaseSpeed: 13,         // faster than the T-Rex's 11 (they're the quick threat) but below the player's 16.5 sprint, so a clean sprint still escapes — the danger is being surrounded/worn down, not outrun in a straight line
+  patrolSpeed: 6,         // a touch quicker patrol than the T-Rex's 5
+  sightRange: 34,         // a little shorter than the T-Rex's 38 — they rely on the pack closing, not long-range lock
+  loseInterestRange: 50,
+  attackRange: 3.2,       // shorter reach than the 5.0 T-Rex bite (smaller jaws)
+  attackCooldown: 0.9,    // bites faster than the T-Rex's 1.4 — death by many quick nips
+  attackDamage: 9,        // weak per bite (vs the T-Rex's 22); a 3-pack peaks ~27/round but only if they all connect — the human can fight back/scatter them
+  maxHealth: 45,          // fragile: ~2 player bites at attackDamage 34 fells one (vs the T-Rex's 140)
+  turnLerp: 0.16,         // nimble — turns far faster than the T-Rex's 0.06
+  // Flanking: each pack member holds a slot on a ring around the player and aims
+  // for that slot until it's close enough to lunge, so the pack encircles instead
+  // of stacking. surroundRadius is the ring they try to hold; flankGain bends a
+  // member's heading toward its slot tangentially (the sidestep that closes a net).
+  surroundRadius: 7,      // world units — the standoff ring the pack tries to form around you
+  flankStrength: 0.7,     // 0..1 blend of "go to my slot on the ring" vs "go straight at the player" (higher = more encircling, less head-on)
+  lungeRange: 9,          // inside this the member drops its flank slot and commits straight in for the bite
+  // Pack call: when the pack first locks on it yips (reuses the roar SFX hook),
+  // and a wounded pack does NOT enrage like the lone T-Rex — they're a swarm, the
+  // pressure comes from numbers, so no comeback-speed mechanic here.
+  secondPackWave: 2,      // a pack joins from this difficulty wave (~60s) — staggered after the lone T-Rex establishes
+};
+
+// New animated species added to the roster (wishlist item 4c). poly.pizza has
+// exactly ONE animated CC0 dinosaur set — the Quaternius Animated Dinosaur
+// Bundle — and we already ship all six of it (no animated Spinosaurus/Anky/etc.
+// exist there to download). So rather than ship STATIC reskins (the wishlist
+// forbids static), each new species REUSES an existing rigged+animated Quaternius
+// mesh under a distinct tint + body-proportion signature so it animates with the
+// shared Idle/Walk/Run/Attack/Death clip set but reads as a different animal.
+// `base` is the existing kind whose glb/rig is reused; `tint`/`emissive` recolour
+// it; `stretch` reshapes the body (x=width, y=height, z=length multipliers on top
+// of the height-normalised scale) to shift the silhouette. All design choices.
+export const DINO_VARIANTS = {
+  // Spinosaurus — long-snouted sail-back; reuse the T-Rex biped, longer + darker,
+  // a touch teal. A second large herbivore-hunting bruiser in the herd-predation
+  // role is overkill, so it slots in as a big, slow, TANKY herbivore that charges
+  // like the triceratops when cornered (a sail-backed wall, not a chaser).
+  spinosaurus: {
+    base: "trex",
+    height: 4.0,
+    stretch: { x: 0.9, y: 1.0, z: 1.35 },   // longer body + snout
+    tint: { r: 0.20, g: 0.32, b: 0.40 },    // slate teal
+    emissive: { r: 0.02, g: 0.05, b: 0.07 },
+    diet: "herbivore",
+    canCharge: true,
+  },
+  // Ankylosaurus — squat armoured tank; reuse the stegosaurus quadruped, wider +
+  // lower, mossy grey-green. Slow, very tanky herbivore that holds ground.
+  ankylosaurus: {
+    base: "stegosaurus",
+    height: 2.4,
+    stretch: { x: 1.3, y: 0.8, z: 1.05 },   // broad, low-slung
+    tint: { r: 0.34, g: 0.36, b: 0.26 },    // mossy olive-grey
+    emissive: { r: 0.03, g: 0.03, b: 0.02 },
+    diet: "herbivore",
+    healthMul: 1.6,                          // armoured: tankier than the herd baseline
+  },
+  // Pachycephalosaurus — dome-headed biped; reuse the parasaur rig, shorter +
+  // stockier, warm tan. A skittish herbivore that headbutt-charges when cornered.
+  pachycephalosaurus: {
+    base: "parasaur",
+    height: 2.6,
+    stretch: { x: 1.05, y: 0.92, z: 0.95 },
+    tint: { r: 0.55, g: 0.42, b: 0.26 },    // warm tan
+    emissive: { r: 0.05, g: 0.035, b: 0.02 },
+    diet: "herbivore",
+    canCharge: true,
+  },
+  // Brachiosaurus — towering long-neck; reuse the apatosaurus rig, taller, paler
+  // blue-grey. A huge, placid herbivore (a living landmark + decoy for the T-Rex).
+  brachiosaurus: {
+    base: "apatosaurus",
+    height: 7.0,
+    stretch: { x: 1.0, y: 1.25, z: 1.0 },    // even taller
+    tint: { r: 0.46, g: 0.52, b: 0.58 },     // pale blue-grey
+    emissive: { r: 0.04, g: 0.05, b: 0.06 },
+    diet: "herbivore",
+    healthMul: 1.4,
+  },
+  // Compsognathus — tiny fast scavenger; reuse the raptor rig, much smaller, a
+  // greenish-yellow. Skittish herbivore that darts about (no charge — it bolts).
+  compsognathus: {
+    base: "raptor",
+    height: 0.9,
+    stretch: { x: 0.9, y: 0.9, z: 0.95 },
+    tint: { r: 0.55, g: 0.58, b: 0.22 },     // olive-yellow
+    emissive: { r: 0.04, g: 0.045, b: 0.015 },
+    diet: "herbivore",
+    speedMul: 1.4,                           // little and quick — flees faster than the herd
+  },
+};
+
+// Pterosaur flyer (wishlist item 4 — replace the procedural cone). A proper
+// procedural winged flyer built in flyer.js: a tapered body, a long beak, a
+// swept-back head crest, and two membrane wings (forearm + spar + skin) that
+// flap. These are the build proportions (world units at the flock's native
+// scale) and the flap animation rates. All visual design choices.
+export const FLYER = {
+  bodyLength: 1.8,        // nose-to-tail body spindle length
+  bodyRadius: 0.28,       // body girth
+  wingSpan: 3.6,          // tip-to-tip span (each wing half = span/2)
+  wingChord: 1.0,         // front-to-back depth of the membrane at the root
+  beakLength: 0.9,        // long pterosaur beak
+  crestSize: 0.55,        // swept head crest (the Pteranodon read)
+  flapRateCruise: 5.0,    // rad/sec wing-beat frequency while orbiting
+  flapRateDive: 9.0,      // faster, frantic beat during a dive
+  flapAmplitude: 0.7,     // radians the wings sweep up/down from level
+  membraneAlpha: 0.92,    // wing skin is near-opaque (a touch of translucency reads as membrane)
+  bodyColor: { r: 0.22, g: 0.18, b: 0.20 },   // dark leathery body
+  membraneColor: { r: 0.34, g: 0.26, b: 0.28 }, // slightly warmer wing skin
 };
 
 export const EGGS = {
@@ -332,6 +465,13 @@ export const FACING_OFFSET = {
   stegosaurus: 0,
   apatosaurus: 0,
   parasaur: 0,
+  // Variant species reuse a base rig (see DINO_VARIANTS), so they inherit that
+  // base's authored +Z forward — all 0, same convention as the originals.
+  spinosaurus: 0,
+  ankylosaurus: 0,
+  pachycephalosaurus: 0,
+  brachiosaurus: 0,
+  compsognathus: 0,
 };
 
 // Juice / feedback tunables — all deliberate arcade-feel choices.
