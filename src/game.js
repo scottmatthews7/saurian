@@ -577,7 +577,9 @@ export async function startGame() {
   window.addEventListener("resize", () => engine.resize());
 
   // Debug handle for in-browser smoke tests (harmless to leave exposed).
-  window.__game = { engine, scene, game, score, player, predators, herd, aquatic, eggs, pickups, inventory, tools, world, hud, audio, resetGame };
+  // camRig exposed so headless harnesses can park/drive the post-processed game
+  // camera for verification screenshots.
+  window.__game = { engine, scene, game, score, player, predators, herd, aquatic, eggs, pickups, inventory, tools, world, hud, audio, resetGame, camRig };
 
   return { engine, scene };
 }

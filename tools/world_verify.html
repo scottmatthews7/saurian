@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<!-- Headless verification harness for the WORLD overhaul. Boots the FULL game
+     (startGame) so the real player + dinos + world exist, then exposes a free
+     camera + a position logger via window.__verify so the CDP driver
+     (world_verify.mjs) can frame shots and prove dinos stay in territory.
+     Mirrors index.html's boot but with a base href so /src and /assets resolve. -->
+<html>
+<head>
+  <meta charset="utf-8" />
+  <base href="/" />
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+    #renderCanvas { width: 100vw; height: 100vh; display: block; touch-action: none; }
+    /* the game expects these HUD nodes; keep them present but offscreen */
+    #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; }
+    #minimap { position: fixed; right: 8px; bottom: 8px; }
+  </style>
+</head>
+<body>
+  <canvas id="renderCanvas"></canvas>
+  <!-- Full HUD markup copied from index.html so the game boots headless exactly
+       as in production (the HUD module reads these elements). -->
+  <div id="hud">
+    <div id="topLeft" class="panel">
+      <div class="label">Health</div>
+      <div class="bar"><div id="healthFill" class="barFill"></div></div>
+      <div class="label">Stamina</div>
+      <div class="bar"><div id="staminaFill" class="barFill"></div></div>
+      <div class="label">T-Rex Health</div>
+      <div class="bar"><div id="trexFill" class="barFill"></div></div>
+      <div class="label">Dash <span id="dashReady" class="readyTag">READY</span></div>
+      <div class="bar"><div id="dashFill" class="barFill"></div></div>
+      <div class="label"><span id="duskIcon">x</span> <span id="duskLabel">Daylight</span></div>
+      <div class="bar"><div id="duskFill" class="barFill"></div></div>
+    </div>
+    <div id="topRight" class="panel">
+      <div class="label">Time Survived</div>
+      <div id="survTime">0s</div>
+      <div class="label">Score</div>
+      <div id="score">0</div>
+      <div id="popups"></div>
+    </div>
+    <div id="minimapWrap">
+      <div class="label">Radar</div>
+      <canvas id="minimap"></canvas>
+    </div>
+    <div id="muteBtn">Sound</div>
+    <div id="hotbar"></div>
+    <div id="objective"></div>
+    <div id="duskTint"></div>
+    <div id="vignette"></div>
+    <div id="hitFlash"></div>
+    <div id="banner"></div>
+  </div>
+  <div id="loading"><div class="title">SAURIAN</div><div class="loadMsg">Loading…</div><div class="spinner"></div></div>
+
+  <script src="/lib/babylon.js"></script>
+  <script src="/lib/babylonjs.loaders.min.js"></script>
+  <script type="module">
+    import { startGame } from "/src/game.js";
+
+    window.__verify = { ready: false, err: null };
+    window.addEventListener("error", (e) => { window.__verify.err = String(e.message || e.error); });
+
+    startGame().then(() => {
+      // Poll until the game's render loop + __game handle exist.
+      const t = setInterval(() => {
+        if (window.__game && window.__game.scene && window.__game.player) {
+          clearInterval(t);
+          const g = window.__game;
+          const B = window.BABYLON;
+          const scene = g.scene;
+          // Drive the GAME's own arc camera (it carries the post-processing /
+          // env pipeline, so shots match the real game look). Freeze its
+          // auto-follow so our manual framing isn't yanked back to the player.
+          const cam = g.camRig.cam;
+          g.camRig.frozen = true;
+          cam.maxZ = 2000;   // see far across the doubled map / out to the horizon
+          window.__verify.cam = cam;
+          window.__verify.B = B;
+          window.__verify.heightAt = g.world.heightAt;
+
+          // Kick the game sim into "started" so dinos move: dispatch a keydown
+          // (the game starts its loop on the first key/pointer).
+          window.dispatchEvent(new KeyboardEvent("keydown", { key: "w" }));
+
+          // Camera framing helpers driven from the CDP driver. The arc camera is
+          // positioned by setting its target then placing it explicitly.
+          window.__verify.lookAt = (px, py, pz, tx, ty, tz) => {
+            cam.setTarget(new B.Vector3(tx, ty, tz));
+            cam.setPosition(new B.Vector3(px, py, pz));
+          };
+          // Snapshot every dino's kind + position (for the territory log).
+          window.__verify.snapshot = () => {
+            const out = { t: g.game.elapsed, player: null, predators: [], herd: [] };
+            const pp = g.player.dino.root.position;
+            out.player = { x: +pp.x.toFixed(1), z: +pp.z.toFixed(1) };
+            for (const p of g.predators) {
+              if (!p || p.dead) continue;
+              const q = p.dino.root.position;
+              out.predators.push({ kind: p.kind, x: +q.x.toFixed(1), z: +q.z.toFixed(1), mode: p.mode });
+            }
+            for (const h of g.herd) {
+              if (!h || h.dead) continue;
+              const q = h.dino.root.position;
+              out.herd.push({ kind: h.kind, x: +q.x.toFixed(1), z: +q.z.toFixed(1) });
+            }
+            return out;
+          };
+          // Move the player to a spot (to bait a predator for territory tests).
+          window.__verify.warpPlayer = (x, z) => g.player.warpTo(x, g.world.heightAt(x, z), z);
+          window.__verify.ready = true;
+        }
+      }, 100);
+    }).catch((e) => { window.__verify.err = String(e && e.stack || e); });
+  </script>
+</body>
+</html>

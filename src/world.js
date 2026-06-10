@@ -1,4 +1,4 @@
-import { ARENA, DAYNIGHT, DUSK, ATMOSPHERE, WATER, PTERO_DIVE, ENV } from "./config.js";
+import { ARENA, DAYNIGHT, DUSK, ATMOSPHERE, WATER, OCEAN, PTERO_DIVE, ENV } from "./config.js";
 import { buildFlyer } from "./flyer.js";
 
 // Smooth basin profile for the pond: 1 at the centre, easing to 0 at the rim.
@@ -23,6 +23,42 @@ function zoneFactor(Z, x, z) {
 }
 const dryZoneFactor = (x, z) => zoneFactor(ENV.dryZone, x, z);
 const jungleZoneFactor = (x, z) => zoneFactor(ENV.jungleZone, x, z);
+
+// OCEAN coast profile (task 2): the eastern margin descends from the inland
+// flats, through a sloping BEACH, down to a seabed below the sea surface. This
+// returns the terrain height for a given x (the coast runs ~north-south at
+// OCEAN.shoreX) and a blend weight 0..1 of how "coastal" the point is, so the
+// vertex loop + heightAt can blend the land height TOWARD the coast profile.
+// MUST be applied identically in the vertex loop AND heightAt (else props /
+// collisions float or sink at the shore — the same desync risk as the dunes).
+//
+// Bands east of the coastline (increasing x past shoreX):
+//   0 .. beachWidth     → beach: ramps from seaLevel+~1 down to the waterline
+//   beachWidth ..       → seabed: drops to seaLevel − seabedDepth (open water)
+// West of the coastline it returns weight 0 (land untouched).
+function oceanProfile(x, z) {
+  // a gently wavy coastline so the beach isn't a dead-straight line
+  const coast = OCEAN.shoreX + Math.sin(z * 0.045) * 6 + Math.cos(z * 0.017) * 4;
+  const e = x - coast;                // metres east of the (wavy) coastline
+  if (e <= -OCEAN.beachWidth) return { h: 0, w: 0 };  // well inland — untouched
+  let h;
+  if (e <= 0) {
+    // upper beach: from the inland flats (≈ seaLevel + a small berm) easing down
+    // to the waterline at the coastline. Smoothstep for a soft brow, no step.
+    const t = (e + OCEAN.beachWidth) / OCEAN.beachWidth;  // 0 at inland edge .. 1 at waterline
+    const s = t * t * (3 - 2 * t);
+    h = (OCEAN.seaLevel + 1.2) * (1 - s) + OCEAN.seaLevel * s;
+  } else {
+    // seabed: drop from the waterline to the deep seabed across the surf width,
+    // then hold deep (navigable open water for the future plesiosaur).
+    const t = Math.min(1, e / (OCEAN.surfWidth + OCEAN.beachWidth));
+    const s = t * t * (3 - 2 * t);
+    h = OCEAN.seaLevel * (1 - s) + (OCEAN.seaLevel - OCEAN.seabedDepth) * s;
+  }
+  // weight ramps in across the inland beach edge so the land blends to the coast
+  const w = Math.min(1, (e + OCEAN.beachWidth) / OCEAN.beachWidth);
+  return { h, w: Math.max(0, w) };
+}
 
 // Dune undulation for the desert zone: low-frequency layered sines so each dune
 // spans many ground quads (no stair-stepping). Returns the raw rise in metres;
@@ -110,6 +146,10 @@ export function buildWorld(scene) {
     // mirror heightAt below (placement/collision desync otherwise).
     const dzH = dryZoneFactor(x, z);
     if (dzH > 0) h += dzH * duneHeight(x, z);
+    // OCEAN coast: blend the land height toward the beach/seabed profile on the
+    // eastern margin. MUST mirror heightAt below (placement/collision desync).
+    const oc = oceanProfile(x, z);
+    if (oc.w > 0) h = h * (1 - oc.w) + oc.h * oc.w;
     positions[i + 1] = h;
     // Soil weight: high on the raised rim and right around the pond shoreline,
     // plus a little procedural mottling so patches of bare earth show through.
@@ -135,6 +175,19 @@ export function buildWorld(scene) {
       r = r * (1 - jz) + jGT[0] * jz;
       g = g * (1 - jz) + jGT[1] * jz;
       b = b * (1 - jz) + jGT[2] * jz;
+    }
+    // BEACH: paint the coastal band as SAND — dry dune sand on the upper beach,
+    // darker WET sand at/below the waterline — so the shore reads as a clear
+    // sand beach, not grass running into the sea. The sand weight ramps in fast
+    // (sqrt) across the dune line so the band is unambiguously sand, not a faint
+    // tint; only the outermost feather stays green to soften the inland edge.
+    if (oc.w > 0) {
+      const wet = h <= OCEAN.seaLevel + 0.2 ? 1 : 0;   // at/under the waterline = damp sand
+      const bc = wet ? OCEAN.wetSandColor : OCEAN.beachColor;
+      const bw = Math.min(1, Math.sqrt(oc.w) * 1.25);  // strong sand across the band
+      r = r * (1 - bw) + bc.r * bw;
+      g = g * (1 - bw) + bc.g * bw;
+      b = b * (1 - bw) + bc.b * bw;
     }
     const ci = (i / 3) * 4;
     // Repurpose the vertex-colour ALPHA channel to carry the dry-zone weight so
@@ -163,6 +216,9 @@ export function buildWorld(scene) {
     // these two expressions identical or placement/collision desyncs.
     const dz = dryZoneFactor(x, z);
     if (dz > 0) h += dz * duneHeight(x, z);
+    // MIRROR of the ocean coast blend (vertex loop above) — same desync rule.
+    const oc = oceanProfile(x, z);
+    if (oc.w > 0) h = h * (1 - oc.w) + oc.h * oc.w;
     return h;
   };
 
@@ -185,6 +241,13 @@ export function buildWorld(scene) {
 
   // A faint ring of reeds around the shoreline for readability.
   buildReeds(scene, shadow, heightAt);
+
+  // --- Ocean / sea (task 2) -----------------------------------------------
+  // The large eastern sea: an open-water plane east of the coastline with a
+  // gentle animated swell + a foam line at the waterline, sitting in the
+  // carved beach/seabed the coast profile dug above. Distinct from the inland
+  // pond; left clear for a future marine reptile.
+  const ocean = buildOcean(scene);
 
   // Water helpers consumed by the player controller, the aquatic predator and
   // the AI avoidance. `inWater` is the shallow-wading test (unchanged). The
@@ -222,6 +285,7 @@ export function buildWorld(scene) {
     t_water += dt;
     waterMat.emissiveColor.b = 0.16 + 0.05 * Math.sin(t_water * 1.5);
     water.position.y = waterY + Math.sin(t_water * 0.8) * 0.03;
+    ocean.update(dt);   // animate the sea swell + foam shimmer
     if (advanceDayClock) {
       t = (t + dt / DAYNIGHT.cycleSeconds) % 1;
       runSeconds += dt;
@@ -304,12 +368,85 @@ export function buildWorld(scene) {
   return {
     ground, shadow, heightAt, update, inWater, waterDepthAt, isDeepWater,
     waterCenter, waterSurfaceY: waterY,
+    // Ocean info for the minimap + the future marine reptile: the navigable open
+    // water lies east of the (mean) coastline at world X = OCEAN.shoreX.
+    oceanShoreX: OCEAN.shoreX, oceanSeaLevel: OCEAN.seaLevel,
+    isInOcean: (x, z) => x > (OCEAN.shoreX + Math.sin(z * 0.045) * 6 + Math.cos(z * 0.017) * 4),
     obstacles, resetDusk,
     getDusk: () => duskFactor,
     updateThreats: (dt, player, onScreech, onHit) =>
       atmosphere.updateThreats(dt, player, onScreech, onHit),
     resetThreats: () => atmosphere.resetThreats(),
   };
+}
+
+// Builds the eastern OCEAN (task 2): a large open-water surface plane east of
+// the coastline (the beach/seabed are carved into the terrain by oceanProfile),
+// with a gentle vertical SWELL animated on the plane's own vertices, a brighter
+// SHALLOW band near the surf, a foam line at the waterline, and reflection-ish
+// specular in keeping with the inland pond's water material. Returns { update }.
+function buildOcean(scene) {
+  const B = window.BABYLON;
+  // A big subdivided plane so the swell can ripple its vertices. It spans well
+  // past the play radius so the sea reads as open ocean to the horizon.
+  const seg = 80;
+  const sea = B.MeshBuilder.CreateGround("ocean", {
+    width: OCEAN.planeSize, height: OCEAN.planeSize, subdivisions: seg, updatable: true,
+  }, scene);
+  // Centre the plane east of the coast so its western edge sits roughly at the
+  // shore and the bulk extends out to sea.
+  sea.position.set(OCEAN.shoreX + OCEAN.planeSize * 0.5 - 40, OCEAN.seaLevel, 0);
+  sea.isPickable = false;
+
+  const seaMat = new B.StandardMaterial("oceanMat", scene);
+  seaMat.diffuseColor = new B.Color3(OCEAN.deepColor.r, OCEAN.deepColor.g, OCEAN.deepColor.b);
+  seaMat.emissiveColor = new B.Color3(OCEAN.deepColor.r * 0.4, OCEAN.deepColor.g * 0.45, OCEAN.deepColor.b * 0.5);
+  seaMat.specularColor = new B.Color3(0.7, 0.85, 0.95);  // bright sky reflection glints
+  seaMat.specularPower = 96;
+  seaMat.alpha = 0.86;
+  sea.material = seaMat;
+
+  // Shallow-water tint near the surf + a foam line at the waterline, baked into
+  // the plane's vertex colours by world X (distance seaward of the coast).
+  const pos = sea.getVerticesData(B.VertexBuffer.PositionKind);
+  const cols = new Float32Array((pos.length / 3) * 4);
+  const base = sea.position.x;
+  for (let i = 0; i < pos.length; i += 3) {
+    const wx = base + pos[i];                 // world X of this vertex
+    const seaward = wx - OCEAN.shoreX;         // metres east of the mean coast
+    // 0 at/inside the surf .. 1 well out to sea (deep)
+    const deep = Math.min(1, Math.max(0, seaward / 90));
+    const sh = OCEAN.shallowColor, dp = OCEAN.deepColor, fm = OCEAN.foamColor;
+    let r = sh.r * (1 - deep) + dp.r * deep;
+    let g = sh.g * (1 - deep) + dp.g * deep;
+    let b = sh.b * (1 - deep) + dp.b * deep;
+    // foam line: a bright band right at the waterline (small |seaward|)
+    const foam = Math.max(0, 1 - Math.abs(seaward) / OCEAN.surfWidth);
+    const f = foam * foam * 0.8;
+    r = r * (1 - f) + fm.r * f;
+    g = g * (1 - f) + fm.g * f;
+    b = b * (1 - f) + fm.b * f;
+    const ci = (i / 3) * 4;
+    cols[ci] = r; cols[ci + 1] = g; cols[ci + 2] = b; cols[ci + 3] = 1;
+  }
+  sea.setVerticesData(B.VertexBuffer.ColorKind, cols);
+  sea.useVertexColors = true;
+
+  // Animate a gentle long-period ocean swell on the plane's vertices.
+  const basePos = pos.slice();
+  let t = 0;
+  const k = (Math.PI * 2) / OCEAN.waveLength;
+  const update = (dt) => {
+    t += dt * OCEAN.waveSpeed;
+    const p = sea.getVerticesData(B.VertexBuffer.PositionKind);
+    for (let i = 0; i < p.length; i += 3) {
+      const x = basePos[i], z = basePos[i + 2];
+      // two crossed swells for a non-uniform sea surface
+      p[i + 1] = OCEAN.waveAmp * (Math.sin(x * k + t * 2) + 0.6 * Math.cos(z * k * 0.8 - t * 1.4));
+    }
+    sea.updateVerticesData(B.VertexBuffer.PositionKind, p);
+  };
+  return { update, mesh: sea };
 }
 
 // A sparse ring of reeds around the pond shoreline so the water edge reads
@@ -519,6 +656,9 @@ function buildAtmosphere(scene, heightAt) {
   // Each flock member is a built pterosaur (body, beak, swept crest, membrane
   // wings) sized up to the flock scale. The dive glow lives on the flyer's
   // shared dive material, so we keep a handle to it for the telegraph pulse.
+  // Orbit radius tracks the doubled map (ARENA.radius × birdOrbitMul) instead of
+  // a fixed 60, so the flock circles the whole valley, not a small central ring.
+  const birdOrbit = ARENA.radius * (ATMOSPHERE.birdOrbitMul || 0.55);
   const birds = [];
   for (let i = 0; i < ATMOSPHERE.birdCount; i++) {
     const flyer = buildFlyer(scene);
@@ -526,7 +666,7 @@ function buildAtmosphere(scene, heightAt) {
     birds.push({
       root: flyer.root, flyer,
       phase: (i / ATMOSPHERE.birdCount) * Math.PI * 2,
-      radius: ATMOSPHERE.birdRadius * (0.7 + 0.3 * (i % 3) / 2),
+      radius: birdOrbit * (0.7 + 0.3 * (i % 3) / 2),
       height: ATMOSPHERE.birdHeight + (i % 3) * 4,
       diving: false,        // skipped by the passive orbit while it swoops
     });
@@ -804,7 +944,12 @@ function scatterFoliage(scene, shadow, heightAt) {
   // Solid obstacle footprints (centre + repulsion radius) the AI steers around.
   const obstacles = [];
   const inPond = (x, z) => Math.hypot(x - WATER.centerX, z - WATER.centerZ) < WATER.radius + 2;
-  const inArena = (x, z) => Math.sqrt(x * x + z * z) < ARENA.radius - 4 && !inPond(x, z);
+  // Keep foliage off the beach + out of the sea: nothing planted across most of
+  // the sand (from ~80% of the beach width inland of the coast), so the shore
+  // reads as a clean sand beach, not grass crowding the waterline.
+  const inOcean = (x, z) =>
+    x > (OCEAN.shoreX + Math.sin(z * 0.045) * 6 + Math.cos(z * 0.017) * 4) - OCEAN.beachWidth * 0.8;
+  const inArena = (x, z) => Math.sqrt(x * x + z * z) < ARENA.radius - 4 && !inPond(x, z) && !inOcean(x, z);
   // Things that sway in the wind (cards tilt about Z).
   const swayers = [];
 
@@ -1173,20 +1318,26 @@ function scatterDesertFeatures({ scene, shadow, rng, rand, heightAt, inArena, ob
   const sandstoneMat = makeSandstoneMat("sandstoneMat", D.sandstoneColor);
   const sandstoneBandMat = makeSandstoneMat("sandstoneBandMat", D.sandstoneBandColor);
 
-  // Mesa source: a wide, flat-topped displaced cylinder. Flat top + near-vertical
-  // wind-undercut sides = the iconic butte/mesa silhouette. Two stacked sources
-  // (broad base band + main body) give the horizontal strata banding cheaply.
-  const makeMesaSource = (name, mat, topScale) => {
+  // MESA STRATUM source: a single wind-eroded cylinder of unit height/radius
+  // that one instance becomes one horizontal sedimentary LAYER. A butte is built
+  // by stacking several of these — each layer slightly narrower than the one
+  // below — so the silhouette steps inward like real layered sandstone (broad
+  // base, tapered top) and the alternating tints read as horizontal strata. The
+  // OLD mesa was a single tall thin cylinder (the "weird tower"); this is the
+  // owner's "broader bases, layered horizontal strata, wind-eroded tapered tops".
+  const makeStratumSource = (name, mat, topScale) => {
     const c = B.MeshBuilder.CreateCylinder(name, {
-      height: 1, diameterTop: 2 * topScale, diameterBottom: 2, tessellation: 9,
+      height: 1, diameterTop: 2 * topScale, diameterBottom: 2, tessellation: 11,
     }, scene);
-    // wind-erode the sides: nudge ring vertices in/out by a per-angle noise so
-    // the silhouette is gullied, not a clean lathe.
+    // wind-erode the sides: per-angle in/out noise so each layer's edge is
+    // gullied, not a clean lathe — and the noise differs per source so stacked
+    // layers don't share an identical outline.
+    const seed = name.length * 1.7;
     const vp = c.getVerticesData(B.VertexBuffer.PositionKind);
     for (let i = 0; i < vp.length; i += 3) {
       const x = vp[i], z = vp[i + 2];
       const ang = Math.atan2(z, x);
-      const erode = 1 + 0.12 * Math.sin(ang * 5) + 0.07 * Math.cos(ang * 9 + 1.3);
+      const erode = 1 + 0.10 * Math.sin(ang * 5 + seed) + 0.06 * Math.cos(ang * 9 + 1.3 + seed);
       vp[i] = x * erode; vp[i + 2] = z * erode;
     }
     c.setVerticesData(B.VertexBuffer.PositionKind, vp);
@@ -1194,48 +1345,69 @@ function scatterDesertFeatures({ scene, shadow, rng, rand, heightAt, inArena, ob
     c.material = mat; c.isVisible = false;
     return c;
   };
-  const mesaBody = makeMesaSource("mesaBody", sandstoneMat, 0.78);   // tapers up a touch
-  const mesaBand = makeMesaSource("mesaBand", sandstoneBandMat, 1.0); // rust base band
-  const talusSrc = makeMesaSource("talusSrc", sandstoneBandMat, 0.2); // debris cone apron
+  // Two layer sources (each material) with a gentle upward taper, plus a broad
+  // low talus apron and a slightly domed cap source for the eroded top.
+  const stratumLight = makeStratumSource("stratumLight", sandstoneMat, 0.94);
+  const stratumDark = makeStratumSource("stratumDark", sandstoneBandMat, 0.94);
+  const talusSrc = makeStratumSource("mesaTalus", sandstoneBandMat, 0.25);   // debris cone apron
+  const capSrc = makeStratumSource("mesaCap", sandstoneMat, 0.55);           // eroded, tapered top cap
 
+  const nBands = Math.max(2, D.mesaStrataBands || 4);
   let mIdx = 0;
   const placeMesa = (x, z) => {
-    const gy = heightAt(x, z);
+    const gy = heightAt(x, z) - 0.4;   // sink the foot slightly into the sand
     const h = rand(D.mesaMinHeight, D.mesaMaxHeight);
-    const rad = rand(D.mesaMinRadius, D.mesaMaxRadius);
-    const rot = rng() * Math.PI * 2;
-    // rust base band (lower ~22% of height) — the strata foot
-    const bandH = h * 0.22;
-    const band = mesaBand.createInstance("mesaBand" + mIdx);
-    band.position.set(x, gy + bandH * 0.5 - 0.4, z);
-    band.scaling.set(rad * 1.04, bandH, rad * 1.04);
-    band.rotation.y = rot;
-    band.checkCollisions = true; shadow.addShadowCaster(band);
-    // main body
-    const body = mesaBody.createInstance("mesaBody" + mIdx);
-    body.position.set(x, gy + bandH + (h - bandH) * 0.5 - 0.4, z);
-    body.scaling.set(rad, h - bandH, rad);
-    body.rotation.y = rot + 0.3;
-    body.checkCollisions = true; shadow.addShadowCaster(body);
-    // talus debris apron at the base (darker rust cone)
+    const baseRad = rand(D.mesaMinRadius, D.mesaMaxRadius);
+    // VARIED form: a per-mesa "squatness" — some broad and low (classic mesa),
+    // some a touch taller/narrower (a butte) — so no two read the same. Height
+    // is always modest vs the base (≤ ~1.4× the diameter) so none is a pillar.
+    const topRadFrac = rand(0.45, 0.7);   // how far the top steps in from the base
+    const layerH = h / nBands;
+    let y = gy;
+    for (let b = 0; b < nBands; b++) {
+      const t0 = b / nBands, t1 = (b + 1) / nBands;
+      // radius steps in with height (broad base -> narrower top), smoothly
+      const rBot = baseRad * (1 - (1 - topRadFrac) * t0);
+      const rTop = baseRad * (1 - (1 - topRadFrac) * t1);
+      const rMid = (rBot + rTop) * 0.5;
+      // alternate the two sandstone tints layer-to-layer = visible strata
+      const src = b % 2 === 0 ? stratumLight : stratumDark;
+      const layer = src.createInstance("mesaL" + mIdx + "_" + b);
+      layer.position.set(x, y + layerH * 0.5, z);
+      // scale: x/z = this layer's radius, y = its slice height; tiny per-layer
+      // rotation so the eroded outlines don't line up into a smooth lathe
+      layer.scaling.set(rMid, layerH * 1.02, rMid);
+      layer.rotation.y = rng() * Math.PI * 2;
+      layer.checkCollisions = b === 0;       // base layer carries collision
+      shadow.addShadowCaster(layer);
+      y += layerH;
+    }
+    // eroded cap: a low domed top so the summit isn't a perfectly flat disc
+    const capR = baseRad * topRadFrac;
+    const cap = capSrc.createInstance("mesaCap" + mIdx);
+    cap.position.set(x, y + capR * 0.12, z);
+    cap.scaling.set(capR, capR * 0.4, capR);
+    cap.rotation.y = rng() * Math.PI * 2;
+    shadow.addShadowCaster(cap);
+    // broad talus debris apron skirting the foot (darker rust, low + wide)
     const talus = talusSrc.createInstance("talus" + mIdx);
-    talus.position.set(x, gy + rad * 0.18 - 0.4, z);
-    talus.scaling.set(rad * 1.7, rad * 0.5, rad * 1.7);
+    talus.position.set(x, gy + baseRad * 0.12, z);
+    talus.scaling.set(baseRad * 1.5, baseRad * 0.45, baseRad * 1.5);
     talus.rotation.y = rng() * Math.PI;
     shadow.addShadowCaster(talus);
     // a big obstacle so the AI (and player collisions) treat the mesa as solid
-    obstacles.push({ x, z, r: rad * 1.1 });
+    obstacles.push({ x, z, r: baseRad * 1.05 });
     mIdx++;
   };
   // Place mesas with a minimum spacing so they spread into a skyline rather
-  // than piling up; bias toward the outer 40–100% of the radius so the centre
+  // than piling up; bias toward the outer 35–100% of the radius so the centre
   // stays open to run through.
   const mesaSpots = [];
-  const minMesaGap = D.mesaMaxRadius * 2.6;
+  const minMesaGap = D.mesaMaxRadius * 2.4;
   for (let i = 0; i < D.mesaCount; i++) {
     let x, z, ok = false, tries = 0;
-    while (!ok && tries++ < 30) {
-      const a = rng() * Math.PI * 2, rr = (0.4 + 0.6 * rng()) * D.radius;
+    while (!ok && tries++ < 40) {
+      const a = rng() * Math.PI * 2, rr = (0.35 + 0.65 * rng()) * D.radius;
       x = D.centerX + Math.cos(a) * rr; z = D.centerZ + Math.sin(a) * rr;
       if (!inArena(x, z)) continue;
       ok = mesaSpots.every((p) => Math.hypot(p.x - x, p.z - z) > minMesaGap);
@@ -1243,39 +1415,92 @@ function scatterDesertFeatures({ scene, shadow, rng, rand, heightAt, inArena, ob
     if (ok) { mesaSpots.push({ x, z }); placeMesa(x, z); }
   }
 
-  // --- Bleached bones: a half-buried ribcage (a row of curved ribs) + a skull
-  // dome + a few scattered vertebrae. Instanced off two primitive sources.
+  // --- Bleached BONES (owner: "the skeletons don't look realistic"). Reworked
+  // to read as a believable bleached carcass: a CURVED RIBCAGE ARC (a row of
+  // ribs that spring up + inward from a spine line, tapering fore-to-aft like a
+  // real cage), a recognisable elongated SKULL (long snout + dome + lower jaw)
+  // at the head end, and a few half-buried VERTEBRAE marching down the spine.
+  // All instanced off a handful of primitive sources (negligible draw).
   const boneMat = new B.PBRMaterial("boneMat", scene);
   boneMat.albedoColor = new B.Color3(D.boneColor[0], D.boneColor[1], D.boneColor[2]);
   boneMat.metallic = 0; boneMat.roughness = 0.85;
   boneMat.environmentIntensity = ENV.iblIntensity;
-  const ribSrc = B.MeshBuilder.CreateTorus("ribSrc", { diameter: 1.6, thickness: 0.16, tessellation: 10 }, scene);
+  // Rib source: a tube bent into a ~210° arc so a single instance is one rib
+  // that springs up from the spine, curves over and tucks back down — the
+  // characteristic rib hoop. Built once via a curved path, instanced per rib.
+  const ribPath = [];
+  for (let i = 0; i <= 12; i++) {
+    const a = (-0.08 + 1.16 * (i / 12)) * Math.PI;   // ~210° of arc
+    ribPath.push(new B.Vector3(Math.cos(a) * 0.8, Math.sin(a) * 0.95, 0));
+  }
+  const ribSrc = B.MeshBuilder.CreateTube("ribSrc", { path: ribPath, radius: 0.075, tessellation: 6, cap: B.Mesh.CAP_ALL }, scene);
   ribSrc.material = boneMat; ribSrc.isVisible = false;
-  const skullSrc = B.MeshBuilder.CreateSphere("skullSrc", { diameter: 1, segments: 8 }, scene);
-  skullSrc.material = boneMat; skullSrc.isVisible = false;
+  // Vertebra source: a small flattened drum (a spinal segment).
+  const vertSrc = B.MeshBuilder.CreateCylinder("vertSrc", { height: 0.28, diameter: 0.34, tessellation: 8 }, scene);
+  vertSrc.material = boneMat; vertSrc.isVisible = false;
+  // Skull sources: an elongated cranium (stretched sphere) + a tapered snout
+  // (cone) + a slim lower jaw (a thin box), assembled per cluster.
+  const craniumSrc = B.MeshBuilder.CreateSphere("craniumSrc", { diameter: 1, segments: 10 }, scene);
+  craniumSrc.material = boneMat; craniumSrc.isVisible = false;
+  const snoutSrc = B.MeshBuilder.CreateCylinder("snoutSrc", { height: 1, diameterTop: 0.12, diameterBottom: 0.55, tessellation: 8 }, scene);
+  snoutSrc.material = boneMat; snoutSrc.isVisible = false;
+  const jawSrc = B.MeshBuilder.CreateBox("jawSrc", { width: 0.42, height: 0.12, depth: 1.0 }, scene);
+  jawSrc.material = boneMat; jawSrc.isVisible = false;
   let bIdx = 0;
   const placeBones = (x, z) => {
-    const gy = heightAt(x, z);
     const dir = rng() * Math.PI * 2, cd = Math.cos(dir), sd = Math.sin(dir);
-    const s = rand(0.8, 1.3);
-    const nRibs = 4 + Math.floor(rng() * 3);
+    const s = rand(0.9, 1.5);
+    const spineStep = 0.62 * s;
+    const nRibs = 5 + Math.floor(rng() * 3);
+    // RIBCAGE: ribs along the spine line, paired left+right, tapering toward the
+    // tail so the cage reads as a curved barrel half-buried in the sand.
     for (let r = 0; r < nRibs; r++) {
-      const off = (r - nRibs / 2) * 0.5 * s;
+      const off = (r - (nRibs - 1) / 2) * spineStep;        // distance along spine
       const rx = x + cd * off, rz = z + sd * off;
-      const rib = ribSrc.createInstance("rib" + bIdx + "_" + r);
-      // half-buried: only the top arc of the torus shows above the sand
-      rib.position.set(rx, heightAt(rx, rz) - 0.35 * s, rz);
-      rib.scaling.set(s * rand(0.8, 1.0), s * rand(0.7, 1.0), s * 0.5);
-      rib.rotation.set(Math.PI / 2, dir, rand(-0.2, 0.2)); // ribs stand as arches across the spine line
-      rib.isPickable = false;
+      // cage taper: biggest at the chest (front), smaller toward the tail
+      const cage = 0.7 + 0.5 * (1 - Math.abs(off) / (nRibs * spineStep * 0.5));
+      for (const sideSign of [1, -1]) {
+        const rib = ribSrc.createInstance("rib" + bIdx + "_" + r + "_" + sideSign);
+        // half-buried: drop the springing point below the surface so only the
+        // upper hoop of the arc shows above the sand.
+        rib.position.set(rx, heightAt(rx, rz) - 0.45 * s * cage, rz);
+        rib.scaling.set(s * cage, s * cage * rand(0.9, 1.05), s * cage);
+        // orient: the arc plane faces across the spine; mirror per side; a touch
+        // of fore-aft lean per rib so they aren't robotically parallel.
+        rib.rotation.set(0, dir + (sideSign > 0 ? 0 : Math.PI), sideSign * (0.5 + rand(-0.12, 0.12)));
+        rib.isPickable = false;
+      }
+      // a vertebra knuckle on the spine between the rib pairs
+      if (r < nRibs - 1) {
+        const vx = x + cd * (off + spineStep * 0.5), vz = z + sd * (off + spineStep * 0.5);
+        const v = vertSrc.createInstance("vert" + bIdx + "_" + r);
+        v.position.set(vx, heightAt(vx, vz) + 0.02 * s, vz);
+        v.scaling.setAll(s * rand(0.8, 1.1));
+        v.rotation.set(Math.PI / 2, dir, 0);   // drum axis along the spine
+        v.isPickable = false;
+      }
     }
-    // skull at the head end
-    const hx = x + cd * (nRibs / 2 + 0.8) * 0.5 * s, hz = z + sd * (nRibs / 2 + 0.8) * 0.5 * s;
-    const skull = skullSrc.createInstance("skull" + bIdx);
-    skull.position.set(hx, heightAt(hx, hz) + 0.05 * s, hz);
-    skull.scaling.set(s * 0.9, s * 0.7, s * 1.1);
-    skull.rotation.y = dir;
-    skull.isPickable = false;
+    // SKULL at the head end (one spine-step beyond the front rib), oriented along
+    // the spine: dome cranium + tapered snout + a slim lower jaw resting in sand.
+    const headOff = ((nRibs - 1) / 2 + 1.1) * spineStep;
+    const hx = x + cd * headOff, hz = z + sd * headOff;
+    const hy = heightAt(hx, hz);
+    const cran = craniumSrc.createInstance("cran" + bIdx);
+    cran.position.set(hx, hy + 0.18 * s, hz);
+    cran.scaling.set(s * 0.62, s * 0.55, s * 0.85);     // longer than wide (a skull, not a ball)
+    cran.rotation.y = dir;
+    cran.isPickable = false;
+    const snout = snoutSrc.createInstance("snout" + bIdx);
+    // lay the cone on its side pointing forward along the spine
+    snout.position.set(hx + cd * 0.62 * s, hy + 0.08 * s, hz + sd * 0.62 * s);
+    snout.scaling.set(s * 0.9, s * 1.1, s * 0.9);
+    snout.rotation.set(Math.PI / 2, 0, dir);            // axis along +spine
+    snout.isPickable = false;
+    const jaw = jawSrc.createInstance("jaw" + bIdx);
+    jaw.position.set(hx + cd * 0.35 * s, hy - 0.12 * s, hz + sd * 0.35 * s);
+    jaw.scaling.set(s, s, s);
+    jaw.rotation.y = dir + rand(-0.25, 0.25);           // jaw slightly agape in the sand
+    jaw.isPickable = false;
     bIdx++;
   };
   for (let i = 0; i < D.boneClusterCount; i++) {

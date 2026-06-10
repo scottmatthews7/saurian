@@ -1,4 +1,4 @@
-import { TOOLS, ARENA, WATER } from "./config.js";
+import { TOOLS, ARENA, WATER, OCEAN } from "./config.js";
 
 // PRIMITIVE TOOLS / WEAPONS (wishlist item 6). Owns everything visual + spatial:
 //  - procedural weapon meshes (spear / club / rock / torch),
@@ -13,6 +13,9 @@ import { TOOLS, ARENA, WATER } from "./config.js";
 // weapon's config (TOOLS.kinds) and are read by the game's strike resolution.
 
 const inPond = (x, z) => Math.hypot(x - WATER.centerX, z - WATER.centerZ) < WATER.radius + 2;
+// Keep weapon scatter off the beach + out of the sea (reachable + on land).
+const inOcean = (x, z) => x > (OCEAN.shoreX + Math.sin(z * 0.045) * 6 + Math.cos(z * 0.017) * 4);
+const offLimits = (x, z) => inPond(x, z) || inOcean(x, z);
 
 // --- procedural weapon mesh builders -------------------------------------
 // Each returns a small TransformNode holding the weapon, authored so its grip
@@ -123,7 +126,7 @@ export function createTools(scene, shadow, groundFn, inventory) {
       const r = 14 + Math.random() * (ARENA.radius - 22);   // mid-field, not on top of spawn, not at the rim
       const a = Math.random() * Math.PI * 2;
       x = Math.cos(a) * r; z = Math.sin(a) * r;
-    } while (inPond(x, z));
+    } while (offLimits(x, z));
     const node = buildWeaponMesh(scene, kind, mats);
     node.scaling.setAll(WEAPON_SCALE);   // hand-sized on the ground too, not chest-high
     node.__parts.forEach((p) => { if (p.getTotalVertices && p.getTotalVertices() > 0) shadow.addShadowCaster(p); });
