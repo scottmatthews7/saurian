@@ -148,6 +148,9 @@ export async function createTrex(scene, shadow, groundFn) {
     preyAttackTimer: 0,// cooldown between bites on the hunted herbivore
     feeding: 0,        // sec remaining feeding on a fresh kill — planted + vulnerable
     feedGlow: 0,       // re-flash timer for the gorging glow
+    ambushTimer: 0,    // >0 during an ambush lunge burst
+    ambushCd: 0,       // recovery before the next ambush
+    aggroCd: 0,        // >0 = ignore the player (just disengaged) so an escape sticks
     onBite: null,    // (set by game) called when the trex lands a bite on the player
     onRoar: null,    // called when entering chase
     onPreyBite: null,// (set by game) called when the trex bites a herbivore
@@ -159,6 +162,9 @@ export async function createTrex(scene, shadow, groundFn) {
     if (state.dead) return;
     state.attackTimer = Math.max(0, state.attackTimer - dt);
     state.preyAttackTimer = Math.max(0, state.preyAttackTimer - dt);
+    state.ambushTimer = Math.max(0, state.ambushTimer - dt);
+    state.ambushCd = Math.max(0, state.ambushCd - dt);
+    state.aggroCd = Math.max(0, state.aggroCd - dt);
     const B = window.BABYLON;
     const pos = dino.root.position;
     const pp = player.dino.root.position;
@@ -217,9 +223,14 @@ export async function createTrex(scene, shadow, groundFn) {
     state.prey = pickPrey(state, pos, distP, herd, sightRange, loseRange, lockedToPlayer);
 
     const wasChasing = state.mode === "chase";
-    const seesPlayer = !player.dead && distP < sightRange;
+    // It ignores the player for a beat after losing them (aggroCd) so a clean
+    // getaway sticks — but it'll still peel off to hunt the herd meanwhile.
+    const seesPlayer = !player.dead && distP < sightRange && state.aggroCd <= 0;
     if (state.prey || seesPlayer) state.mode = "chase";
-    else if (state.mode === "chase" && distP > loseRange) state.mode = "patrol";
+    else if (state.mode === "chase" && distP > loseRange) {
+      state.mode = "patrol";
+      state.aggroCd = TREX.disengageCooldown; // give up; leave the player alone a while
+    }
     if (!wasChasing && state.mode === "chase" && state.onRoar) state.onRoar();
 
     let goal, speed;
@@ -249,7 +260,14 @@ export async function createTrex(scene, shadow, groundFn) {
       }
     } else if (state.mode === "chase") {
       goal = { x: pp.x, z: pp.z };
-      speed = TREX.chaseSpeed + state.speedBonus + duskSpeed
+      // STALK + AMBUSH: creep at the slow stalk speed; when within ambushRange
+      // and recovered, burst into a fast lunge for ambushSeconds to land a bite.
+      if (state.ambushTimer <= 0 && state.ambushCd <= 0 && distP < TREX.ambushRange && distP > TREX.attackRange) {
+        state.ambushTimer = TREX.ambushSeconds;
+        state.ambushCd = TREX.ambushCooldown;
+      }
+      const ambushing = state.ambushTimer > 0;
+      speed = (ambushing ? TREX.ambushSpeed : TREX.chaseSpeed) + state.speedBonus + duskSpeed
         + (enraged ? TREX.enrageSpeedBonus : 0);
       if (distP < TREX.attackRange) {
         speed = 0;
@@ -301,6 +319,9 @@ export async function createTrex(scene, shadow, groundFn) {
     state.health = TREX.maxHealth;
     state.mode = "patrol";
     state.target = randPointInArena();
+    state.ambushTimer = 0;
+    state.ambushCd = 0;
+    state.aggroCd = 0;
     state.attackTimer = 0;
     state.speedBonus = 0;
     state.enraged = false;
@@ -388,10 +409,14 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
     const loseRange = RAPTOR.loseInterestRange + DUSK.trexLoseBonus * DUSK_FACTOR;
     const duskSpeed = DUSK.trexSpeedBonus * DUSK_FACTOR;
 
+    state.aggroCd = Math.max(0, (state.aggroCd || 0) - dt);
     const wasChasing = state.mode === "chase";
-    const seesPlayer = !player.dead && distP < sightRange;
+    const seesPlayer = !player.dead && distP < sightRange && state.aggroCd <= 0;
     if (seesPlayer) state.mode = "chase";
-    else if (state.mode === "chase" && distP > loseRange) state.mode = "patrol";
+    else if (state.mode === "chase" && distP > loseRange) {
+      state.mode = "patrol";
+      state.aggroCd = RAPTOR.disengageCooldown; // pack gives up once you're clear
+    }
     // The pack yips once as a group the first time any member locks on.
     if (!wasChasing && state.mode === "chase") {
       if (!pack.calledOut) { pack.calledOut = true; if (state.onRoar) state.onRoar(); }

@@ -69,11 +69,24 @@ export const PLAYER = {
 };
 
 export const TREX = {
-  patrolSpeed: 5,
-  chaseSpeed: 11,        // base; ramps with difficulty
-  chaseSpeedRamp: 0.6,   // +units/sec per wave
-  sightRange: 38,
-  loseInterestRange: 55,
+  patrolSpeed: 4,        // slow, deliberate prowl
+  // The T-Rex is a STALKER, not a sprinter (real ~20km/h ambush hunter). Its
+  // steady approach is SLOW — a walking player (7) outpaces it, a sprinter
+  // leaves it for dead — so it closes quietly then AMBUSHES with a short fast
+  // lunge. Tension without a relentless race.
+  chaseSpeed: 8.5,       // stalk/approach speed (was 11)
+  chaseSpeedRamp: 0.5,   // +units/sec per wave
+  // AMBUSH: crept within ambushRange, it explodes into a brief burst (the lunge)
+  // to land a bite, then must recover before lunging again.
+  ambushRange: 14,
+  ambushSpeed: 17,       // burst speed during the lunge (beats a sprint momentarily)
+  ambushSeconds: 0.9,
+  ambushCooldown: 4.5,   // recovery before it can ambush again
+  // DISENGAGE: once the player breaks line and gets clear it gives up and won't
+  // re-aggro for a few seconds even if it can still see you — a real escape.
+  disengageCooldown: 6,
+  sightRange: 34,
+  loseInterestRange: 40, // breaks off sooner — get this far and it loses you
   attackRange: 5.0,
   attackCooldown: 1.4,
   attackDamage: 22,      // damage to player on contact bite
@@ -170,7 +183,8 @@ export const RAPTOR = {
   chaseSpeed: 13.5,       // quick — faster than the T-Rex's 11, still below the player's 16.5 sprint so a clean sprint escapes; the threat is the swarm closing, not a straight-line outrun
   patrolSpeed: 6,
   sightRange: 34,
-  loseInterestRange: 50,
+  loseInterestRange: 44,  // get this far and the pack loses you
+  disengageCooldown: 5,   // sec the pack ignores you after giving up — a getaway sticks
   attackRange: 1.8,       // tiny jaws — must get right on your ankles to nip (vs the 5.0 T-Rex bite)
   attackCooldown: 0.8,    // quick repeated nips
   attackDamage: 5,        // very weak per nip (vs the T-Rex's 22) — a full 4-swarm peaks ~20/round only if they ALL connect; you punch them off easily
