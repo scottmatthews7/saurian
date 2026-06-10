@@ -92,9 +92,12 @@ export async function createTrex(scene, shadow, groundFn) {
     staggered: 0,      // sec remaining frozen/dazed by the player's roar
     prey: null,        // herbivore currently hunted instead of the player (or null)
     preyAttackTimer: 0,// cooldown between bites on the hunted herbivore
+    feeding: 0,        // sec remaining feeding on a fresh kill — planted + vulnerable
+    feedGlow: 0,       // re-flash timer for the gorging glow
     onBite: null,    // (set by game) called when the trex lands a bite on the player
     onRoar: null,    // called when entering chase
     onPreyBite: null,// (set by game) called when the trex bites a herbivore
+    onFeed: null,    // (set by game) called once when it starts feeding on a kill
   };
 
   state.update = function (dt, player, herd) {
@@ -106,6 +109,28 @@ export async function createTrex(scene, shadow, groundFn) {
     const pos = dino.root.position;
     const pp = player.dino.root.position;
     const distP = Math.hypot(pp.x - pos.x, pp.z - pos.z);
+
+    // FEEDING FRENZY: having felled its prey, the T-Rex gorges on the carcass —
+    // planted, head-down, distracted, and VULNERABLE (raptor bites do bonus
+    // damage; see game.js feed-vuln gate). It abandons the meal only if the
+    // raptor crowds inside feedBreakRange (it whirls to defend) — so the punish
+    // is a real risk, not a free hit. A gnawing growl + a re-flashed gorging
+    // glow read the window; the heartbeat stays quiet (it isn't hunting you).
+    if (state.feeding > 0) {
+      if (distP < TREX.feedBreakRange) {
+        state.feeding = 0;              // raptor too close — break off and defend
+      } else {
+        state.feeding = Math.max(0, state.feeding - dt);
+        state.feedGlow -= dt;
+        if (state.feedGlow <= 0) {
+          state.feedGlow = 0.4;
+          dino.flash(0.3, new B.Color3(0.55, 0.1, 0.12));   // dark, gorging red
+        }
+        pos.y = groundFn(pos.x, pos.z);
+        dino.play("Attack", { speed: 0.5 });                // slow chewing loop
+        return;
+      }
+    }
 
     // Staggered by the player's roar: dazed in place (pursuit broken) until the
     // timer lapses, then it resumes hunting. Keeps the ground animation idle.
@@ -169,6 +194,14 @@ export async function createTrex(scene, shadow, groundFn) {
           dino.play("Attack", { loop: false, speed: 1.2 });
           state.prey.takeDamage(TREX.preyBite);
           if (state.onPreyBite) state.onPreyBite(preyPos);
+          // The killing bite: settle in to feed on the carcass (the vulnerable
+          // window). Clear prey so the FSM doesn't re-chase a dead herbivore.
+          if (state.prey.dead) {
+            state.feeding = TREX.feedSeconds;
+            state.feedGlow = 0;
+            state.prey = null;
+            if (state.onFeed) state.onFeed(pos.clone());
+          }
         }
       }
     } else if (state.mode === "chase") {
@@ -227,6 +260,7 @@ export async function createTrex(scene, shadow, groundFn) {
     state.mode = "patrol";
     state.target = randPointInArena();
     state.prey = null;
+    state.feeding = 0;
     dino.flash(0.3, new window.BABYLON.Color3(0.3, 0.4, 0.9));
   };
 
@@ -245,6 +279,8 @@ export async function createTrex(scene, shadow, groundFn) {
     state.staggered = 0;
     state.prey = null;
     state.preyAttackTimer = 0;
+    state.feeding = 0;
+    state.feedGlow = 0;
     state.dead = false;
     dino.play("Idle");
   };

@@ -109,10 +109,16 @@ export function createMinimap() {
         for (const t of predators) {
           if (t.dead) continue;
           const p = t.dino.root.position;
-          // Red = chasing YOU; amber = distracted hunting the herd (exploit it);
+          // Green (pulsing, larger) = FEEDING, exposed flank — rush it NOW;
+          // red = chasing YOU; amber = distracted hunting the herd (exploit it);
           // dark red = patrolling.
-          const col = t.prey ? "#ff9a3c" : t.mode === "chase" ? "#ff4d4d" : "#c0392b";
-          dot(p.x, p.z, col, 4);
+          if (t.feeding > 0) {
+            const pulse = 4 + 2 * (0.5 + 0.5 * Math.sin(performance.now() / 120));
+            dot(p.x, p.z, "#7be36a", pulse);
+          } else {
+            const col = t.prey ? "#ff9a3c" : t.mode === "chase" ? "#ff4d4d" : "#c0392b";
+            dot(p.x, p.z, col, 4);
+          }
         }
       }
 

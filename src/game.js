@@ -181,6 +181,13 @@ export async function startGame() {
       audio.bite();
       fx.pickupBurst(pos, new B2.Color4(0.75, 0.18, 0.15, 1));
     };
+    // It felled its prey and settled in to FEED — the vulnerable window. A
+    // distant roar growl + a dark spray mark the gorging so the player can read
+    // (and rush) the opening on the radar.
+    p.onFeed = (pos) => {
+      audio.roar();
+      fx.pickupBurst(pos, new B2.Color4(0.45, 0.08, 0.1, 1));
+    };
     predators.push(p);
   };
   wirePredator(trex);
@@ -329,7 +336,7 @@ export async function startGame() {
       // tension heartbeat from the nearest predator chasing the PLAYER — a T-Rex
       // off hunting a herbivore (prey set) is not bearing down on you, so it
       // mustn't trigger the heartbeat.
-      const chasing = primary && primary.mode === "chase" && !primary.prey ? primary : null;
+      const chasing = primary && primary.mode === "chase" && !primary.prey && !(primary.feeding > 0) ? primary : null;
       if (chasing) {
         const closeness = Math.max(0, 1 - primaryD / TREX.sightRange); // 0 far .. 1 on top
         tensionTimer -= dt;
@@ -352,8 +359,17 @@ export async function startGame() {
           const tp = t.dino.root.position;
           if (Math.hypot(pPos.x - tp.x, pPos.z - tp.z) < PLAYER.attackRange) {
             t.lastBiteId = player.biteId;
-            t.takeDamage(PLAYER.attackDamage);
-            if (!player.biteConnected) { player.biteConnected = true; fx.addShake(JUICE.biteConnectShake); }
+            // FEEDING FRENZY payoff: a T-Rex bitten while head-down feeding takes
+            // bonus damage — the brave-raptor punish window. Loud feedback so the
+            // player learns the opening pays.
+            const feeding = t.feeding > 0;
+            t.takeDamage(PLAYER.attackDamage * (feeding ? TREX.feedVulnMultiplier : 1));
+            if (feeding) {
+              hud.popup("FEEDING FRENZY — flank hit!", "good");
+              fx.addShake(JUICE.feedHitShake);
+            } else if (!player.biteConnected) {
+              player.biteConnected = true; fx.addShake(JUICE.biteConnectShake);
+            }
           }
         };
         for (const p of predators) tryBite(p);

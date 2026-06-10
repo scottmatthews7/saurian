@@ -3,7 +3,7 @@
 // Babylon: it only reads positions). Run:  node tools/herd_hunt_test.mjs
 
 import { pickPrey } from "../src/ai.js";
-import { TREX } from "../src/config.js";
+import { TREX, PLAYER } from "../src/config.js";
 
 let failures = 0;
 function check(name, cond, detail = "") {
@@ -82,6 +82,15 @@ check("the raptor is the priority at close range (playerPriorityRange positive)"
   TREX.playerPriorityRange > 0);
 check("two prey bites fell a herbivore (matches the raptor's chomp economy)",
   TREX.preyBite * 2 >= 60, `preyBite=${TREX.preyBite}, herbivore maxHealth 60`);
+
+console.log("feeding frenzy config sanity:");
+check("feeding lasts long enough to rush in and punish (>= one bite window)",
+  TREX.feedSeconds >= 2, `feedSeconds=${TREX.feedSeconds}`);
+check("feeding makes the T-Rex genuinely more vulnerable (multiplier > 1)",
+  TREX.feedVulnMultiplier > 1, `feedVulnMultiplier=${TREX.feedVulnMultiplier}`);
+check("the flank bite is landable: break range is point-blank, INSIDE the raptor's attack reach (you bite from the edge; only crowding on top loses the window)",
+  TREX.feedBreakRange > 0 && TREX.feedBreakRange < PLAYER.attackRange,
+  `feedBreakRange=${TREX.feedBreakRange}, player attackRange=${PLAYER.attackRange}`);
 
 console.log(failures === 0 ? "\nALL HERD-HUNT TESTS PASSED" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

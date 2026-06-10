@@ -108,6 +108,16 @@ export const TREX = {
   preyAttackRange: 5.5,    // contact range to bite the prey (~its own attackRange, herbivores are large)
   preyAttackCooldown: 1.1, // sec between prey bites (a touch faster than its player bite — it's committed to the kill)
   playerPriorityRange: 16, // if the raptor is within this, the T-Rex always prefers the player over any prey — you can't hide behind a herbivore at point-blank
+  // FEEDING FRENZY — the predator's vulnerable window. When a T-Rex fells its
+  // prey it stops to FEED on the carcass: head-down, planted, distracted. This
+  // closes the herd-predation loop into a skill play — a brave raptor can rush
+  // in and punish the exposed flank for bonus damage. The predator drops feeding
+  // only if the raptor crowds it at point-blank (it whirls to defend) or its
+  // roar/dusk math forces a break. Provenance: design choice, tuned so one full
+  // feeding window roughly equals a one-bite-saved comeback, not a free kill.
+  feedSeconds: 3.5,         // how long the T-Rex feeds on a fresh kill, planted at the carcass
+  feedVulnMultiplier: 2,    // raptor bite damage is doubled while the T-Rex feeds (head-down, exposed) — the payoff for a brave punish
+  feedBreakRange: 2.5,      // point-blank: only if the raptor crowds RIGHT on top of it (< PLAYER.attackRange 5) does it whirl off the meal to defend — so you CAN land a flank bite from the edge of your reach, but stacking on it loses the window
 };
 
 export const HERBIVORE = {
@@ -317,6 +327,7 @@ export const JUICE = {
   lowHealthThreshold: 0.35, // fraction below which the red vignette appears
   chargeShake: 0.3,         // camera shake when a triceratops charges
   biteConnectShake: 0.22,   // small kick when the raptor's bite lands (tactile confirmation; < a hit-taken)
+  feedHitShake: 0.33,       // bigger kick when the raptor lands a bite on a FEEDING T-Rex (the bonus-damage flank hit reads heavier)
   roarShake: 0.45,          // strong brief kick selling the intimidating roar
 };
 
