@@ -417,7 +417,59 @@
   within ~1-2s; verification used single-shot evals guarded by a `location.href`
   8124 check + the `window.__game` handle.
 
-## Next (session 12)
+## Done (session 12) — HERD PREDATION (the T-Rex hunts the herd)
+- **New mechanic — the T-Rex is a true apex predator.** Until now the T-Rex only
+  ever targeted the raptor; the herd fled its *position* but it never pursued or
+  killed a herbivore (the DECISIONS.md design — "a T-Rex hunts you and the herd" —
+  was unfulfilled). Now (`ai.js` `pickPrey` + `state.update`, `config.TREX`,
+  `game.js`, `minimap.js`) a T-Rex that is **not locked onto the raptor** peels off
+  to hunt the herd:
+  - **Acquisition** (`pickPrey`): when not lured/point-blank, it acquires the
+    nearest live herbivore within `preySightRange` (30, < the 38 player sight so a
+    distant raptor still wins attention) that is `preyCloserBy` (8) units **nearer
+    than the player**. The raptor stays the priority — a cursed-egg lure or the
+    raptor inside `playerPriorityRange` (16) forces a player chase, so you can't
+    hide behind a herbivore at point-blank.
+  - **The kill:** it commits to a prey (keeps it until it dies, escapes past
+    loseRange, or the raptor demands priority), bites it (`preyBite` 30, ~2 bites
+    to fell a 60-HP herbivore — same economy as the raptor's chomp) on a
+    `preyAttackCooldown` (1.1s). The felled herbivore drops meat via the existing
+    `onDown` path — **so the player can scavenge a T-Rex's kill**: a risk/reward
+    loop layered onto the chase.
+  - **Emergent strategy:** herbivores are now living decoys. Lead a chasing T-Rex
+    past the herd and it may break off to hunt easier prey, buying you a breather;
+    or steal its kill for the heal. The herd feels alive, not set-dressing.
+  - **Readability/juice:** radar draws a prey-hunting T-Rex **amber** ("distracted,
+    exploit it") vs **red** (chasing YOU) vs dark-red (patrol); the tension
+    heartbeat stays silent while a predator is off hunting the herd (it isn't
+    bearing down on you); a chomp SFX + red spray marks each predation bite.
+- All tunables in `config.TREX` with provenance tied to the existing chase economy
+  (prey sight < player sight, prey needs a real distance edge, raptor priority at
+  close range, two-bite kill matches the raptor's). No scattered numbers.
+
+## Verified (session 12)
+- All 16 src modules pass `node --check`; `dusk_test` + `cursed_egg_test` +
+  `beacons_test` still pass; new `node tools/herd_hunt_test.mjs` exercises the
+  **real exported `pickPrey`** (acquire-when-raptor-far, ignore-while-lured,
+  out-of-sight, not-clearly-closer, nearest-of-several, keep-committed, drop-dead,
+  drop-escaped, abandon-on-priority, config sanity) — all pass.
+- Live in-browser (fresh isolated context `dinoa-s12-fresh`, port 8124, **0
+  console errors/warnings**, 648 meshes, 66 FPS): with the raptor parked far away,
+  a T-Rex placed near a herbivore acquired it as prey, the herbivore fled, two
+  bites felled it, **meat dropped** for the player to scavenge, and prey cleared
+  after the kill. With the raptor point-blank (inside `playerPriorityRange`) the
+  T-Rex **never** hunted the herd and chased the raptor instead (priority guard
+  proven). Tab closed after probing.
+- **Env gotcha (new, important for next session):** `?probe` did NOT auto-start
+  the run in this build — the game loop's `if (!started …) return` guard meant
+  `game.elapsed` never advanced and the AI never ticked, which masqueraded as a
+  broken feature for several probes. Start the run by dispatching a synthetic
+  `keydown`/`pointerdown` (the one-shot `startGameLoop` listeners) before any
+  position-set scenario, then verify `game.elapsed` is advancing.
+
+## Next (session 13)
+- A wounded/feeding T-Rex could be briefly vulnerable while it eats a kill (a bite
+  window for a brave raptor); or a herbivore "stampede" when one is taken.
 - Beacon upkeep could feed a "warmth" meter that the raptor radiates while near a
   lit beacon (regen?); or guttered beacons could be relit faster than first-light.
 - Original session-10 ideas still open below.
