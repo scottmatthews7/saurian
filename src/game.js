@@ -354,7 +354,12 @@ export async function startGame() {
       const pp = player.dino.root.position;
       let tx, tz, label;
       if (eggs.carrying > 0) {
-        tx = 0; tz = 0; label = `Carrying ${eggs.carrying} — bank at the nest`;
+        tx = 0; tz = 0;
+        // A cursed egg keeps the danger legible the whole time it's carried —
+        // the pickup popup fades, but the guide pill stays loud while it's on you.
+        label = eggs.carryingCursed
+          ? `☠ CURSED — every T-Rex hunts you! Bank it at the nest`
+          : `Carrying ${eggs.carrying} — bank at the nest`;
       } else {
         const t = nearestEgg(eggs, pp);
         if (t) { tx = t.x; tz = t.z; label = `Nearest egg · ${eggs.banked}/${EGGS.targetToWin} banked`; }
