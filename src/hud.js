@@ -24,6 +24,7 @@ export function createHUD() {
   const hitFlashEl = el("hitFlash");
   const popups = el("popups");
   const muteBtn = el("muteBtn");
+  const beaconCount = el("beaconCount");
 
   return {
     setHealth(v, max) {
@@ -92,6 +93,16 @@ export function createHUD() {
       carryCount.textContent = carrying > 0 ? `Carrying ${carrying} — get to the nest!` :
         (remaining > 0 ? `${remaining} eggs out there` : "All eggs found");
     },
+    // Ward-beacon ring progress. Shows a flame per beacon (lit vs unlit) and
+    // glows once the whole ring is lit (sanctuary).
+    setBeacons(lit, total) {
+      if (!beaconCount) return;
+      const all = lit >= total;
+      beaconCount.textContent = all
+        ? `${"🔥".repeat(total)} Sanctuary lit`
+        : `${"🔥".repeat(lit)}${"·".repeat(total - lit)} Beacons ${lit}/${total}`;
+      beaconCount.classList.toggle("all", all);
+    },
     setScore(points, combo) {
       if (scoreEl) scoreEl.textContent = points.toLocaleString();
       if (comboEl) comboEl.textContent = combo > 1 ? `Combo x${combo}` : "";
@@ -116,7 +127,7 @@ export function createHUD() {
         <div class="titleCard">
           <div class="bannerTitle start titleBig">DINO ARENA</div>
           <div class="titleTag">SURVIVAL</div>
-          <div class="titleObjective">Collect <b>${target}</b> glowing eggs and bank them at your nest.<br/>A roaming T-Rex wants you dead. Run, bite, <b>roar</b>, <b>dash</b> to survive.<br/><span class="titleDusk">As <b>dusk</b> falls the predators grow bolder — but late banks pay double.</span><br/><span class="titleCursed">Grab a <b>cursed egg</b> ☠ for a huge score — but every T-Rex hunts you while you carry it.</span></div>
+          <div class="titleObjective">Collect <b>${target}</b> glowing eggs and bank them at your nest.<br/>A roaming T-Rex wants you dead. Run, bite, <b>roar</b>, <b>dash</b> to survive.<br/><span class="titleDusk">As <b>dusk</b> falls the predators grow bolder — but late banks pay double.</span><br/><span class="titleCursed">Grab a <b>cursed egg</b> ☠ for a huge score — but every T-Rex hunts you while you carry it.</span><br/><span class="titleBeacon">Run through the <b>🔥 ward beacons</b> to light them — a lit beacon repels the T-Rex; light all three for a <b>sanctuary</b> bonus.</span></div>
           <div class="controls">
             ${ctrl("WASD", "Move")}
             ${ctrl("SHIFT", "Sprint")}

@@ -126,6 +126,12 @@ export function createAudio() {
       if (!ctx || muted) return;
       [440, 554, 660].forEach((f, i) => setTimeout(() => tone(f, 0.4, "sine", 0.3), i * 60));
     },
+    // Ward beacon ignites: a warm bright rising chime (a major arpeggio) that
+    // reads "this is safe", distinct from the egg-bank chord.
+    beacon() {
+      if (!ctx || muted) return;
+      [523, 659, 784].forEach((f, i) => setTimeout(() => tone(f, 0.45, "triangle", 0.28), i * 70));
+    },
     // Soft thud footstep while sprinting.
     step() {
       if (!ctx || muted) return;

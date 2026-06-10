@@ -2,6 +2,7 @@ import { buildWorld } from "./world.js";
 import { createPlayer, createFollowCamera } from "./player.js";
 import { createTrex, createHerd, setObstacles, setDusk, setLure } from "./ai.js";
 import { createEggs } from "./eggs.js";
+import { createBeacons } from "./beacons.js";
 import { createPickups } from "./pickups.js";
 import { createInput } from "./input.js";
 import { createTouchControls } from "./touch.js";
@@ -9,7 +10,7 @@ import { createHUD } from "./hud.js";
 import { createAudio } from "./audio.js";
 import { createFx } from "./fx.js";
 import { createMinimap } from "./minimap.js";
-import { PLAYER, TREX, EGGS, JUICE, AUDIO, PICKUPS, DUSK } from "./config.js";
+import { PLAYER, TREX, EGGS, JUICE, AUDIO, PICKUPS, DUSK, BEACONS } from "./config.js";
 
 // Nearest uncollected egg to a position, or null if none remain.
 function nearestEgg(eggs, pos) {
@@ -61,6 +62,7 @@ export async function startGame() {
   setLoad("Scattering eggs…");
   const eggs = createEggs(scene, world.shadow, world.heightAt);
   const pickups = createPickups(scene, world.shadow, world.heightAt);
+  const beacons = createBeacons(scene, world.shadow, world.heightAt);
 
   // --- wire feedback callbacks (audio + particles + screen shake) ---
   const B2 = window.BABYLON;
@@ -99,6 +101,23 @@ export async function startGame() {
     audio.heal();
     fx.pickupBurst(pos, new B2.Color4(0.3, 1, 0.4, 1));
     hud.popup(`+${PICKUPS.meatHeal} HP`, "heal");
+  };
+  // Ward beacons: a warm chime + amber burst when one ignites; a bigger payoff
+  // (heal + score + flourish) when the full ring is lit.
+  beacons.onLight = (pos) => {
+    audio.beacon();
+    fx.pickupBurst(pos, new B2.Color4(1, 0.6, 0.2, 1));
+    const lit = beacons.litCount;
+    if (lit < BEACONS.count) hud.popup(`BEACON LIT ${lit}/${BEACONS.count}`, "heal");
+  };
+  beacons.onSanctuary = (pos) => {
+    audio.win();
+    fx.pickupBurst(pos, new B2.Color4(1, 0.85, 0.4, 1));
+    fx.addShake(JUICE.roarShake);
+    player.heal(BEACONS.sanctuaryHeal);
+    score.points += BEACONS.sanctuaryScore;
+    hud.setScore(score.points, score.combo);
+    hud.popup(`SANCTUARY! +${BEACONS.sanctuaryScore} · +${BEACONS.sanctuaryHeal} HP`, "gold");
   };
   player.onAttack = () => audio.bite();
   // Splash + spray when the raptor wades into the pond.
@@ -273,6 +292,11 @@ export async function startGame() {
       herd.forEach((h) => h.update(dt, player, primary));
       eggs.update(dt, player);
       pickups.update(dt, player);
+      // Ward beacons: light on proximity, then repel any predator inside a lit
+      // beacon's ward (breaks the chase). Warded after the predators moved so a
+      // T-Rex that steps into the ward is staggered out of it next frame.
+      beacons.update(dt, player);
+      beacons.wardPredators(predators);
 
       // pterosaur dive attack — a telegraphed screech then a swoop from above
       world.updateThreats(dt, player,
@@ -333,6 +357,7 @@ export async function startGame() {
       hud.setDash(1 - player.dashTimer / PLAYER.dashCooldown);
       hud.setTrex(primary ? primary.health : 0, TREX.maxHealth);
       hud.setEggs(eggs.banked, EGGS.targetToWin, eggs.carrying, eggs.remaining());
+      hud.setBeacons(beacons.litCount, BEACONS.count);
 
       // win / lose
       if (eggs.banked >= EGGS.targetToWin) {
@@ -381,7 +406,7 @@ export async function startGame() {
     }
 
     // radar — updated whenever the game is running (even after win/lose)
-    minimap.update(player, predators, herd, eggs, pickups);
+    minimap.update(player, predators, herd, eggs, pickups, beacons);
   });
 
   // Soft restart — re-rolls a fresh run in place without reloading the page
@@ -394,6 +419,7 @@ export async function startGame() {
     herd.forEach((h) => h.reset());
     eggs.reset();
     pickups.reset();
+    beacons.reset();
     world.resetDusk();   // fresh run starts in full daylight again
     setDusk(0); hud.setDusk(0); duskAnnounced = false;
     setLure(false);
@@ -429,7 +455,7 @@ export async function startGame() {
   window.addEventListener("resize", () => engine.resize());
 
   // Debug handle for in-browser smoke tests (harmless to leave exposed).
-  window.__game = { engine, scene, game, score, player, predators, herd, eggs, pickups, world, hud, resetGame };
+  window.__game = { engine, scene, game, score, player, predators, herd, eggs, pickups, beacons, world, hud, resetGame };
 
   return { engine, scene };
 }

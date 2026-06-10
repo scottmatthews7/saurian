@@ -1,4 +1,4 @@
-import { ARENA, MINIMAP, WATER } from "./config.js";
+import { ARENA, MINIMAP, WATER, BEACONS } from "./config.js";
 
 // Top-down radar drawn on a 2D canvas overlay. Shows the arena disc, the
 // player (with facing wedge), the T-Rex, the herd, eggs, and the nest.
@@ -25,7 +25,7 @@ export function createMinimap() {
   }
 
   return {
-    update(player, predators, herd, eggs, pickups) {
+    update(player, predators, herd, eggs, pickups, beacons) {
       ctx.clearRect(0, 0, size, size);
 
       // arena disc
@@ -52,6 +52,27 @@ export function createMinimap() {
       ctx.strokeStyle = "rgba(255,205,88,0.9)";
       ctx.lineWidth = 2;
       ctx.stroke();
+
+      // ward beacons — a lit beacon shows its ward radius ring + a bright dot;
+      // an unlit one is a dim hollow marker to seek out.
+      if (beacons) {
+        for (const b of beacons.beacons) {
+          const [bx, by] = toMap(b.x, b.z);
+          if (b.lit) {
+            ctx.beginPath();
+            ctx.arc(bx, by, BEACONS.wardRadius * scale, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(255,170,60,0.18)";
+            ctx.fill();
+            dot(b.x, b.z, "#ffb347", 3.5);
+          } else {
+            ctx.beginPath();
+            ctx.arc(bx, by, 3, 0, Math.PI * 2);
+            ctx.strokeStyle = "rgba(255,180,90,0.7)";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+        }
+      }
 
       // eggs (uncollected) — golden eggs render larger and brighter
       if (eggs) {

@@ -173,6 +173,28 @@ export const WATER = {
   level: 0.2,           // water surface height above the pond-rim ground
 };
 
+// WARD BEACONS — unlit braziers ringed around the arena. Run up to one to
+// light it (proximity, no key — touch-friendly). A lit beacon does two things:
+// (1) casts a warding glow that breaks any T-Rex chase inside `wardRadius` and
+//     shoves it back to patrol (reuses the roar-stagger), refreshed while in
+//     range — so a lit beacon is a moving-but-safe pocket to route a chase
+//     through, especially valuable once dusk emboldens the predators;
+// (2) literally lights the dusk gloom near it (a warm point light) so the
+//     beacon mechanic and the dusk-readability payoff are the same object.
+// Lighting all three in a run fires a one-shot SANCTUARY bonus (heal + score).
+// They re-arm (snuff out) on a soft restart. All values arcade-feel choices,
+// tuned against the chase economy (T-Rex base chase 11, roar radius 22):
+export const BEACONS = {
+  count: 3,                // braziers ringed around the arena
+  ringRadius: 56,          // world units from centre they sit on (mid-field, between nest and rim)
+  lightRange: 11,          // proximity to ignite an unlit beacon (a touch wider than the egg pickup so it's easy to brush)
+  wardRadius: 18,          // world units a lit beacon repels predators within (< roarRadius 22 so it's a pocket, not arena-wide)
+  wardStagger: 0.6,        // sec of stagger refreshed each tick a T-Rex sits in the ward (short; re-applied while in range)
+  lightHeight: 6,          // warm point-light range (units) cast around a lit beacon to push back the dusk gloom
+  sanctuaryHeal: 25,       // HP restored once all beacons are lit (reward for clearing the ring)
+  sanctuaryScore: 500,     // bonus score for lighting the full ring (a tidy objective payoff)
+};
+
 export const CAMERA = {
   distance: 14,
   height: 7,

@@ -40,6 +40,8 @@
     #topRight { top: 16px; right: 16px; text-align: right; }
     #eggCount { font-size: 30px; font-weight: bold; color: var(--accent); }
     #carryCount { font-size: 13px; opacity: 0.85; margin-top: 2px; }
+    .beaconCount { font-size: 13px; margin-top: 3px; color: #ffb347; opacity: 0.9; }
+    .beaconCount.all { color: #ffd95a; opacity: 1; text-shadow: 0 0 8px rgba(255,180,60,0.8); }
     #score { font-size: 20px; font-weight: bold; margin-top: 8px; }
     #combo { font-size: 13px; color: var(--good); opacity: 0.9; min-height: 16px; }
     #popups { position: relative; height: 0; }
@@ -99,6 +101,8 @@
     .titleDusk b { color: #ffb877; }
     .titleCursed { display: inline-block; margin-top: 6px; font-size: 14px; color: #c98bff; opacity: 0.95; }
     .titleCursed b { color: #d9a6ff; }
+    .titleBeacon { display: inline-block; margin-top: 6px; font-size: 14px; color: #ffc078; opacity: 0.95; }
+    .titleBeacon b { color: #ffd9a0; }
     .controls { display: grid; grid-template-columns: repeat(3, auto); gap: 8px 26px;
       margin-bottom: 16px; }
     .ctrlRow { display: flex; align-items: center; gap: 10px; font-size: 14px; opacity: 0.92; }
@@ -183,6 +187,7 @@
       <div class="label">Eggs Banked</div>
       <div id="eggCount">0 / 0</div>
       <div id="carryCount"></div>
+      <div id="beaconCount" class="beaconCount"></div>
       <div id="score">0</div>
       <div id="combo"></div>
       <div id="popups"></div>
