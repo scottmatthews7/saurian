@@ -3,6 +3,8 @@
 // matched by substring so we don't depend on the species prefix.
 
 import { FACING_OFFSET, DINO_VARIANTS } from "./config.js";
+import { buildCreature } from "./procmesh/trex.js";
+import { skinProceduralToRig } from "./procmesh/glb-skin.mjs";
 
 // Attack2/Attack3 are optional melee variants: only the human ships extra
 // strike clips (punch left / kick), so for the dinos those keys simply never
@@ -86,10 +88,40 @@ export async function loadDino(scene, kind, targetHeight, shadow) {
   if (st) root.scaling.set(scale * (st.x ?? 1), scale * (st.y ?? 1), scale * (st.z ?? 1));
   else root.scaling.setAll(scale);
 
+  // PROCEDURAL T-REX: the headline predator wears our high-quality swept-loft
+  // mesh (procmesh/trex.js, ~63k verts, smooth skin) instead of the low-poly glb,
+  // skinned onto the glb's OWN skeleton + clips so the existing AI clip playback
+  // drives it. Gated to kind==='trex' only — every other species keeps its glb
+  // mesh. The glb's visual meshes are hidden but its skeleton/animationGroups stay
+  // live (they deform our mesh via the retarget in procmesh/glb-skin.mjs).
+  let procSkin = null;       // { skinned, dispose } when we swapped in our mesh
+  if (kind === "trex" && res.skeletons[0]) {
+    const procRoot = buildCreature(scene);
+    const glbRenderable = res.meshes.filter(
+      (m) => m.getTotalVertices && m.getTotalVertices() > 0,
+    );
+    // Reference-relative retarget: read source bone poses relative to the GAME
+    // root (the node the AI scales/moves/yaws) and parent our mesh under it. This
+    // strips the gameplay transform out of the retarget while KEEPING the glb's
+    // glTF Y-up conversion baked into __root__ (which sits below root), so the
+    // mirror operates in clean Babylon world orientation exactly like the proven
+    // harness. The AI's per-frame root motion then carries our mesh along via the
+    // shared parent, never leaking into the rig.
+    procSkin = skinProceduralToRig(scene, procRoot, {
+      skeleton: res.skeletons[0],
+      renderableMeshes: glbRenderable,
+    }, root);
+    glbRenderable.forEach((m) => m.setEnabled(false)); // hide the low-poly glb mesh
+    procRoot.dispose(true, false);                     // our meshes are reparented onto the skin armature; drop only the now-empty root node (no recurse)
+  }
+
   // Collect the renderable meshes and remember each material's base emissive
-  // so a hit-flash can add to it and then restore exactly.
+  // so a hit-flash can add to it and then restore exactly. For the procedural
+  // T-Rex the visible meshes (and flash/shadow targets) are OUR skinned meshes,
+  // not the now-hidden glb ones.
   const flashTargets = [];
-  res.meshes.forEach((m) => {
+  const visibleMeshes = procSkin ? procSkin.skinned : res.meshes;
+  visibleMeshes.forEach((m) => {
     m.receiveShadows = true;
     if (shadow && m.getTotalVertices && m.getTotalVertices() > 0) {
       shadow.addShadowCaster(m);
@@ -171,6 +203,12 @@ export async function loadDino(scene, kind, targetHeight, shadow) {
     // animation groups and skeleton, which accumulate across soft restarts that
     // dispose later-wave predators — so dispose those too.
     dispose() {
+      // Procedural T-Rex: stop the per-frame mirror and drop our target
+      // skeleton + skinned meshes before tearing down the glb rig.
+      if (procSkin) {
+        procSkin.skinned.forEach((m) => m.dispose());
+        procSkin.dispose();
+      }
       res.animationGroups.forEach((g) => g.dispose());
       res.skeletons.forEach((s) => s.dispose());
       res.meshes.forEach((m) => m.dispose());
