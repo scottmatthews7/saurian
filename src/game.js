@@ -436,7 +436,7 @@ export async function startGame() {
         // Acknowledge a brave run: surviving into dusk earns a flourish.
         const duskTag = world.getDusk() >= DUSK.duskThreshold ? "🌆 You held out into dusk! " : "";
         hud.showBanner("DEVOURED",
-          `You survived ${formatTime(t)}${isBest ? " (best!)" : ""} · score ${points.toLocaleString()}${bestScore ? " (best!)" : ""}. ${duskTag}${bestLine}Press R to retry.`,
+          `You survived ${formatTime(t)} · score ${points.toLocaleString()}${bestScore ? " (best!)" : ""}. ${duskTag}${bestLine}Press R to retry.`,
           "lose");
       }
 
