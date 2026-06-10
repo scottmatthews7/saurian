@@ -19,9 +19,11 @@ Press any key or click the title screen to begin.
 
 ## Goal
 
-You are a raptor. **Collect 6 glowing eggs and bank them at your nest** before a
-roaming T-Rex eats you. Carrying eggs slows you down; a T-Rex bite can make you
-fumble one back into the valley. Reach 6 banked to win ("YOU SURVIVED"); hit 0
+You are a human survivor stranded in a primeval valley. **Collect 6 glowing eggs
+and bank them at your nest** before a roaming T-Rex eats you. Sprint and you
+outrun the rex (~30 km/h vs its ~20) — but sprint is stamina-limited, and when it
+empties you drop to a jog the rex can run down. Carrying eggs slows you down; a
+T-Rex bite can make you fumble one back into the valley. Reach 6 banked to win ("YOU SURVIVED"); hit 0
 health to lose ("DEVOURED").
 
 ## Controls

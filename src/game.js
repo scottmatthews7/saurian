@@ -45,7 +45,7 @@ export async function startGame() {
   const fx = createFx(scene);
   const minimap = createMinimap();
 
-  setLoad("Hatching the raptor…");
+  setLoad("Waking the survivor…");
   const player = await createPlayer(scene, world.shadow, input);
   player.setGroundFn(world.heightAt);
   player.setWaterFn(world.inWater);

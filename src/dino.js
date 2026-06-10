@@ -13,6 +13,25 @@ const MODELS = {
   stegosaurus: "assets/models/stegosaurus.glb",
   apatosaurus: "assets/models/apatosaurus.glb",
   parasaur: "assets/models/parasaur.glb",
+  human: "assets/models/human.glb",
+};
+
+// Per-kind clip-name overrides. The six Quaternius dinos share the
+// `<Species>_<Key>` convention, so each logical key matches the substring
+// `_<Key>` (the default below). The human (Quaternius "Adventurer") uses a
+// different naming scheme — `CharacterArmature|<Clip>` — and has no Walk/Jump/
+// bite clips, so we map the player's logical states onto the clips it does
+// ship: a Roll stands in for the jump leap, a Punch for the "Attack" (bite).
+// Each entry is the exact substring matched against an animation-group name.
+const CLIP_ALIASES = {
+  human: {
+    Idle: "|Idle",     // matches CharacterArmature|Idle (not Idle_Gun etc.)
+    Walk: "|Walk",
+    Run: "|Run",       // CharacterArmature|Run — first match wins over Run_Left etc.
+    Jump: "|Roll",     // no jump clip; the dodge-roll reads as a leap
+    Attack: "|Punch_Right", // no bite; a right punch is the melee "attack"
+    Death: "|Death",
+  },
 };
 
 // approximate native model height so we can normalise scale to a target height
@@ -58,10 +77,16 @@ export async function loadDino(scene, kind, targetHeight, shadow) {
     }
   });
 
-  // Build clip lookup by substring.
+  // Build clip lookup. Each logical key maps to a search substring (the
+  // default `_<Key>` dino convention, overridden per-kind in CLIP_ALIASES).
+  // Prefer an exact tail match (name ends with the alias) so `|Run` doesn't
+  // get shadowed by `|Run_Left`; fall back to a plain substring otherwise.
+  const aliases = CLIP_ALIASES[kind] || {};
   const clips = {};
   for (const key of CLIP_KEYS) {
-    const g = res.animationGroups.find((a) => a.name.includes("_" + key));
+    const needle = aliases[key] || ("_" + key);
+    let g = res.animationGroups.find((a) => a.name.endsWith(needle));
+    if (!g) g = res.animationGroups.find((a) => a.name.includes(needle));
     if (g) { g.stop(); clips[key] = g; }
   }
 

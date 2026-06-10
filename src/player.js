@@ -6,7 +6,7 @@ import { loadDino } from "./dino.js";
 
 export async function createPlayer(scene, shadow, input) {
   const B = window.BABYLON;
-  const dino = await loadDino(scene, "raptor", PLAYER.height, shadow);
+  const dino = await loadDino(scene, "human", PLAYER.height, shadow);
   dino.root.position.set(0, 2, 0);
   const ATTACK_LOCK = PLAYER.attackLockSeconds;
 

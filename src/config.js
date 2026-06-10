@@ -12,8 +12,15 @@ export const ARENA = {
 };
 
 export const PLAYER = {
-  walkSpeed: 7,        // units/sec
-  runSpeed: 14,        // hold Shift
+  // Speeds are grounded in real top speeds and the game's existing unit scale.
+  // Provenance: a human sprints ~30 km/h, a T-Rex tops out ~20 km/h, so a human
+  // sprint should beat the rex by ~1.5x. The internal scale is anchored on the
+  // T-Rex base chase of 11 u/s (TREX.chaseSpeed, unchanged). 1.5 × 11 = 16.5, so
+  // sprint = 16.5 u/s. Walk/jog must stay BELOW the rex so a stamina-drained
+  // player gets run down: walk 7 u/s ≈ 12.7 km/h (a brisk human jog), well under
+  // the rex's 11 u/s — when sprint stamina empties you drop to this and it closes.
+  walkSpeed: 7,        // units/sec (~12.7 km/h jog, below the T-Rex's 11)
+  runSpeed: 16.5,      // hold Shift — sprint ~30 km/h, 1.5x the T-Rex's 20 km/h (11 u/s)
   turnLerp: 0.18,      // rotation smoothing 0..1
   jumpSpeed: 9,
   gravity: -22,
@@ -27,29 +34,33 @@ export const PLAYER = {
   attackLockSeconds: 0.45, // movement-lock duration of a bite (the bite window)
   lungeSpeed: 9,       // forward burst (units/sec) during the bite window
   lungeSeconds: 0.18,  // how long the lunge push lasts within the bite
-  // Sprint stamina — turns infinite-sprint escape into a managed resource so
-  // the T-Rex stays threatening. Values chosen for ~3.3s of sprint then a
-  // recovery window; a deliberate arcade-feel design choice.
+  // Sprint stamina — the core cat-and-mouse lever. The human's 16.5 u/s sprint
+  // (1.5x the T-Rex's 11) opens a gap fast, BUT the rex has superior endurance:
+  // sprint is stamina-gated so you can't run forever. When stamina empties you
+  // drop to walk (7 u/s, below the rex) and it closes the gap — a skilled player
+  // escapes by managing bursts, a careless one who holds Shift gets caught.
+  // Provenance (the cat-and-mouse maths against the rex's 11 u/s chase):
+  //  - full sprint lasts staminaMax/staminaDrain = 100/25 = 4s, covering ~66 u
+  //    at 16.5 while the rex covers ~44 u → a clean ~22 u lead per burst.
+  //  - on exhaustion you can't sprint again until stamina rebuilds past
+  //    staminaSprintMin (35). From empty at staminaRegen 18/s that's ~1.9s of
+  //    forced walk; over that window the rex (11) gains on the walker (7) at
+  //    4 u/s, clawing back ~7.6 u. So each burst+recovery cycle nets the player
+  //    a shrinking lead — manageable with timing, fatal if spammed. A deliberate
+  //    arcade-feel tuning: the human is faster but the rex never tires.
   staminaMax: 100,
-  staminaDrain: 30,     // per second while sprinting (~3.3s of full sprint)
-  // Regen raised 18->24 in session 7. Playtesting (steering bot + frame traces)
-  // showed a sustained T-Rex chase was inescapable: the exhaustion lockout pinned
-  // the raptor at walk speed (7) while the T-Rex sustains 11 u/s, so it stayed in
-  // attack range biting every 1.4s with no way to open a gap. Faster regen
-  // (~4.2s to refill) lets a player who buys a moment with a ROAR actually sprint
-  // home, without removing the drain pressure that keeps infinite-sprint off.
-  staminaRegen: 24,     // per second while not sprinting
-  staminaSprintMin: 10, // need at least this much to start sprinting again
-  // Carry weight, applied as speed *= 1/(1+n*carrySlow). Tuned in session 7
-  // playtesting: at 0.6 a single carried egg dropped sprint to 8.75 u/s — below
-  // the T-Rex's 11 u/s base chase — so the moment you grabbed ANY egg while
-  // hunted you could never reach the nest (verified unwinnable via a steering
-  // bot). At 0.18: 1 egg = 11.9 u/s (just outruns the base T-Rex — escapable
-  // with skill), 2 eggs = 10.3 (tense, roughly matched), 3 = 9.1 (greedy = you
-  // can't escape). Keeps the risk/reward weight; restores a winnable run. At
-  // full dusk the T-Rex chase reaches 13.5, so even 1 egg can't be outrun then —
-  // roar becomes the intended late-game counterplay.
-  carrySlow: 0.18,      // speed multiplier per egg carried, applied as 1/(1+n*x)
+  staminaDrain: 25,     // per second while sprinting (~4s of full sprint)
+  staminaRegen: 18,     // per second while not sprinting (~5.5s to a full refill)
+  staminaSprintMin: 35, // must rebuild stamina past this after exhaustion before sprinting again — the recovery window where the rex closes
+  // Carry weight, applied as speed *= 1/(1+n*carrySlow). Re-tuned for the human's
+  // 16.5 u/s sprint (was 0.18 against the raptor's 14) to preserve the original
+  // risk tiering against the unchanged chase economy (T-Rex base 11, dusk peak
+  // 13.5): at 0.22, 1 egg = 16.5/1.22 = 13.5 u/s (outruns the base rex by day,
+  // matched at deepest dusk — escapable with skill, roar/dash the late counter),
+  // 2 eggs = 16.5/1.44 = 11.5 (just above base, tense), 3 eggs = 16.5/1.66 = 9.9
+  // (below base — greedy and you get run down). Empty-handed sprint (16.5) always
+  // beats any chase, so sprinting unburdened outruns the rex; carrying slows you.
+  carrySlow: 0.22,      // speed multiplier per egg carried, applied as 1/(1+n*x)
   // Intimidating ROAR (Q) — an active panic/utility tool. On a cooldown the
   // raptor bellows: a chasing T-Rex inside the radius is briefly staggered
   // (its pursuit broken), and nearby herbivores bolt in terror. Costs nothing
@@ -70,11 +81,11 @@ export const PLAYER = {
   // T-Rex bite or a pterosaur swoop. It trades against sprint by sharing the
   // stamina pool, so you can't both dash and sustain a sprint indefinitely.
   // All values are arcade-feel design choices, tuned alongside the existing
-  // chase numbers (T-Rex base chase 11, dusk peak 13.5, raptor sprint 14):
+  // chase numbers (T-Rex base chase 11, dusk peak 13.5, human sprint 16.5):
   dashSpeed: 30,        // units/sec during the burst — well above any chase speed so it always opens a gap
   dashSeconds: 0.28,    // burst duration (~8.4 units travelled), enough to clear a bite's reach (attackRange 5)
   dashIFrames: 0.32,    // invuln window — covers the burst + a sliver after, so a frame-perfect dodge negates a hit
-  dashCost: 35,         // stamina spent per dash (~1.2s of sprint), so dashing eats your escape sprint — a real trade
+  dashCost: 35,         // stamina spent per dash (~1.4s of sprint at drain 25) — equals the post-exhaustion sprint floor, so a dash eats a full recovery's worth of stamina; a real trade against your escape sprint
   dashCooldown: 1.6,    // sec between dashes — reactive (far shorter than roar's 6s) but not a constant glide
 };
 
@@ -309,6 +320,10 @@ export const PTERO_DIVE = {
 // If a species visibly runs backwards in the ?probe harness, set its entry to
 // Math.PI here — no code change needed. Verified via window.__probeResult.
 export const FACING_OFFSET = {
+  // The Quaternius "Adventurer" (human player) authors its forward toward -Z,
+  // opposite the dinos, so it needs a half-turn to face its travel heading.
+  // Verified empirically via the ?probe harness (forwardDotTravel sign check).
+  human: Math.PI,
   raptor: 0,
   trex: 0,
   triceratops: 0,
