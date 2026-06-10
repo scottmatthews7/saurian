@@ -63,33 +63,56 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
      denser ground cover (ferns/grass clumps) with distance fade.
    - Keep it performant on a Mac (target 60fps); use instancing for foliage.
 
-3. **Fix Triceratops locomotion** — it "doesn't move very well." Investigate
-   facing offset / wrong clip / speed; make it walk/turn cleanly like the others.
+3. **[DONE] Fix Triceratops locomotion** — own crisper turnLerp (0.14 vs herd
+   0.08), Walk-clip speed matched to ground speed (kills foot-slide), and a
+   post-charge recover settle so it no longer judders from charge→reverse-sprint.
+   Also fixed the obstacle-avoidance JITTER (herbivores "buzzed" against
+   trees/rocks): rewrote `avoidObstacles` to steer tangentially AROUND obstacles
+   on a committed side instead of the radial away-push that flipped sign each
+   frame. Verified in-browser: a triceratops parked against a tree now turns away
+   calmly (heading stable, avg Δ 0.03 rad/frame) instead of vibrating.
 
-4. **Replace the procedural pterosaur** — it "looks like geometric objects (a
-   cone)." Build a proper winged flyer (membrane wings, beak, crest, flap anim)
-   or source a CC0 model. Should read as a pterosaur, not primitives.
+4. **[DONE] Replace the procedural pterosaur** — new `src/flyer.js` builds a
+   proper winged pterosaur (tapered body, long beak, swept head crest, two
+   flapping membrane wings) replacing the cone + box-wings. Drop-in into the
+   world.js flock + dive FSM. Reads as a pterosaur, not primitives.
 
-4c. **More + BETTER dinosaur species (requested; CC-BY now allowed).** Actively
-   source higher-fidelity rigged+ANIMATED dinos — CC-BY is fine, credit in
-   CREDITS.md. Prefer better-looking models than the CC0 toy set where available;
-   also widen the roster (Spinosaurus, Ankylosaurus, Pachycephalosaurus,
-   Brachiosaurus, Compsognathus, Pteranodon, etc.). Download the .glb directly
-   (poly.pizza CC0/CC-BY curl straight in) and drop into assets/models. Only add
-   models that ANIMATE (skip static). Assign each a diet/behaviour so they slot
-   into the existing brains. Report exactly what you added + sources.
+4c. **[DONE — with a hard asset finding] More + BETTER dinosaur species.**
+   FINDING: poly.pizza hosts exactly ONE animated CC0 dinosaur set — the
+   Quaternius Animated Dinosaur Bundle — and we already ship all six of it. There
+   is NO animated CC0/CC-BY Spinosaurus/Ankylosaurus/Pachycephalosaurus/
+   Brachiosaurus/Compsognathus/Pteranodon to download (verified by scraping the
+   poly.pizza species searches + Quaternius profile + the Ultimate Monsters bundle
+   and inspecting each glb's animation list — the rest are STATIC, mostly legacy
+   Poly-by-Google meshes, which the wishlist forbids shipping).
+   So rather than ship static reskins, the roster was widened by REUSING the six
+   animated Quaternius rigs under distinct tint + body-proportion signatures —
+   each new species still animates via the shared clip set but reads as a
+   different animal. Added (herd now spans 9 species): **Spinosaurus**
+   (T-Rex rig, tanky charger), **Ankylosaurus** (Stego rig, ×1.6-HP tank),
+   **Pachycephalosaurus** (Parasaur rig, headbutt-charger), **Brachiosaurus**
+   (Apato rig, ×1.4-HP giant), **Compsognathus** (raptor rig, ×1.4-speed darter).
+   Each has a diet/behaviour. See CREDITS.md for the rig-reuse table + sources.
+   (Therizinosaurus 4b: still no rigged CC0 model — skipped, as the wishlist
+   permits.)
 
 4b. **Therizinosaurus (requested).** No CC0 rigged Therizinosaurus exists in our
    set. Try to source one (poly.pizza/Sketchfab CC0, must be rigged with usable
    anims). If a good one can't be found, SKIP rather than ship a fake reskin —
    tell the user what you found either way.
 
-4d. **Raptor PACKS as a predator (requested).** The raptor model is now free
-   (player is a human). Add raptors as a fast, pack-hunting predator: 2-4 hunting
-   together, flanking/surrounding the player, quicker but weaker than the T-Rex,
-   coordinating their attacks. Reuse the existing raptor.glb + predator brain.
-   Great threat variety vs the lone tank T-Rex. (Confirmed: this game, the human
-   survival one.)
+4d. **[DONE] Raptor PACKS as a predator.** `createRaptorPack` in ai.js spawns a
+   3-5 raptor swarm from difficulty wave 2. Each member holds a fixed,
+   evenly-spaced slot on a ring around the player so the pack ENCIRCLES rather
+   than stacking, then darts straight in inside lunge range. Reuses raptor.glb +
+   the predator-state interface (drops into the game's predator list / roar /
+   minimap / HUD unchanged). Per user feedback: raptors are TURKEY-SIZED
+   (modelHeight 0.75u ≈ 0.7m, verified ~37% of the human's height in-browser) and
+   tuned as a weak swarm — 5 dmg/nip, 24 HP (one player bite fells one), short
+   1.8u reach. Distinctive threat vs the lone tank T-Rex.
+   (Deinonychus, the man-sized scientifically-correct pack-hunter: SKIPPED — no
+   clean animated CC0 model in our set, and adding one needs a separate
+   brain/height; left out per the "optional, only if it slots in cleanly" note.)
 
 5. **Aquatic dinosaurs in the lake** (+ player SWIMMING, low priority: in deep
    water the human swims instead of sinking — swim state/anim, slower than land,
@@ -183,3 +206,12 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
    (turkey-sized) can't reach you up a tree either but may circle below. Needs:
    climbable-tree flagging, climb state/anim on the player, rex tree-shake AI +
    shake impulse, fall-off, HUD grip cue.
+
+11. **SIMPLIFY OBJECTIVES (user-decided, do right after the three-branch merge).**
+   - EGGS: remove the return-to-nest/banking mechanic entirely (nest, banking,
+     combo, cursed-egg lure, bank-based win). Eggs become CONSUMABLE pickups:
+     walk over one → +health and +some stamina. Golden egg = bigger boost.
+   - BEACONS: CUT entirely (user: confused by them; escape is covered by
+     sprint/dash/tree-climbing). Remove beacon code, HUD, spawns.
+   - Interim win/lose: survival time + score until the A→B porter campaign
+     becomes the objective.

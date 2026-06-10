@@ -1,6 +1,6 @@
 import { buildWorld } from "./world.js";
 import { createPlayer, createFollowCamera } from "./player.js";
-import { createTrex, createHerd, setObstacles, setDusk, setLure } from "./ai.js";
+import { createTrex, createHerd, createRaptorPack, setObstacles, setDusk, setLure } from "./ai.js";
 import { createEggs } from "./eggs.js";
 import { createBeacons } from "./beacons.js";
 import { createPickups } from "./pickups.js";
@@ -10,7 +10,7 @@ import { createHUD } from "./hud.js";
 import { createAudio } from "./audio.js";
 import { createFx } from "./fx.js";
 import { createMinimap } from "./minimap.js";
-import { PLAYER, TREX, EGGS, JUICE, AUDIO, PICKUPS, DUSK, BEACONS } from "./config.js";
+import { PLAYER, TREX, EGGS, JUICE, AUDIO, PICKUPS, DUSK, BEACONS, RAPTOR } from "./config.js";
 
 // Nearest uncollected egg to a position, or null if none remain.
 function nearestEgg(eggs, pos) {
@@ -177,6 +177,7 @@ export async function startGame() {
   };
   wirePredator(trex);
   let secondSpawned = false;
+  let packSpawned = false;
 
   // mute toggle (button + M key)
   hud.onMuteClick(() => hud.setMuteLabel(audio.toggleMute()));
@@ -280,6 +281,17 @@ export async function startGame() {
             p2.speedBonus = game.wave * TREX.chaseSpeedRamp;
             wirePredator(p2);
             audio.roar();
+          });
+        }
+        // A coordinated RAPTOR PACK joins from its wave — fast flanking hunters
+        // that surround the player (a different threat from the lone tank T-Rex).
+        if (!packSpawned && wave >= RAPTOR.secondPackWave) {
+          packSpawned = true;
+          const packN = RAPTOR.packMin + Math.floor(Math.random() * (RAPTOR.packMax - RAPTOR.packMin + 1));
+          createRaptorPack(scene, world.shadow, world.heightAt, packN).then((members) => {
+            members.forEach((m) => { m.speedBonus = game.wave * TREX.chaseSpeedRamp; wirePredator(m); });
+            audio.roar();
+            hud.popup("RAPTOR PACK — they hunt together!", "warn");
           });
         }
       }
@@ -511,9 +523,11 @@ export async function startGame() {
   // Soft restart — re-rolls a fresh run in place without reloading the page
   // (keeps the loaded GLBs and the unlocked AudioContext).
   const resetGame = () => {
-    // dispose any extra predators spawned on later waves; keep the first
+    // dispose any extra predators spawned on later waves (2nd T-Rex + raptor
+    // pack); keep the first (the original lone T-Rex)
     while (predators.length > 1) predators.pop().dino.dispose();
     secondSpawned = false;
+    packSpawned = false;
     predators.forEach((p) => p.reset());
     herd.forEach((h) => h.reset());
     eggs.reset();
