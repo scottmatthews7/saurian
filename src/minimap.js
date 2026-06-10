@@ -109,7 +109,10 @@ export function createMinimap() {
         for (const t of predators) {
           if (t.dead) continue;
           const p = t.dino.root.position;
-          dot(p.x, p.z, t.mode === "chase" ? "#ff4d4d" : "#c0392b", 4);
+          // Red = chasing YOU; amber = distracted hunting the herd (exploit it);
+          // dark red = patrolling.
+          const col = t.prey ? "#ff9a3c" : t.mode === "chase" ? "#ff4d4d" : "#c0392b";
+          dot(p.x, p.z, col, 4);
         }
       }
 

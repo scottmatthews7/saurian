@@ -43,6 +43,28 @@ function avoidObstacles(pos, dx, dz) {
 
 const HERB_KINDS = ["triceratops", "stegosaurus", "apatosaurus", "parasaur"];
 
+// Choose the herbivore a T-Rex should hunt this frame (or null to hunt/seek the
+// player). Keeps a committed prey until it dies, escapes past loseRange, or the
+// raptor demands priority; otherwise acquires the nearest live herbivore that is
+// within preySightRange AND clearly nearer than the player (preyCloserBy).
+export function pickPrey(state, pos, distP, herd, sightRange, loseRange, lockedToPlayer) {
+  if (lockedToPlayer || !herd) return null;
+  // Keep current prey if still valid (alive + not escaped).
+  if (state.prey && !state.prey.dead) {
+    const pp = state.prey.dino.root.position;
+    if (Math.hypot(pp.x - pos.x, pp.z - pos.z) <= loseRange) return state.prey;
+  }
+  // Acquire: nearest live herbivore in prey-sight that is clearly nearer than the raptor.
+  let best = null, bd = Infinity;
+  for (const h of herd) {
+    if (h.dead) continue;
+    const hp = h.dino.root.position;
+    const d = Math.hypot(hp.x - pos.x, hp.z - pos.z);
+    if (d < TREX.preySightRange && d < distP - TREX.preyCloserBy && d < bd) { bd = d; best = h; }
+  }
+  return best;
+}
+
 function rand(a, b) { return a + Math.random() * (b - a); }
 function randPointInArena() {
   const r = Math.sqrt(Math.random()) * (ARENA.radius - 6);
@@ -68,14 +90,18 @@ export async function createTrex(scene, shadow, groundFn) {
     enrageGlow: 0,     // re-flash timer for the sustained angry glow
     lastBiteId: -1,    // last player swing id that hit this target (one hit per swing)
     staggered: 0,      // sec remaining frozen/dazed by the player's roar
+    prey: null,        // herbivore currently hunted instead of the player (or null)
+    preyAttackTimer: 0,// cooldown between bites on the hunted herbivore
     onBite: null,    // (set by game) called when the trex lands a bite on the player
     onRoar: null,    // called when entering chase
+    onPreyBite: null,// (set by game) called when the trex bites a herbivore
   };
 
-  state.update = function (dt, player) {
+  state.update = function (dt, player, herd) {
     dino.updateFlash(dt);
     if (state.dead) return;
     state.attackTimer = Math.max(0, state.attackTimer - dt);
+    state.preyAttackTimer = Math.max(0, state.preyAttackTimer - dt);
     const B = window.BABYLON;
     const pos = dino.root.position;
     const pp = player.dino.root.position;
@@ -111,15 +137,41 @@ export async function createTrex(scene, shadow, groundFn) {
     const loseRange = TREX.loseInterestRange + DUSK.trexLoseBonus * DUSK_FACTOR;
     const duskSpeed = DUSK.trexSpeedBonus * DUSK_FACTOR;
 
+    // The T-Rex is a true apex predator: when it is NOT locked onto the raptor
+    // it hunts the herd. The raptor stays the priority — the cursed lure or the
+    // raptor being close (playerPriorityRange) forces a player chase; otherwise
+    // a clearly-nearer herbivore (preyCloserBy nearer than the player, within
+    // preySightRange) pulls aggro. A hunted herbivore is a living decoy the
+    // player can exploit (or whose meat they can steal).
+    const lockedToPlayer = LURE_ACTIVE || distP < TREX.playerPriorityRange;
+    state.prey = pickPrey(state, pos, distP, herd, sightRange, loseRange, lockedToPlayer);
+
     // FSM. The cursed-egg lure forces chase regardless of distance — the egg
     // rings the dinner bell, so sight/lose-interest ranges no longer apply.
     const wasChasing = state.mode === "chase";
-    if (!player.dead && (LURE_ACTIVE || distP < sightRange)) state.mode = "chase";
+    const seesPlayer = !player.dead && (LURE_ACTIVE || distP < sightRange);
+    if (state.prey || seesPlayer) state.mode = "chase";
     else if (state.mode === "chase" && distP > loseRange) state.mode = "patrol";
     if (!wasChasing && state.mode === "chase" && state.onRoar) state.onRoar();
 
     let goal, speed;
-    if (state.mode === "chase") {
+    if (state.mode === "chase" && state.prey) {
+      // Hunting a herbivore. Slightly less frantic than a player chase — no dusk
+      // speed bonus needed; it's culling the herd, not racing the raptor.
+      const preyPos = state.prey.dino.root.position;
+      goal = { x: preyPos.x, z: preyPos.z };
+      speed = TREX.chaseSpeed + state.speedBonus + (enraged ? TREX.enrageSpeedBonus : 0);
+      const distPrey = Math.hypot(preyPos.x - pos.x, preyPos.z - pos.z);
+      if (distPrey < TREX.preyAttackRange) {
+        speed = 0;
+        if (state.preyAttackTimer <= 0) {
+          state.preyAttackTimer = TREX.preyAttackCooldown;
+          dino.play("Attack", { loop: false, speed: 1.2 });
+          state.prey.takeDamage(TREX.preyBite);
+          if (state.onPreyBite) state.onPreyBite(preyPos);
+        }
+      }
+    } else if (state.mode === "chase") {
       goal = { x: pp.x, z: pp.z };
       speed = TREX.chaseSpeed + state.speedBonus + duskSpeed
         + (enraged ? TREX.enrageSpeedBonus : 0)
@@ -174,6 +226,7 @@ export async function createTrex(scene, shadow, groundFn) {
     state.staggered = Math.max(state.staggered, seconds);
     state.mode = "patrol";
     state.target = randPointInArena();
+    state.prey = null;
     dino.flash(0.3, new window.BABYLON.Color3(0.3, 0.4, 0.9));
   };
 
@@ -190,6 +243,8 @@ export async function createTrex(scene, shadow, groundFn) {
     state.enrageGlow = 0;
     state.lastBiteId = -1;
     state.staggered = 0;
+    state.prey = null;
+    state.preyAttackTimer = 0;
     state.dead = false;
     dino.play("Idle");
   };

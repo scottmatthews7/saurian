@@ -94,6 +94,20 @@ export const TREX = {
   // and a sustained angry glow — a comeback threat when you nearly have it.
   enrageThreshold: 0.4,
   enrageSpeedBonus: 3,
+  // HERD PREDATION — the T-Rex is a true apex predator: it hunts the herd, not
+  // just the raptor. This delivers the stated design ("a T-Rex hunts you and the
+  // herd") and creates emergent strategy — herbivores are living decoys. While
+  // NOT locked onto the player (no cursed lure, player out of close range), a
+  // T-Rex that sees a closer herbivore peels off to hunt it: bites it down,
+  // which drops meat the raptor can then scavenge. Lure the predator onto a
+  // stegosaurus to buy yourself a breather, or steal its kill. All arcade-feel
+  // choices, tuned against the existing chase economy.
+  preySightRange: 30,      // < player sightRange (38): the herd must be clearly nearer than a distant raptor to pull aggro
+  preyCloserBy: 8,         // world units the herd must be NEARER than the player before the T-Rex switches off the raptor — keeps the player the priority when both are close
+  preyBite: 30,            // damage per bite to a herbivore (herbivore maxHealth 60 = ~2 bites, same as the raptor's chomp)
+  preyAttackRange: 5.5,    // contact range to bite the prey (~its own attackRange, herbivores are large)
+  preyAttackCooldown: 1.1, // sec between prey bites (a touch faster than its player bite — it's committed to the kill)
+  playerPriorityRange: 16, // if the raptor is within this, the T-Rex always prefers the player over any prey — you can't hide behind a herbivore at point-blank
 };
 
 export const HERBIVORE = {

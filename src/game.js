@@ -175,6 +175,12 @@ export async function startGame() {
       eggs.dropCarried(pp, world.heightAt(pp.x, pp.z));
     };
     p.onRoar = () => audio.roar();
+    // The T-Rex bit a herbivore (herd predation): a chomp SFX + a red spray so
+    // the player reads the predator culling the herd elsewhere on the field.
+    p.onPreyBite = (pos) => {
+      audio.bite();
+      fx.pickupBurst(pos, new B2.Color4(0.75, 0.18, 0.15, 1));
+    };
     predators.push(p);
   };
   wirePredator(trex);
@@ -292,7 +298,7 @@ export async function startGame() {
       let primary = null, primaryD = Infinity;
       const pp0 = player.dino.root.position;
       for (const p of predators) {
-        p.update(dt, player);
+        p.update(dt, player, herd);
         if (p.dead) continue;
         const d = Math.hypot(p.dino.root.position.x - pp0.x, p.dino.root.position.z - pp0.z);
         if (d < primaryD) { primaryD = d; primary = p; }
@@ -320,8 +326,10 @@ export async function startGame() {
         if (stepTimer <= 0) { stepTimer = STEP_INTERVAL; audio.step(); }
       }
 
-      // tension heartbeat from the nearest chasing predator
-      const chasing = primary && primary.mode === "chase" ? primary : null;
+      // tension heartbeat from the nearest predator chasing the PLAYER — a T-Rex
+      // off hunting a herbivore (prey set) is not bearing down on you, so it
+      // mustn't trigger the heartbeat.
+      const chasing = primary && primary.mode === "chase" && !primary.prey ? primary : null;
       if (chasing) {
         const closeness = Math.max(0, 1 - primaryD / TREX.sightRange); // 0 far .. 1 on top
         tensionTimer -= dt;
