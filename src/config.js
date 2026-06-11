@@ -17,6 +17,25 @@ export const ARENA = {
   grassPatches: 1200,  // mid-field grass cards (~4× the old 320; instanced)
 };
 
+// CRASHED PLANE — static set-dressing at the player spawn (the jungle-clearing
+// wreck the survivor wakes beside). Pure visual: no physics, no AI, no collider.
+// The source glb's bbox is tiny (~0.6u), so the loader normalises by the model's
+// own longest axis to targetLength — never a hardcoded scale.
+export const CRASHED_PLANE = {
+  url: "assets/models/crashed_plane.glb",
+  targetLength: 9,        // metres along the longest axis — a small light aircraft (Cessna 172 ≈ 8.3 m); task brief "~8-10 m"
+  // Offset from the player spawn (world origin). The plane is ~9 m long (half ≈
+  // 4.5 m); player collider radius is PLAYER.radius (1.1). 7 m clears the fuselage
+  // half-extent + the collider + a margin so the survivor wakes BESIDE the wreck,
+  // not inside it.
+  offset: { x: 6, z: -4 },
+  yaw: 2.3,               // radians — heading (arbitrary); the wreck just lies flat on the ground
+  // Owner: lay it FLAT on the ground — no pitch, no roll.
+  pitch: 0,               // radians (flat)
+  roll: 0,                // radians (flat)
+  sink: 0.3,              // metres pushed below ground so the belly/wing beds into the soil, not floating
+};
+
 export const PLAYER = {
   // Speeds are grounded in real top speeds and the game's existing unit scale.
   // Provenance: a human sprints ~30 km/h, a T-Rex tops out ~20 km/h, so a human

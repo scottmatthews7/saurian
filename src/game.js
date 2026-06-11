@@ -7,6 +7,7 @@ import { createEggs } from "./eggs.js";
 import { createPickups } from "./pickups.js";
 import { createInventory } from "./inventory.js";
 import { createTools, applyStagger } from "./tools.js";
+import { loadCrashedPlane } from "./setdressing.js";
 import { createInput } from "./input.js";
 import { createTouchControls } from "./touch.js";
 import { createHUD } from "./hud.js";
@@ -61,6 +62,13 @@ export async function startGame() {
   player.setDeepWaterFn(world.isDeepWater);            // deep water => the human SWIMS
   player.setWaterSurfaceFn(() => world.waterSurfaceY); // float at the surface while swimming
   player.warpTo(0, world.heightAt(0, 0), 0);
+
+  // Crashed plane — static set-dressing the survivor wakes beside at spawn. Pure
+  // scenery (no AI/physics), but a solid box collider blocks movement, so add its
+  // footprint to the obstacle list and re-arm AI avoidance.
+  const plane = await loadCrashedPlane(scene, world.shadow, world.heightAt);
+  world.obstacles.push(plane.obstacle);
+  setObstacles(world.obstacles);
 
   const camRig = createFollowCamera(scene, player);
 
