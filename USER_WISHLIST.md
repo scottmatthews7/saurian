@@ -56,7 +56,9 @@ Death-Stranding-with-dinos traverse. Everything below serves this.
   standalone then retrofitted to the rig, so its proportions don't perfectly match
   (body reads long/low vs the glb in `dino-lab` `mode=both`). Re-author the procmesh
   around raptor.glb's actual bone rest positions (read them from the glb) so the
-  fleshed silhouette tracks the rig — keep the iter48 head design, just re-anchor.
+  fleshed silhouette tracks the rig. **Keep ONLY the skin + feathers treatment**
+  (fuzzy-down coat, dense shingled feathers, the 3 colourways) — **do NOT carry over
+  the iter48 head; rebuild the head fresh** to the glb proportions.
 
 ## P4 — GAMEPLAY FEATURES (after the campaign skeleton works)
 - **Health pickups en route** + slow regen (passive regen DONE; world/route packs
