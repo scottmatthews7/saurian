@@ -37,7 +37,7 @@ export const TREX_PART = { BODY: 0, HEAD: 1, ARM_R: 2, ARM_L: 3, LEG_R: 4, LEG_L
 // aligner overlays onto the asset's bones to scale/rotate/translate our mesh
 // onto the rig's bind pose.
 export const TREX_JOINTS = {
-  hips: [0, 3.45, -1.05], head: [0, 4.45, 4.35], tailTip: [0, 3.34, -7.40],
+  hips: [0, 3.45, -1.05], head: [0, 4.45, 4.35], tailTip: [0, 2.955, -7.45],
   foot: [0, 0.12, -0.45], neck: [0, 4.15, 3.55], shoulders: [0, 3.60, 2.35],
 };
 
@@ -176,17 +176,33 @@ export function buildCreature(scene) {
     ctx.fillStyle = "#6e654f";
     ctx.fillRect(0, 0, SZ, SZ);
     // u (texture x) runs around the ring: 0 = belly, 0.5 = spine, 1 = belly.
-    // Darker olive-brown over the back, pale buff on the belly.
+    // Darker olive-brown over the back, pale buff on the belly. v (texture y)
+    // runs along the body, v=0 (canvas bottom) = tail tip: the dorsal stripe
+    // fades over the outer tail so the tapering tail never reads as a dark
+    // fin blade, and the soft stop ramp avoids hard banding edges.
     const grd = ctx.createLinearGradient(0, 0, SZ, 0);
     grd.addColorStop(0.0,  "rgba(196,184,152,0.70)"); // belly
-    grd.addColorStop(0.25, "rgba(140,128,98,0.30)");
+    grd.addColorStop(0.18, "rgba(168,156,126,0.45)");
+    grd.addColorStop(0.32, "rgba(120,110,84,0.32)");
     grd.addColorStop(0.42, "rgba(66,60,42,0.45)");
-    grd.addColorStop(0.50, "rgba(46,42,30,0.65)");    // spine, darkest
+    grd.addColorStop(0.50, "rgba(46,42,30,0.62)");    // spine, darkest
     grd.addColorStop(0.58, "rgba(66,60,42,0.45)");
-    grd.addColorStop(0.75, "rgba(140,128,98,0.30)");
+    grd.addColorStop(0.68, "rgba(120,110,84,0.32)");
+    grd.addColorStop(0.82, "rgba(168,156,126,0.45)");
     grd.addColorStop(1.0,  "rgba(196,184,152,0.70)"); // belly
     ctx.fillStyle = grd;
-    ctx.fillRect(0, 0, SZ, SZ);
+    // tail-fade: full strength to v≈0.3, smoothstep-easing to 85% at the tip.
+    // Painted per pixel row so there are no visible band edges. The floor is
+    // kept HIGH: the dark-top/pale-bottom gradient is the main roundness cue
+    // on the tail — flattening it makes the (round) tail read like a flat fin.
+    for (let row = 0; row < SZ; row++) {
+      const v = 1 - (row + 0.5) / SZ;         // canvas top (v=1, snout) → bottom (v=0, tail)
+      const t = Math.min(1, v / 0.3);
+      const e = t * t * (3 - 2 * t);          // smoothstep
+      ctx.globalAlpha = 0.85 + 0.15 * e;
+      ctx.fillRect(0, row, SZ, 1);
+    }
+    ctx.globalAlpha = 1;
     // dense small mottled blotches (organic, no banding)
     for (let i = 0; i < 2600; i++) {
       const x = Math.random() * SZ, y = Math.random() * SZ;
@@ -260,6 +276,11 @@ export function buildCreature(scene) {
   const eyeMat = new B.PBRMaterial("trexEye", scene);
   eyeMat.albedoColor = new B.Color3(0.45, 0.28, 0.08);
   eyeMat.metallic = 0; eyeMat.roughness = 0.2;
+  eyeMat.emissiveColor = new B.Color3(0.13, 0.08, 0.03); // faint life catchlight
+
+  const pupilMat = new B.PBRMaterial("trexPupil", scene);
+  pupilMat.albedoColor = new B.Color3(0.05, 0.03, 0.02);
+  pupilMat.metallic = 0; pupilMat.roughness = 0.15;
 
   const hideParts = [], clawParts = [], toothParts = [];
   const hidePids = [], clawPids = [], toothPids = [];
@@ -273,33 +294,46 @@ export function buildCreature(scene) {
   // tail out as a counterweight, short S-curved neck, deep skull.
   // Units ≈ metres; total length ≈ 13, hip height ≈ 3.1.
   // ====================================================================
+  // Tail: ROUND/OVAL cross-section all the way out (w ≈ h beyond mid-tail) with
+  // a convex taper — never hT >> w, which reads as a flat fin from 3/4 views.
+  // The outer half is kept SLIM in plan view (no paddle/leaf from top-down) and
+  // the extra station near the tip pins the Catmull-Rom so the tip can't
+  // overshoot into a notched/split silhouette.
   const body = loft("body", [
-    { p: V(0, 3.34, -7.40), w: 0.04, h: 0.045 },              // tail tip (held high)
-    { p: V(0, 3.32, -6.35), w: 0.24, hT: 0.28, hB: 0.24 },
-    { p: V(0, 3.32, -5.05), w: 0.48, hT: 0.56, hB: 0.50 },
-    { p: V(0, 3.36, -3.70), w: 0.70, hT: 0.82, hB: 0.72 },
-    { p: V(0, 3.40, -2.35), w: 0.85, hT: 1.00, hB: 0.92 },    // tail base (fat, deep)
-    { p: V(0, 3.45, -1.05), w: 1.00, hT: 1.08, hB: 1.12, sq: 2.1 }, // hips
-    { p: V(0, 3.40, 0.25),  w: 0.95, hT: 1.05, hB: 1.30, sq: 2.15 }, // belly (keel-deep)
-    { p: V(0, 3.45, 1.40),  w: 0.88, hT: 0.98, hB: 1.28, sq: 2.15 }, // chest (keel-deep)
-    { p: V(0, 3.60, 2.35),  w: 0.76, hT: 0.80, hB: 1.00 },    // shoulders
-    { p: V(0, 3.92, 3.05),  w: 0.64, hT: 0.60, hB: 0.85 },    // neck base (deep throat)
-    { p: V(0, 4.28, 3.60),  w: 0.58, hT: 0.46, hB: 0.62 },    // mid neck (steep S)
-    { p: V(0, 4.48, 4.30),  w: 0.60, hT: 0.44, hB: 0.60, sq: 2.4 }, // head base (nuchal dip)
-    { p: V(0, 4.55, 4.85),  w: 0.70, hT: 0.60, hB: 0.60, sq: 2.8 }, // cranium / cheeks (widest)
-    { p: V(0, 4.50, 5.30),  w: 0.56, hT: 0.48, hB: 0.58, sq: 2.8 }, // over eyes / lacrimal
-    { p: V(0, 4.38, 5.80),  w: 0.46, hT: 0.36, hB: 0.55, sq: 2.6 }, // nasal dip / maxilla
-    { p: V(0, 4.32, 6.25),  w: 0.36, hT: 0.28, hB: 0.42, sq: 2.3 }, // snout (blunt)
-    { p: V(0, 4.28, 6.62),  w: 0.10, hT: 0.08, hB: 0.14 },    // nose cap (blunt)
+    { p: V(0, 2.955, -7.45), w: 0.012, h: 0.012 },            // tail end cap (near-point ring:
+                                                              // an open 0.04 ring notches the
+                                                              // silhouette + catches light)
+    { p: V(0, 2.96, -7.40), w: 0.04, h: 0.04 },               // tail tip (round)
+    { p: V(0, 2.99, -7.15), w: 0.12, h: 0.12 },               // tip control (no spline kink)
+    { p: V(0, 3.02, -6.95), w: 0.19, hT: 0.19, hB: 0.19 },    // outer tail (round, slim)
+    { p: V(0, 3.10, -6.35), w: 0.33, hT: 0.34, hB: 0.33 },    // (round, convex taper)
+    { p: V(0, 3.20, -5.05), w: 0.55, hT: 0.58, hB: 0.55 },    // mid tail (oval, slim plan)
+    { p: V(0, 3.31, -3.70), w: 0.74, hT: 0.78, hB: 0.72 },    // (oval, not bladed)
+    { p: V(0, 3.40, -2.35), w: 0.88, hT: 0.94, hB: 0.86 },    // tail base (fat, near-round)
+    { p: V(0, 3.45, -1.05), w: 1.00, hT: 1.12, hB: 1.24, sq: 2.1 }, // hips
+    { p: V(0, 3.40, 0.25),  w: 0.96, hT: 1.14, hB: 1.58, sq: 2.15 }, // belly (keel-deep, ~1.4:1)
+    { p: V(0, 3.45, 1.40),  w: 0.90, hT: 1.08, hB: 1.54, sq: 2.15 }, // chest (keel-deep)
+    { p: V(0, 3.60, 2.35),  w: 0.78, hT: 0.84, hB: 1.18 },    // shoulders
+    { p: V(0, 3.92, 3.05),  w: 0.66, hT: 0.62, hB: 0.92 },    // neck base (deep throat)
+    { p: V(0, 4.28, 3.60),  w: 0.60, hT: 0.48, hB: 0.66 },    // mid neck (thick S)
+    { p: V(0, 4.46, 4.30),  w: 0.62, hT: 0.54, hB: 0.68, sq: 2.5 }, // head base (nuchal dip)
+    { p: V(0, 4.52, 4.85),  w: 0.74, hT: 0.72, hB: 0.84, sq: 3.1 }, // cranium / cheeks (boxy, deep)
+    { p: V(0, 4.50, 5.32),  w: 0.68, hT: 0.60, hB: 0.80, sq: 3.2 }, // over eyes / lacrimal (flat roof)
+    { p: V(0, 4.42, 5.82),  w: 0.52, hT: 0.44, hB: 0.76, sq: 2.9 }, // nasal dip / maxilla (deep)
+    { p: V(0, 4.38, 6.30),  w: 0.42, hT: 0.34, hB: 0.64, sq: 2.6 }, // snout (blunt, deep)
+    { p: V(0, 4.36, 6.68),  w: 0.14, hT: 0.10, hB: 0.26 },    // nose cap (blunt)
+    { p: V(0, 4.33, 6.74),  w: 0.015, hT: 0.015, hB: 0.02 },  // nose end cap (near-point ring:
+                                                              // the open ring's forward-lit band
+                                                              // read as a white blaze face-on)
   ], { ringN: 40, samplesPerSpan: 8 });
   addHide(body, P.BODY);
 
   // nostril ridges — small bumps either side of the snout top
   for (const s of [1, -1]) {
     const nostril = loft(`nostril${s}`, [
-      { p: V(s * 0.13, 4.56, 5.92), w: 0.03, h: 0.03 },
-      { p: V(s * 0.15, 4.60, 6.12), w: 0.07, hT: 0.05, hB: 0.06 },
-      { p: V(s * 0.12, 4.55, 6.34), w: 0.03, h: 0.03 },
+      { p: V(s * 0.13, 4.70, 6.00), w: 0.03, h: 0.03 },
+      { p: V(s * 0.15, 4.78, 6.22), w: 0.07, hT: 0.05, hB: 0.06 },
+      { p: V(s * 0.12, 4.66, 6.45), w: 0.03, h: 0.03 },
     ], { ringN: 10, samplesPerSpan: 5 });
     addHide(nostril, P.HEAD);
   }
@@ -308,18 +342,19 @@ export function buildCreature(scene) {
   // LOWER JAW — slightly open; slimmer than the upper so teeth overbite.
   // ====================================================================
   const jaw = loft("jaw", [
-    { p: V(0, 4.10, 4.50), w: 0.08, h: 0.08 },                 // hinge (buried)
-    { p: V(0, 3.85, 4.95), w: 0.48, hT: 0.14, hB: 0.50, sq: 2.6 }, // rear jaw (deep surangular)
-    { p: V(0, 3.74, 5.55), w: 0.38, hT: 0.12, hB: 0.36, sq: 2.5 },
-    { p: V(0, 3.68, 6.15), w: 0.27, hT: 0.11, hB: 0.26, sq: 2.2 },
-    { p: V(0, 3.66, 6.45), w: 0.07, h: 0.08 },                 // chin tip
+    { p: V(0, 4.00, 4.50), w: 0.08, h: 0.08 },                 // hinge (buried)
+    { p: V(0, 3.72, 4.95), w: 0.54, hT: 0.16, hB: 0.50, sq: 2.7 }, // rear jaw (deep surangular)
+    { p: V(0, 3.58, 5.55), w: 0.44, hT: 0.14, hB: 0.38, sq: 2.5 },
+    { p: V(0, 3.53, 6.15), w: 0.31, hT: 0.12, hB: 0.30, sq: 2.2 },
+    { p: V(0, 3.51, 6.50), w: 0.09, h: 0.10 },                 // chin tip
+    { p: V(0, 3.50, 6.55), w: 0.015, h: 0.015 },               // chin end cap (close the ring)
   ], { ringN: 22, samplesPerSpan: 6 });
   addHide(jaw, P.HEAD);
 
   // mouth interior — dark mass filling the gape so it never reads hollow
   const mouth = B.MeshBuilder.CreateSphere("mouth", { diameter: 1, segments: 14 }, scene);
-  mouth.scaling = V(0.40, 0.30, 1.50);
-  mouth.position = V(0, 3.92, 5.30);
+  mouth.scaling = V(0.42, 0.32, 1.55);
+  mouth.position = V(0, 3.72, 5.35);
   mouth.material = mouthMat;
   mouth.parent = root;
   headMeshes.push(mouth);
@@ -342,32 +377,52 @@ export function buildCreature(scene) {
       }
     }
   }
-  // upper row: follows the maxilla's lower edge (bottom of the body loft)
-  toothRow(9, 5.10, 6.35,
-    (t) => 3.96 - 0.08 * t,            // gum line drops slightly to the snout
-    (t) => 0.40 - 0.19 * t,            // narrows toward the snout tip
+  // upper row: follows the maxilla's lower edge (bottom of the body loft),
+  // which now dips mid-snout then rises at the premaxilla.
+  toothRow(9, 5.10, 6.28,
+    (t) => 3.80 - 0.14 * t + 0.20 * t * t, // gum dips mid-maxilla, lifts at tip
+                                           // (extra front lift tucks the premaxilla
+                                           // teeth up so they don't read as a
+                                           // tusk-curtain from the front)
+    (t) => 0.45 - 0.24 * t,            // narrows toward the snout tip
     0.32, -1);
   // lower row: rises from the jaw rim, slightly inset
-  toothRow(7, 5.20, 6.18,
-    (t) => 3.84 - 0.05 * t,
-    (t) => 0.32 - 0.13 * t,
+  toothRow(7, 5.20, 6.15,
+    (t) => 3.72 - 0.11 * t,
+    (t) => 0.36 - 0.15 * t,
     0.20, +1);
 
   // ====================================================================
   // EYES + BROW RIDGES — embedded in the skull side, bony boss above.
   // ====================================================================
+  // T. rex had the largest eyes of any land animal (~13 cm ball) set FORWARD-
+  // FACING in sockets under a heavy bony brow. Eyeball oversized for read
+  // (~0.019 L), bulging proud of the lacrimal under a low swept brow ridge,
+  // with a dark cornea offset along a strongly forward gaze so the binocular
+  // predator stare reads from the front.
   for (const s of [1, -1]) {
-    const eye = B.MeshBuilder.CreateSphere(`eye${s}`, { diameter: 0.20, segments: 12 }, scene);
-    eye.position = V(s * 0.53, 4.62, 5.22);
+    const eye = B.MeshBuilder.CreateSphere(`eye${s}`, { diameter: 0.27, segments: 16 }, scene);
+    eye.position = V(s * 0.60, 4.70, 5.36);
     eye.material = eyeMat;
     eye.parent = root;
     headMeshes.push(eye);
-    // brow boss: a bony ridge proud of the skull roof above the eye
+    // cornea/pupil: dark glossy cap sitting on the eyeball along the gaze
+    // direction (mostly forward, slightly outward) — legible from the front.
+    const gaze = V(s * 0.24, 0.0, 0.97).normalize();
+    const pupil = B.MeshBuilder.CreateSphere(`pupil${s}`, { diameter: 0.17, segments: 12 }, scene);
+    pupil.position = eye.position.add(gaze.scale(0.10));
+    pupil.material = pupilMat;
+    pupil.parent = root;
+    headMeshes.push(pupil);
+    // brow boss: a LOW swept bony ridge hugging the skull side above the eye
+    // (postorbital bar). Kept below the skull roofline so it never breaks the
+    // top silhouette as "ears" from the front; deep underside overhangs the
+    // eyeball so the ball reads set in a shaded socket.
     const brow = loft(`brow${s}`, [
-      { p: V(s * 0.46, 4.88, 4.88), w: 0.05, h: 0.05 },
-      { p: V(s * 0.52, 4.96, 5.10), w: 0.17, hT: 0.14, hB: 0.15 },
-      { p: V(s * 0.49, 4.92, 5.35), w: 0.13, hT: 0.11, hB: 0.12 },
-      { p: V(s * 0.42, 4.78, 5.52), w: 0.05, h: 0.05 },
+      { p: V(s * 0.50, 4.84, 4.92), w: 0.07, h: 0.05 },
+      { p: V(s * 0.56, 4.90, 5.18), w: 0.20, hT: 0.08, hB: 0.14 },
+      { p: V(s * 0.54, 4.88, 5.44), w: 0.16, hT: 0.07, hB: 0.12 },
+      { p: V(s * 0.44, 4.78, 5.66), w: 0.06, h: 0.04 },
     ], { ringN: 12, samplesPerSpan: 5 });
     addHide(brow, P.HEAD);
   }
@@ -389,14 +444,25 @@ export function buildCreature(scene) {
       { p: V(s * 0.80, 0.17, -0.27), w: 0.25, hT: 0.19, hB: 0.17 }, // foot top
     ], { ringN: 22, samplesPerSpan: 6 });
     addHide(leg, legPid);
+    buildFoot(s, legPid);
+  }
 
-    // three clawed toes fanning forward from the foot
-    const splay = [{ a: -0.42, l: 0.72 }, { a: 0, l: 0.95 }, { a: 0.42, l: 0.70 }];
-    for (let t = 0; t < 3; t++) {
-      const { a: a0, l } = splay[t];
-      const a = a0 * s; // mirror the toe fan so left/right feet match exactly
-      const bx = s * 0.88 + (t - 1) * s * 0.16;
-      const bz = -0.25;
+  // ONE canonical foot definition (right side, s=+1); the left foot is the
+  // exact mirror of it (x → −x, fan angle → −angle, claw yaw → −yaw), so both
+  // feet are guaranteed identical and can never drift apart.
+  // Three forward toes + a small raised inner dewclaw (hallux) pointing back.
+  const FOOT = {
+    toes: [{ a: -0.42, l: 0.72 }, { a: 0, l: 0.95 }, { a: 0.42, l: 0.70 }],
+    toeBaseX: 0.88, toeSpacingX: 0.16, toeBaseZ: -0.25,
+    clawLen: 0.38, clawDia: 0.16, clawPitch: Math.PI / 2 + 0.55,
+    hallux: { bx: 0.66, bz: -0.36, ex: 0.58, ez: -0.62 }, // inner rear stub
+  };
+  function buildFoot(s, legPid) {
+    for (let t = 0; t < FOOT.toes.length; t++) {
+      const { a: a0, l } = FOOT.toes[t];
+      const a = a0 * s; // mirrored fan
+      const bx = s * (FOOT.toeBaseX + (t - 1) * FOOT.toeSpacingX);
+      const bz = FOOT.toeBaseZ;
       const ex = bx + Math.sin(a) * l;
       const ez = bz + Math.cos(a) * l;
       const toe = loft(`toe${s}_${t}`, [
@@ -406,14 +472,27 @@ export function buildCreature(scene) {
         { p: V(ex + Math.sin(a) * 0.12, 0.10, ez + Math.cos(a) * 0.12), w: 0.025, h: 0.025 },
       ], { ringN: 12, samplesPerSpan: 5 });
       addHide(toe, legPid);
-      // claw
       const cl = B.MeshBuilder.CreateCylinder(`claw${s}_${t}`,
-        { diameterTop: 0, diameterBottom: 0.16, height: 0.38, tessellation: 8 }, scene);
-      cl.rotation.x = Math.PI / 2 + 0.55;
+        { diameterTop: 0, diameterBottom: FOOT.clawDia, height: FOOT.clawLen, tessellation: 8 }, scene);
+      cl.rotation.x = FOOT.clawPitch;
       cl.rotation.y = a;
       cl.position = V(ex + Math.sin(a) * 0.24, 0.07, ez + Math.cos(a) * 0.24);
       addClaw(cl, legPid);
     }
+    // dewclaw / hallux: small raised stub on the inner rear of the foot,
+    // pointing backward, claw clear of the ground.
+    const H = FOOT.hallux;
+    const stub = loft(`hallux${s}`, [
+      { p: V(s * H.bx, 0.26, H.bz), w: 0.06, h: 0.07 },
+      { p: V(s * (H.bx + H.ex) / 2, 0.21, (H.bz + H.ez) / 2), w: 0.065, h: 0.07 },
+      { p: V(s * H.ex, 0.18, H.ez), w: 0.03, h: 0.03 },
+    ], { ringN: 10, samplesPerSpan: 5 });
+    addHide(stub, legPid);
+    const hc = B.MeshBuilder.CreateCylinder(`halluxClaw${s}`,
+      { diameterTop: 0, diameterBottom: 0.08, height: 0.18, tessellation: 6 }, scene);
+    hc.rotation.x = -(Math.PI / 2 + 0.45); // apex backward, tipped down
+    hc.position = V(s * (H.ex - 0.01), 0.15, H.ez - 0.10);
+    addClaw(hc, legPid);
   }
   buildLeg(1);
   buildLeg(-1);
@@ -424,18 +503,18 @@ export function buildCreature(scene) {
   function buildArm(s) {
     const armPid = s > 0 ? P.ARM_R : P.ARM_L;
     const arm = loft(`arm${s}`, [
-      { p: V(s * 0.62, 3.30, 2.40), w: 0.17, h: 0.22 },        // buried in chest
-      { p: V(s * 0.92, 2.95, 2.38), w: 0.15, hT: 0.17, hB: 0.17 }, // upper arm (back-down)
-      { p: V(s * 0.98, 2.62, 2.42), w: 0.11, h: 0.12 },         // elbow (flexed)
-      { p: V(s * 0.92, 2.50, 2.78), w: 0.09, h: 0.10 },         // forearm (forward)
-      { p: V(s * 0.88, 2.42, 3.02), w: 0.06, h: 0.065 },        // wrist
+      { p: V(s * 0.64, 3.30, 2.40), w: 0.18, h: 0.23 },        // buried in chest
+      { p: V(s * 0.94, 2.95, 2.38), w: 0.16, hT: 0.18, hB: 0.18 }, // upper arm (back-down)
+      { p: V(s * 1.00, 2.62, 2.42), w: 0.115, h: 0.125 },       // elbow (flexed)
+      { p: V(s * 0.94, 2.50, 2.78), w: 0.095, h: 0.105 },       // forearm (forward)
+      { p: V(s * 0.90, 2.42, 3.02), w: 0.065, h: 0.07 },        // wrist
     ], { ringN: 12, samplesPerSpan: 5 });
     addHide(arm, armPid);
     for (const f of [0.06, -0.06]) {
       const fc = B.MeshBuilder.CreateCylinder(`finger${s}${f}`,
         { diameterTop: 0, diameterBottom: 0.07, height: 0.26, tessellation: 6 }, scene);
       fc.rotation.x = Math.PI / 2 + 0.5;
-      fc.position = V(s * 0.88 + f, 2.36, 3.16);
+      fc.position = V(s * 0.90 + f, 2.38, 3.12); // base buried in the wrist
       addClaw(fc, armPid);
     }
   }
