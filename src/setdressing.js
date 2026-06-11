@@ -4,7 +4,7 @@
 // but the model is inert — it just casts/receives shadows and (optionally) blocks
 // movement via a simple box collider rather than the 28k-tri visual mesh.
 
-import { CRASHED_PLANE } from "./config.js";
+import { CRASHED_PLANE, STEGO_SKELETON, OLD_TREE } from "./config.js";
 
 // World-space bounding box of a freshly imported mesh hierarchy (min/max corners).
 function worldBounds(B, meshes) {
@@ -88,4 +88,103 @@ export async function loadCrashedPlane(scene, shadow, heightAt) {
   // Footprint radius for AI avoidance: half the horizontal diagonal of the box.
   const r = 0.5 * Math.hypot(planeSize.x, planeSize.z);
   return { root, collider: box, obstacle: { x, z, r } };
+}
+
+// Shared glb import + own-longest-axis normalisation for a static prop. Imports
+// the mesh hierarchy, parents it under a fresh root, scales by the model's OWN
+// longest axis up to targetLength metres (the source bbox is in arbitrary
+// units), and enables shadow cast/receive like the plane. Returns the root, the
+// imported meshes, and the loader's Babylon namespace so the caller can pose +
+// bed the prop. The visual mesh stays non-colliding (these props don't block
+// movement).
+async function loadStaticProp(scene, shadow, cfg, rootName, targetLongest) {
+  const B = window.BABYLON;
+  const lastSlash = cfg.url.lastIndexOf("/") + 1;
+  const rootUrl = cfg.url.slice(0, lastSlash);
+  const file = cfg.url.slice(lastSlash);
+  const res = await B.SceneLoader.ImportMeshAsync("", rootUrl, file, scene);
+
+  const root = new B.TransformNode(rootName, scene);
+  res.meshes[0].parent = root;
+
+  const native = worldBounds(B, res.meshes);
+  const size = native.max.subtract(native.min);
+  const longest = Math.max(size.x, size.y, size.z);
+  root.scaling.setAll(targetLongest / Math.max(0.0001, longest));
+
+  res.meshes.forEach((m) => {
+    if (!m.getTotalVertices || !m.getTotalVertices()) return;
+    m.receiveShadows = true;
+    m.isPickable = false;
+    if (shadow) shadow.addShadowCaster(m);
+  });
+
+  return { B, root, meshes: res.meshes };
+}
+
+// Load the half-buried Stegosaurus SKELETON in the desert. Normalised to a real
+// ~8 m fossil by its own longest axis, laid on its side (roll) with a slight
+// pitch + yaw so it reads as fallen, then SUNK so only the upper portion of the
+// rolled ribcage/plates protrudes above the sand — a part-excavated dig, not a
+// standing skeleton. Static scenery: no collider, no AI footprint.
+export async function loadStegoSkeleton(scene, shadow, heightAt) {
+  const cfg = STEGO_SKELETON;
+  const { B, root, meshes } = await loadStaticProp(
+    scene, shadow, cfg, "stegoSkeleton_root", cfg.targetLength,
+  );
+
+  // Lay the fossil on its FLANK, not standing. The model imports standing with
+  // its nose-to-tail length along Z and its standing height along Y, so a 90°
+  // roll about the model's own length (Z) axis tips it onto its side. We compose
+  // the attitude explicitly with quaternions so the flank-roll is applied in the
+  // MODEL frame FIRST (before yaw), avoiding the Euler-order trap where a yaw
+  // re-points the roll axis and leaves the creature upright. Order applied to a
+  // model-frame vector: flank-roll (about Z) -> slump pitch (about X) -> heading
+  // yaw (about world Y).
+  const flank = B.Quaternion.RotationAxis(B.Axis.Z, cfg.roll);   // 90° onto its side
+  const slump = B.Quaternion.RotationAxis(B.Axis.X, cfg.pitch);  // slight nose-down lean
+  const heading = B.Quaternion.RotationAxis(B.Axis.Y, cfg.yaw);  // world heading
+  root.rotationQuaternion = heading.multiply(slump).multiply(flank);
+
+  const x = cfg.position.x;
+  const z = cfg.position.z;
+  const groundY = heightAt(x, z);
+  root.position.set(x, groundY, z);
+  root.computeWorldMatrix(true);
+
+  // Re-measure the scaled + ROLLED bounds, then drop the lowest point to the
+  // sand and sink by buriedFraction of the (now-low, on-its-side) height so only
+  // the top fraction of the fossil shows above the surface.
+  const posed = worldBounds(B, meshes);
+  const rolledHeight = posed.max.y - posed.min.y;
+  root.position.y += groundY - posed.min.y - cfg.buriedFraction * rolledHeight;
+  root.computeWorldMatrix(true);
+
+  return { root, meshes };
+}
+
+// Load the old dead TREE upright on the desert sand a few metres from the
+// fossil. Normalised to a real ~8 m tree by its own tallest axis, given a slight
+// yaw, and bedded so the trunk base sits in the sand. Static scenery: no
+// collider, no AI footprint.
+export async function loadOldTree(scene, shadow, heightAt) {
+  const cfg = OLD_TREE;
+  const { B, root, meshes } = await loadStaticProp(
+    scene, shadow, cfg, "oldTree_root", cfg.targetHeight,
+  );
+
+  root.rotation = new B.Vector3(0, cfg.yaw, 0);
+
+  const x = cfg.position.x;
+  const z = cfg.position.z;
+  const groundY = heightAt(x, z);
+  root.position.set(x, groundY, z);
+  root.computeWorldMatrix(true);
+
+  // Bed the trunk base: drop the lowest point to the sand, then sink slightly.
+  const posed = worldBounds(B, meshes);
+  root.position.y += groundY - posed.min.y - cfg.sink;
+  root.computeWorldMatrix(true);
+
+  return { root, meshes };
 }

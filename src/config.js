@@ -36,6 +36,45 @@ export const CRASHED_PLANE = {
   sink: 0.3,              // metres pushed below ground so the belly/wing beds into the soil, not floating
 };
 
+// DESERT SET-DRESSING — a small fossil vignette in the dry zone (ENV.dryZone,
+// centre -70,-120, radius 60): a half-excavated Stegosaurus SKELETON sunk on its
+// side in the sand, with an old dead tree standing a few metres beside it. Both
+// are pure scenery: no AI, no physics, no collider (they don't block movement),
+// they just cast/receive shadows like the crashed plane. Position is an absolute
+// world (x,z); the loaders normalise by each model's OWN longest axis to the
+// target metres (the source bboxes are arbitrary units), so no hardcoded scale.
+
+// STEGOSAURUS SKELETON — a fossil HALF-BURIED in the desert sand, NOT standing.
+// The source glb's long axis (nose-to-tail) ≈ 6.7 native units; normalised to
+// targetLength metres. Laid on its side (roll ≈ 86°) with a slight extra pitch +
+// off-axis yaw so it reads as a fallen, sunk carcass, then SUNK so only a
+// fraction of its (rolled) height shows above the sand — a part-excavated dig.
+export const STEGO_SKELETON = {
+  url: "assets/models/stego_skeleton.glb",
+  position: { x: -70, z: -118 },  // desert core (ENV.dryZone centre -70,-120), inside arena radius 180
+  targetLength: 8,        // metres along the longest axis — a real Stegosaurus is ~7-9 m nose-to-tail
+  // Fallen-on-its-side attitude. Roll ~86° lays it on a flank; a small pitch +
+  // off-axis yaw stop it looking deliberately placed (it slumped and sank).
+  pitch: 0.12,            // radians — slight nose-down slump
+  yaw: 0.7,               // radians — fossil lies at an angle to the world axes
+  roll: 1.5,              // radians (~86°) — laid on its side, NOT upright
+  // buriedFraction of the prop's final (rolled) height is sunk below the sand,
+  // so only the top ~45% (upper ribcage / plates / a limb) protrudes — a
+  // half-excavated fossil rather than a skeleton resting on the surface.
+  buriedFraction: 0.55,   // 0..1 of the rolled bbox height pushed under the sand surface
+};
+
+// OLD DEAD TREE — a bare, sun-bleached tree standing UPRIGHT on the sand a few
+// metres from the fossil. The source glb's tallest axis ≈ 1.9 native units;
+// normalised to targetHeight metres. Slight yaw so it isn't axis-aligned.
+export const OLD_TREE = {
+  url: "assets/models/old_tree.glb",
+  position: { x: -66, z: -122 },  // ~4.5 m from the skeleton — a desert vignette pairing
+  targetHeight: 8,        // metres tall — a real mature tree is ~6-10 m
+  yaw: 2.1,               // radians — arbitrary heading so it doesn't face the axes
+  sink: 0.2,              // metres pushed below ground so the trunk base beds into the sand, not floating
+};
+
 export const PLAYER = {
   // Speeds are grounded in real top speeds and the game's existing unit scale.
   // Provenance: a human sprints ~30 km/h, a T-Rex tops out ~20 km/h, so a human

@@ -7,7 +7,7 @@ import { createEggs } from "./eggs.js";
 import { createPickups } from "./pickups.js";
 import { createInventory } from "./inventory.js";
 import { createTools, applyStagger } from "./tools.js";
-import { loadCrashedPlane } from "./setdressing.js";
+import { loadCrashedPlane, loadStegoSkeleton, loadOldTree } from "./setdressing.js";
 import { createInput } from "./input.js";
 import { createTouchControls } from "./touch.js";
 import { createHUD } from "./hud.js";
@@ -69,6 +69,11 @@ export async function startGame() {
   const plane = await loadCrashedPlane(scene, world.shadow, world.heightAt);
   world.obstacles.push(plane.obstacle);
   setObstacles(world.obstacles);
+
+  // Desert fossil vignette — a half-buried Stegosaurus skeleton + an old dead
+  // tree beside it (static scenery, no collider/AI; shadows like the plane).
+  await loadStegoSkeleton(scene, world.shadow, world.heightAt);
+  await loadOldTree(scene, world.shadow, world.heightAt);
 
   const camRig = createFollowCamera(scene, player);
 
