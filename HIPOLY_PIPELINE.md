@@ -60,6 +60,12 @@ Quaternius clip set (per rig): `<Species>_{Idle,Walk,Run,Jump,Attack,Death}`.
    substring `_Walk`/`_Run`/`_Idle`/`_Jump`/`_Attack`/`_Death` (e.g. `TRex_Walk`).
 6. **Export** only the target armature + mesh + 6 baked actions → `<model>_hi_anim.glb`
    (glTF, +Y up, keep skinning + texture; drop the source armature).
+7. **⚠️ FIX QUATERNION CONTINUITY** — run `node tools/fix_quat_continuity.mjs
+   assets/models/<model>_hi_anim.glb`. Baked Blender→glTF rotation tracks often emit
+   consecutive keyframes in opposite hemispheres (q vs −q); glTF LINEAR interpolation
+   then takes the long way and the model **VIBRATES during playback** even though
+   every frozen/stepped frame looks perfect (this bit all three of the first roster
+   bakes). The fixer unrolls the signs in place. NON-NEGOTIABLE for every baked glb.
 
 ## Wire into the game (`src/dino.js`)
 - `MODELS.<kind> = "assets/models/<model>_hi_anim.glb"`.
