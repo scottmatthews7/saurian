@@ -198,7 +198,19 @@ export function buildWorld(scene) {
   ground.updateVerticesData(B.VertexBuffer.PositionKind, positions);
   ground.setVerticesData(B.VertexBuffer.ColorKind, colors);
   ground.createNormals(true);
-  ground.checkCollisions = true;
+  // The player follows the terrain by SNAPPING its collider to heightAt(x,z)
+  // every frame (see player.js groundFloor snap), not by colliding with this
+  // mesh. Leaving ground.checkCollisions on made the player's moveWithCollisions
+  // ellipsoid WEDGE against the terrain on gentle DOWN-slopes (gravity pushes it
+  // into the slope face ahead, the collide-and-slide response cancels the
+  // forward step, and the per-frame Y-snap re-seats it — so forward input yields
+  // ~zero progress: the owner's "invisible wall", reproduced on the desert→coast
+  // descent). The terrain has no genuine cliffs (gradient grid: nothing steeper
+  // than ~0.08/unit), so the snap alone follows it cleanly. Trees, rocks and
+  // mesas keep their own checkCollisions, so real obstacles still stop the
+  // player; deep water and the arena rim are handled in player.js. Result: the
+  // whole map is traversable, blocked only by genuine solids.
+  ground.checkCollisions = false;
   ground.receiveShadows = true;
 
   const groundMat = makeGroundPBR(scene);
@@ -886,7 +898,7 @@ function buildAtmosphere(scene, heightAt) {
 // An alpha-cut card material: a CC0 cutout atlas (Color + separate Opacity),
 // cut by ALPHA-TEST (not blending — sort-free + cheap), double-sided, tinted
 // per palette entry. Lit by the scene so cards catch the sun + IBL.
-function makeCardMaterial(scene, name, albedoFile, opacityFile, tint) {
+function makeCardMaterial(scene, name, albedoFile, opacityFile, tint, opts = {}) {
   const B = window.BABYLON;
   const base = ENV.texturePath;
   const m = new B.StandardMaterial(name, scene);
@@ -897,9 +909,38 @@ function makeCardMaterial(scene, name, albedoFile, opacityFile, tint) {
   m.diffuseColor = new B.Color3(tint[0], tint[1], tint[2]);
   m.specularColor = B.Color3.Black();
   m.backFaceCulling = false;                  // cards visible from both sides
+  // Crossed-quad cards are double-sided; without two-sided lighting the back
+  // face of each quad keeps the front normal and lights as if facing AWAY from
+  // the sun, so a blade seen from its back reads near-black. Flip the normal
+  // per-face so both sides catch the light.
+  m.twoSidedLighting = true;
   m.transparencyMode = B.Material.MATERIAL_ALPHATEST;
-  m.alphaCutOff = ENV.alphaCutOff;
+  // Per-material alpha-test threshold. The grass-blade opacity map keeps only a
+  // narrow white spine per blade at the default 0.4, so the alpha-test discarded
+  // all but the blade's dark central vein — thin dark strands. A LOWER cutoff
+  // (passed in for grass) keeps more of the fuller blade body. Leaf cards keep
+  // the default. See ENV.grassAlphaCutOff.
+  m.alphaCutOff = opts.alphaCutOff ?? ENV.alphaCutOff;
   m.useAlphaFromDiffuseTexture = false;
+  // DARK-SLIVER FIX (owner: "glitchy dark vertical slivers across the grass").
+  // The ground is PBR lit by the HDRI environment (IBL); these cards are
+  // StandardMaterial and get NO IBL. WORSE, the grass-blade albedo is itself a
+  // dark olive (measured avg ≈ RGB[80,104,51]/255 over the opaque blade pixels),
+  // so a near-vertical blade — catching little hemi/sun on its sideways face and
+  // no IBL — renders far DARKER than the bright grass ground around it: the dark
+  // slivers. Fix (grass only, via opts.brighten): (a) lift the sampled albedo
+  // with diffuseTexture.level so the blade colour leaves the dark band, and
+  // (b) make the blade SELF-ILLUMINATE from its own (brightened) texture so it
+  // never sinks to black on a shadowed/edge-on face — i.e. emissiveTexture =
+  // the albedo at emissiveColor = brighten.selfIllum. Together the blades sit in
+  // the same brightness band as the lit ground and read as lush grass. Leaf
+  // cards (no opts.brighten) keep the original look.
+  if (opts.brighten) {
+    m.diffuseTexture.level = opts.brighten.texLevel;
+    m.emissiveTexture = m.diffuseTexture;     // self-light by the blade's own texture
+    const si = opts.brighten.selfIllum;
+    m.emissiveColor = new B.Color3(si, si, si);
+  }
   return m;
 }
 
@@ -1195,15 +1236,18 @@ function scatterFoliage(scene, shadow, heightAt) {
   // narrow U band (a few blades) at full V (the tall blade). Two crossed quads.
   const grassCols = [[0.0, 0.28], [0.30, 0.58], [0.60, 0.88], [0.12, 0.42]];
   const grassSources = [];
-  ENV.foliageGreens.forEach((tint, k) => {
-    const mat = makeCardMaterial(scene, "grassCardMat" + k, ENV.grassCardAlbedo, ENV.grassCardOpacity, tint);
+  // Use the dedicated brighter GRASS palette (not the canopy's foliageGreens) so
+  // blades sit in the lit ground's brightness band — see config grassGreens.
+  const grassCardOpts = { alphaCutOff: ENV.grassAlphaCutOff, brighten: ENV.grassBrighten };
+  ENV.grassGreens.forEach((tint, k) => {
+    const mat = makeCardMaterial(scene, "grassCardMat" + k, ENV.grassCardAlbedo, ENV.grassCardOpacity, tint, grassCardOpts);
     const col = grassCols[k % grassCols.length];
     grassSources.push(makeCardClusterSource(scene, "grassClu" + k, mat, 2, 1.6, 1.3, col, [0.0, 1.0], 0));
   });
   // Deeper jungle-green understorey sources for the thicket zone.
   const jungleGrassSources = ENV.jungleZone.junglePalette.map((tint, k) =>
     makeCardClusterSource(scene, "jGrassClu" + k,
-      makeCardMaterial(scene, "jGrassMat" + k, ENV.grassCardAlbedo, ENV.grassCardOpacity, tint),
+      makeCardMaterial(scene, "jGrassMat" + k, ENV.grassCardAlbedo, ENV.grassCardOpacity, tint, grassCardOpts),
       2, 1.6, 1.3, grassCols[k % grassCols.length], [0.0, 1.0], 0));
   const coverSwayers = [];
   const placeGrassCard = (x, z, sMin, sMax, idx, tag) => {
