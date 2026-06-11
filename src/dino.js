@@ -6,13 +6,76 @@ import { FACING_OFFSET, DINO_VARIANTS } from "./config.js";
 import { buildCreature } from "./procmesh/trex.js";
 import { buildCreature as buildRaptor } from "./procmesh/velociraptor.js";
 import { skinProceduralToRig } from "./procmesh/glb-skin.mjs";
+import { makeHideMaterial, applyCountershade } from "./procmesh/hide.mjs";
 
-// Procedural swept-loft meshes that replace the low-poly glb for select species,
-// skinned onto the glb's own rig + clips (glb-skin.mjs). Each builds a root whose
-// metadata.skin describes the retarget. Other kinds keep their glb mesh.
+// Per-INDIVIDUAL variation so a herd doesn't look like clones: each spawn draws a
+// size from a normal distribution about the species mean, and a small colour/shade
+// jitter. SIZE_SIGMA = std-dev as a fraction of mean height (clamped to +/-2 sigma).
+const SIZE_SIGMA = 0.12;       // ~12% size spread per species
+const COLOR_JITTER = 0.10;     // +/-10% per-individual hide-tone variation
+// Approx standard normal via the central-limit trick (sum of 3 uniforms), clamped.
+function gaussian() {
+  const n = (Math.random() + Math.random() + Math.random() - 1.5) / 0.866; // ~N(0,1)
+  return Math.max(-2, Math.min(2, n));
+}
+
+// Smooth-shade a flat low-poly mesh WITHOUT welding (welding would corrupt skin
+// weights): accumulate each triangle's face normal into a bucket keyed by vertex
+// POSITION, then assign every vertex the averaged normal for its position. Split
+// vertices at the same point thus share a normal => smooth shading; geometry and
+// matricesIndices/Weights are untouched.
+function smoothNormalsByPosition(B, mesh) {
+  const pos = mesh.getVerticesData(B.VertexBuffer.PositionKind);
+  const idx = mesh.getIndices();
+  if (!pos || !idx) return;
+  const n = pos.length / 3;
+  const key = (i) => `${Math.round(pos[i * 3] * 1e4)},${Math.round(pos[i * 3 + 1] * 1e4)},${Math.round(pos[i * 3 + 2] * 1e4)}`;
+  const acc = new Map(); // position key -> [nx,ny,nz]
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t], b = idx[t + 1], c = idx[t + 2];
+    const ax = pos[a * 3], ay = pos[a * 3 + 1], az = pos[a * 3 + 2];
+    const ux = pos[b * 3] - ax, uy = pos[b * 3 + 1] - ay, uz = pos[b * 3 + 2] - az;
+    const vx = pos[c * 3] - ax, vy = pos[c * 3 + 1] - ay, vz = pos[c * 3 + 2] - az;
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; // face normal (area-weighted)
+    for (const vi of [a, b, c]) {
+      const k = key(vi);
+      const e = acc.get(k) || [0, 0, 0];
+      e[0] += nx; e[1] += ny; e[2] += nz; acc.set(k, e);
+    }
+  }
+  const out = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const e = acc.get(key(i)) || [0, 1, 0];
+    const len = Math.hypot(e[0], e[1], e[2]) || 1;
+    out[i * 3] = e[0] / len; out[i * 3 + 1] = e[1] / len; out[i * 3 + 2] = e[2] / len;
+  }
+  mesh.setVerticesData(B.VertexBuffer.NormalKind, out);
+}
+
+// HERO predators wear a procedural swept-loft mesh skinned onto the glb's own rig +
+// clips (glb-skin.mjs) — worth the cost where a smooth high-poly silhouette matters.
+// Every OTHER species keeps its glb mesh, just SMOOTH-SHADED + recoloured + given
+// eyes (see SPECIES_LOOK) — clean, cheap, ships. (Spino's sail comes later.)
 const PROC_BUILDERS = {
-  trex: (scene) => buildCreature(scene),
+  // T-Rex now ships as the hi-poly textured glb with baked clips (MODELS.trex), so
+  // it loads natively — no procmesh swap. (trex.js procmesh kept for reference.)
   raptor: (scene) => buildRaptor(scene, { palette: "chestnut" }), // jungle/forest colourway
+};
+
+// Look for glb-rendered species: flat recolour + eye placement on the Head bone.
+// `color` = hide albedo; `eye` = {size, fwd, out, up} offset from the Head bone in
+// head-local space (metres, pre-scale); `dark` darkens the eye. Tuned per rig.
+// color = mid hide tone; dorsal/belly derived if omitted. eye offsets are
+// FRACTIONS of the head-neck bone distance (scale-invariant). scaleSize = scale
+// texture cell px (smaller => finer scales). Tuned per rig in dino-lab.
+const SPECIES_LOOK = {
+  // color = mid hide tone; scaleSize = scale-texture cell px. (No eyes added — the
+  // glb head already has a sculpted eye-socket dimple.) dorsal/belly auto-derived.
+  apatosaurus: { color: [0.36, 0.32, 0.26], scaleSize: 18 },  // Dreadnoughtus warm grey-brown
+  brachiosaurus: { color: [0.46, 0.50, 0.55], scaleSize: 18 },
+  triceratops: { color: [0.42, 0.35, 0.27], scaleSize: 14 },
+  stegosaurus: { color: [0.40, 0.42, 0.30], scaleSize: 14 },
+  parasaur: { color: [0.48, 0.39, 0.27], scaleSize: 13 },
 };
 
 // Attack2/Attack3 are optional melee variants: only the human ships extra
@@ -22,7 +85,7 @@ const CLIP_KEYS = ["Idle", "Walk", "Run", "Jump", "Attack", "Attack2", "Attack3"
 
 const MODELS = {
   raptor: "assets/models/raptor.glb",
-  trex: "assets/models/trex.glb",
+  trex: "assets/models/trex_hi_anim.glb", // hi-poly textured T-Rex, Quaternius clips retargeted+baked onto its own rig (see HIPOLY_PIPELINE.md)
   triceratops: "assets/models/triceratops.glb",
   stegosaurus: "assets/models/stegosaurus.glb",
   apatosaurus: "assets/models/apatosaurus.glb",
@@ -70,6 +133,7 @@ export async function loadDino(scene, kind, targetHeight, shadow) {
   const url = modelUrl(kind);
   if (!url) throw new Error("unknown dino: " + kind);
   const variant = DINO_VARIANTS[kind] || null;
+  const sizeMul = 1 + gaussian() * SIZE_SIGMA; // per-individual size (normal dist about the species mean)
 
   const res = await B.SceneLoader.ImportMeshAsync("", "", url, scene);
   const root = new B.TransformNode(kind + "_root", scene);
@@ -147,12 +211,23 @@ export async function loadDino(scene, kind, targetHeight, shadow) {
   // so a hit-flash can add to it and then restore exactly. For the procedural
   // T-Rex the visible meshes (and flash/shadow targets) are OUR skinned meshes,
   // not the now-hidden glb ones.
+  // Apply the per-individual size on top of whatever scaling was set above.
+  root.scaling.scaleInPlace(sizeMul);
+
   const flashTargets = [];
+  const look = SPECIES_LOOK[kind];
   const visibleMeshes = procSkin ? procSkin.skinned : res.meshes;
   visibleMeshes.forEach((m) => {
     m.receiveShadows = true;
     if (shadow && m.getTotalVertices && m.getTotalVertices() > 0) {
       shadow.addShadowCaster(m);
+    }
+    // GLB SPECIES: SMOOTH-SHADE the low-poly mesh. Quaternius meshes are
+    // flat-shaded with SPLIT vertices, so we average face normals across all verts
+    // sharing a position (welding would break skinning) — kills the facets while
+    // leaving geometry + skin weights intact.
+    if (!procSkin && m.getTotalVertices && m.getTotalVertices() > 0) {
+      smoothNormalsByPosition(B, m);
     }
     const mat = m.material;
     // Variant recolour: tint the base albedo and set a faint emissive so the
@@ -169,10 +244,31 @@ export async function loadDino(scene, kind, targetHeight, shadow) {
         mat.emissiveColor.set(variant.emissive.r, variant.emissive.g, variant.emissive.b);
       }
     }
-    if (mat && mat.emissiveColor) {
+    if (mat && mat.emissiveColor && !(look && !procSkin)) {
       flashTargets.push({ mat, base: mat.emissiveColor.clone() });
     }
   });
+
+  // GLB SPECIES skin: replace the flat glb material with a procedural HIDE —
+  // pebbly scale texture + relief + per-vertex COUNTERSHADE (dark dorsal -> pale
+  // belly) + mottle, so the colour VARIES across the body (not one flat tone).
+  // One material per dino (shared across its meshes); countershade is per-mesh.
+  if (!procSkin && look) {
+    const baseMid = (variant && variant.tint) ? [variant.tint.r, variant.tint.g, variant.tint.b] : look.color;
+    // per-individual hide-tone jitter (a shared brightness shift + small per-channel)
+    const shift = 1 + gaussian() * COLOR_JITTER;
+    const mid = baseMid.map((c) => Math.max(0, Math.min(1, c * shift + gaussian() * 0.02)));
+    const hideMat = makeHideMaterial(B, scene, kind + "_hide", { scaleSize: look.scaleSize ?? 16, rough: 0.9 + Math.random() * 0.08 });
+    if (variant && variant.emissive) hideMat.emissiveColor.set(variant.emissive.r, variant.emissive.g, variant.emissive.b);
+    flashTargets.push({ mat: hideMat, base: hideMat.emissiveColor.clone() });
+    visibleMeshes.forEach((m) => {
+      if (!m.getTotalVertices || !m.getTotalVertices()) return;
+      m.material = hideMat;
+      applyCountershade(B, m, mid, look.dorsal, look.belly);
+    });
+    // No eye spheres: the glb head already has a sculpted eye-socket dimple, which
+    // reads under the hide shading. (Owner: do not add eyes.)
+  }
 
   // Build clip lookup. Each logical key maps to a search substring (the
   // default `_<Key>` dino convention, overridden per-kind in CLIP_ALIASES).
