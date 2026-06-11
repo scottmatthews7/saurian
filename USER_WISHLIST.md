@@ -272,3 +272,25 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
    toggleable. Hide/handle the player mesh head in FP; keep the look controls and
    sprint/dash/attack working. Heightens the survival immersion (a T-Rex bearing
    down on you fills the screen).
+
+22. **OPENING SEQUENCE — plane-crash intro + diegetic gear pickups (game-design,
+   supersedes/expands item 13).** The run begins as a survival scene the player
+   pieces together:
+   - **Crashed plane:** the player wakes/stands ~**50 m** from a crashed prop
+     **Cessna** (a recognisable small single-prop light aircraft — wreck, broken,
+     no survivors; smoke/debris optional). The player is NOT at the plane — they
+     spawn 50 m out and see it.
+   - **Health pack (inside the plane):** a med/health pack sits inside the Cessna.
+     The player walks to the wreck, picks it up, and it goes into their **pack
+     (inventory)** — equippable + **used on demand** (heals when the player chooses,
+     not auto). One-or-few use consumable.
+   - **Pilot's body (~20 m from the plane):** a clearly-**dead pilot** lying on the
+     ground — **no blood**, but unmistakably dead (slumped/still). Sombre, not gory.
+   - **GPS device (on the pilot):** a GPS unit **floats/glows above the pilot's
+     body** as a pickup. If the player finds + collects it, they **equip it and
+     gain the radar/minimap screen.** ⇒ the radar is now GATED behind finding the
+     GPS — it is NOT shown by default; no GPS = no radar (heightens the "lost,
+     piece it together" survival feel).
+   - Ties the whole opening together: crash → scavenge the wreck (health) → find
+     the pilot (GPS/radar) → then survive. Replaces the always-on radar + the bare
+     plane-crash spawn (item 13).
