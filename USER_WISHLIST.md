@@ -43,6 +43,20 @@ Death-Stranding-with-dinos traverse. Everything below serves this.
 - **PROCESS (ex-item 20):** for every procedural dino, research the LARGEST fossil
   specimen and bake BOTH skeleton + fleshed proportions (as ratios of length) into its
   PRD before building. Don't eyeball.
+- **⭐ NEXT (in-game pipeline — see `DINO_LAB.md`):** Velociraptor is now skinned +
+  animating in-game (procmesh → `metadata.skin` → `glb-skin.mjs` → `dino.js`
+  `PROC_BUILDERS`). **Start the next session here:** map the remaining core dinos
+  (**Dreadnoughtus, Spinosaurus, Therizinosaurus, Quetzalcoatlus**) onto existing
+  Quaternius glb rigs to speed the build — reuse a close rig, skin on, then **scale
+  up in-game** (e.g. Dreadnoughtus huge) and adjust **limb/segment lengths** via the
+  `boneRest` table / per-axis `stretch`. And build future procmeshes **directly on
+  the rigged glb's joints** so dimensions match from the start (faster iteration).
+  Verify each with `tools/dino-lab.html?mode=both`.
+- **⭐ REBUILD the Velociraptor on raptor.glb's joints:** the current veloci was built
+  standalone then retrofitted to the rig, so its proportions don't perfectly match
+  (body reads long/low vs the glb in `dino-lab` `mode=both`). Re-author the procmesh
+  around raptor.glb's actual bone rest positions (read them from the glb) so the
+  fleshed silhouette tracks the rig — keep the iter48 head design, just re-anchor.
 
 ## P4 — GAMEPLAY FEATURES (after the campaign skeleton works)
 - **Health pickups en route** + slow regen (passive regen DONE; world/route packs

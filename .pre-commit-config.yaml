@@ -32,7 +32,7 @@ repos:
       - id: codespell
         # British spelling + domain terms we keep; extend as needed.
         # panting/bellow: real words here (sprint breathing, herbivore calls).
-        args: ["--ignore-words-list=nd,fo,iam,panting,bellow,tread,trough,covert,retuned,sting,theri"]
+        args: ["--ignore-words-list=nd,fo,iam,panting,bellow,tread,trough,covert,retuned,sting,theri,mane"]
 
   # JS sanity: every source module must parse.
   - repo: local

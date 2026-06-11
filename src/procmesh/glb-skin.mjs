@@ -130,15 +130,20 @@ export function skinProceduralToRig(scene, procRoot, rig, refNode) {
   }
 
   // --- 2. build the target skeleton: refit rest onto our anatomy --------------
-  const targetSkeleton = new B.Skeleton("trexTarget", "trexTarget", scene);
-  const armature = new B.TransformNode("trexTargetArmature", scene);
+  // Bone-rest table comes from the creature's metadata (meta.boneRest) when it
+  // supplies one (e.g. the raptor, built at its own scale), else the built-in
+  // T-Rex table. PART_BONES is keyed by bone name and shared (Quaternius rigs
+  // reuse the same bone names across species).
+  const RESTTBL = meta.boneRest || T;
+  const targetSkeleton = new B.Skeleton("procTarget", "procTarget", scene);
+  const armature = new B.TransformNode("procTargetArmature", scene);
   const tBones = {}, tNodes = {};
   const restWorldRot = {}, restWorldPos = {};
   for (const bone of src.bones) {
     const name = bone.name;
     const s = srcByName[name];
-    if (!T[name]) throw new Error("no rest target for bone " + name);
-    const Pw = new B.Vector3(T[name][0], T[name][1], T[name][2]);
+    if (!RESTTBL[name]) throw new Error("no rest target for bone " + name);
+    const Pw = new B.Vector3(RESTTBL[name][0], RESTTBL[name][1], RESTTBL[name][2]);
     const Wr = s.restRot.clone();             // match source rest orientation
     const pName = s.parent;
     const pRot = pName ? restWorldRot[pName] : B.Quaternion.Identity();

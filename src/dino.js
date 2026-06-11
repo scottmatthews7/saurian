@@ -4,7 +4,16 @@
 
 import { FACING_OFFSET, DINO_VARIANTS } from "./config.js";
 import { buildCreature } from "./procmesh/trex.js";
+import { buildCreature as buildRaptor } from "./procmesh/velociraptor.js";
 import { skinProceduralToRig } from "./procmesh/glb-skin.mjs";
+
+// Procedural swept-loft meshes that replace the low-poly glb for select species,
+// skinned onto the glb's own rig + clips (glb-skin.mjs). Each builds a root whose
+// metadata.skin describes the retarget. Other kinds keep their glb mesh.
+const PROC_BUILDERS = {
+  trex: (scene) => buildCreature(scene),
+  raptor: (scene) => buildRaptor(scene, { palette: "chestnut" }), // jungle/forest colourway
+};
 
 // Attack2/Attack3 are optional melee variants: only the human ships extra
 // strike clips (punch left / kick), so for the dinos those keys simply never
@@ -95,8 +104,27 @@ export async function loadDino(scene, kind, targetHeight, shadow) {
   // mesh. The glb's visual meshes are hidden but its skeleton/animationGroups stay
   // live (they deform our mesh via the retarget in procmesh/glb-skin.mjs).
   let procSkin = null;       // { skinned, dispose } when we swapped in our mesh
-  if (kind === "trex" && res.skeletons[0]) {
-    const procRoot = buildCreature(scene);
+  if (PROC_BUILDERS[kind] && res.skeletons[0]) {
+    const procRoot = PROC_BUILDERS[kind](scene);
+    // The T-Rex procmesh is authored at glb-native scale, so its glb-height scale
+    // (above) is correct. Other procmesh kinds (e.g. the raptor) are built at their
+    // own unit scale, so re-normalise by OUR model height — the visible mesh —
+    // else they come out tiny/huge. Measured before skinning, procRoot at identity.
+    if (kind !== "trex") {
+      let pmin = new B.Vector3(Infinity, Infinity, Infinity);
+      let pmax = new B.Vector3(-Infinity, -Infinity, -Infinity);
+      procRoot.getChildMeshes().forEach((m) => {
+        if (!m.getBoundingInfo || (m.getTotalVertices && !m.getTotalVertices())) return;
+        m.computeWorldMatrix(true);
+        const bb = m.getBoundingInfo().boundingBox;
+        pmin = B.Vector3.Minimize(pmin, bb.minimumWorld);
+        pmax = B.Vector3.Maximize(pmax, bb.maximumWorld);
+      });
+      const ourH = Math.max(0.001, pmax.y - pmin.y);
+      const pscale = targetHeight / ourH;
+      if (st) root.scaling.set(pscale * (st.x ?? 1), pscale * (st.y ?? 1), pscale * (st.z ?? 1));
+      else root.scaling.setAll(pscale);
+    }
     const glbRenderable = res.meshes.filter(
       (m) => m.getTotalVertices && m.getTotalVertices() > 0,
     );
