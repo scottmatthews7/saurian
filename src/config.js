@@ -747,7 +747,7 @@ export const ENV = {
     rockDensityMul: 2.6,        // small sandstone boulders this much denser than baseline
     sandstoneColor: [0.78, 0.50, 0.34],     // #C8805A sunlit warm terracotta sandstone (softened from the old neon orange)
     sandstoneBandColor: [0.64, 0.34, 0.22], // #A45638 iron-rich red strata band
-    mesaCount: 7,               // hero buttes/mesas across the bigger zone (still sparse + deliberate)
+    mesaCount: 0,               // mesas/buttes REMOVED per owner (still read as "huge towers"); desert is now dunes + boulders + scrub + bones only
     mesaMinHeight: 7, mesaMaxHeight: 16,  // metres — varied, modest (no more 22m towers)
     mesaMinRadius: 7, mesaMaxRadius: 18,  // metres — BROAD bases (so the silhouette is a butte/mesa, not a pillar)
     mesaStrataBands: 4,         // horizontal sedimentary strata layers stacked up each mesa (the layered-rock read)
