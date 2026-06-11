@@ -308,3 +308,34 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
 
 24. **[DONE] Eggs are WHITE, not yellow.** Ordinary egg pickups recoloured to
    eggshell white; the golden special egg stays gold.
+
+## CANONICAL MAP LAYOUT (owner sketch — the real island for item 23)
+
+A LINEAR, portrait island running SOUTH (start) -> NORTH (escape). The player
+crosses it crash-to-boat. Scale: **a DIRECT-line plane->boat run takes ~5 minutes
+of walk/sprint** (size the south->north axis to player effective traverse speed x
+300s; measure in-game and set the axis length to match — the map is much bigger
+than the current radius-180 arena).
+
+Regions, south -> north along the route:
+- **START LOCATION (south lobe)** — a small jungle peninsula joined to the main
+  island by a neck. Contains, inner to outer:
+  - **Plane** — the crashed prop Cessna at the centre (item 22), a small pond beside it.
+  - **Dead body with GPS** — marked X, just NW of the plane (item 22: GPS unlocks radar).
+  - **Jungle clearing** — the open ground immediately around the plane.
+  - **Thick jungle** — dense jungle ringing the clearing / filling the start lobe.
+- **MAIN ISLAND (large middle):**
+  - **Forest** — big wooded area, SW, with an inner clearing.
+  - **Lake** — small, west, just N of the forest.
+  - **Swamp** — a lobe to the SE/E (Spinosaurus territory).
+  - **Grassland** — the large open central-to-upper-middle expanse.
+- **NORTH (narrows to the tip):**
+  - **Desert** — upper-middle.
+  - **Rocky pass** — a narrow rocky pass, NE.
+  - **Beach** — coastal strip, NE, below the boat.
+  - **Sea** — open water off the NE/top.
+  - **Boat (THE GOAL)** — at the north tip in a small inlet; reaching it = WIN/escape.
+- **Direct route:** plane (S) -> thick jungle -> forest/grassland -> desert ->
+  rocky pass -> beach -> boat (N). Lake (W) + swamp (E) are off-route side areas.
+This SUPERSEDES the current radial biome placement; world.js needs a re-layout to
+this island shape + scale. Territories (item from world overhaul) re-pin to these regions.
