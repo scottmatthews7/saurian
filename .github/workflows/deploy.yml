@@ -1,0 +1,35 @@
+name: Deploy to GitHub Pages
+
+# Static site (vendored Babylon + ES modules + assets) — no build step.
+# On every push to main, publishes the whole repo to GitHub Pages.
+# Live at: https://scottmatthews7.github.io/saurian/
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deploy; let an in-progress run finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: "."          # publish the repo as-is (static)
+      - id: deployment
+        uses: actions/deploy-pages@v4
