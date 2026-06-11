@@ -124,10 +124,10 @@ function auditionPanting(intensity) {
 }
 
 // --- CANDIDATE ALTERNATIVES (audition-only) -----------------------------------
-// The user flagged several procedural sounds as bad. These are CANDIDATE replacement
-// synths to A/B against the current one — NOT yet wired into src/audio.js. Each is a
-// self-contained Web Audio recipe. Tell the coordinator which candidate you want and a
-// follow-up will port the winner into the real engine. They run on their own context.
+// The flagged sounds are now REAL organic Freesound samples (wired into the engine).
+// Where a second good candidate was found it is downloaded to assets/audio/candidates/
+// as a *_alt.mp3 so the owner can A/B the chosen default against the runner-up. These
+// play the actual alternative file (decoded on a private context), NOT a synth recipe.
 let altCtx = null;
 function altEnsure() {
   if (altCtx) return altCtx;
@@ -135,211 +135,66 @@ function altEnsure() {
   altCtx = new AC();
   return altCtx;
 }
-// small synth helpers mirroring the engine's primitives (tone / noise)
-function aTone(c, freq, dur, type, gain, glideTo, t0) {
-  const t = t0 ?? c.currentTime;
-  const o = c.createOscillator(), g = c.createGain();
-  o.type = type;
-  o.frequency.setValueAtTime(freq, t);
-  if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t + dur);
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(gain, t + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g); g.connect(c.destination);
-  o.start(t); o.stop(t + dur + 0.02);
-}
-let _altNoiseBuf = null;
-function aNoise(c) {
-  if (!_altNoiseBuf || _altNoiseBuf.sampleRate !== c.sampleRate) {
-    _altNoiseBuf = c.createBuffer(1, c.sampleRate * 1.5, c.sampleRate);
-    const d = _altNoiseBuf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+// Lazily fetch + decode an alternative sample, then play it once with a soft envelope.
+const _altBufCache = new Map();
+async function playAltFile(url, gain = 0.7, rate = 1) {
+  const c = altEnsure();
+  if (c.state === "suspended") await c.resume();
+  let buf = _altBufCache.get(url);
+  if (!buf) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status + " for " + url);
+    buf = await c.decodeAudioData(await res.arrayBuffer());
+    _altBufCache.set(url, buf);
   }
-  const s = c.createBufferSource(); s.buffer = _altNoiseBuf; return s;
+  const src = c.createBufferSource(); src.buffer = buf; src.playbackRate.value = rate;
+  const g = c.createGain(); const t = c.currentTime; const dur = buf.duration / rate;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gain, t + 0.01);
+  g.gain.setValueAtTime(gain, t + Math.max(0.01, dur - 0.08));
+  g.gain.linearRampToValueAtTime(0.0001, t + dur);
+  src.connect(g); g.connect(c.destination); src.start();
 }
 
-// Registry: each flagged sound -> a few labelled candidate recipes.
+// Registry: each flagged sound -> labelled real-sample candidates. The first is the
+// chosen in-engine default; "alt" entries are the runner-up files in candidates/.
+const C = "assets/audio";
 const ALT_SOUNDS = {
   hurt: [
-    { label: "A · soft 'oof' (filtered thud + low sine)", play: (c) => {
-        const t = c.currentTime;
-        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
-        f.type = "lowpass"; f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(200, t + 0.18);
-        g.gain.setValueAtTime(0.4, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
-        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.2);
-        aTone(c, 180, 0.16, "sine", 0.3, 90, t);
-    }},
-    { label: "B · short downward grunt (triangle 220→70)", play: (c) => {
-        aTone(c, 220, 0.18, "triangle", 0.4, 70);
-    }},
-    { label: "C · muffled body hit (noise burst + low square)", play: (c) => {
-        const t = c.currentTime;
-        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
-        f.type = "bandpass"; f.frequency.value = 320; f.Q.value = 0.8;
-        g.gain.setValueAtTime(0.45, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.12);
-        aTone(c, 130, 0.1, "square", 0.22, 80, t);
-    }},
-  ],
-  whoosh: [
-    { label: "A · descending swish (sweep DOWN 2200→500)", play: (c) => {
-        const t = c.currentTime;
-        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
-        f.type = "bandpass"; f.Q.value = 1.4;
-        f.frequency.setValueAtTime(2200, t); f.frequency.exponentialRampToValueAtTime(500, t + 0.22);
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.26, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
-        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.28);
-    }},
-    { label: "B · tight fast cloth-swish (short, high-Q up-sweep)", play: (c) => {
-        const t = c.currentTime;
-        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
-        f.type = "bandpass"; f.Q.value = 3.0;
-        f.frequency.setValueAtTime(1200, t); f.frequency.exponentialRampToValueAtTime(3200, t + 0.12);
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.18);
-    }},
-    { label: "C · airy gust (lowpass-shaped noise puff)", play: (c) => {
-        const t = c.currentTime;
-        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
-        f.type = "lowpass"; f.frequency.setValueAtTime(800, t); f.frequency.exponentialRampToValueAtTime(2400, t + 0.1); f.frequency.exponentialRampToValueAtTime(600, t + 0.3);
-        g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.24, t + 0.06); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.32);
-    }},
+    { label: "Grunt A · MrFossy male pain grunt #18 [CC0] (hurt() picks A or B at random per hit)", play: () => playAltFile(`${C}/hurt.mp3`, 0.7) },
+    { label: "Grunt B · MrFossy male pain grunt #07 [CC0] (also wired in — random per hit)", play: () => playAltFile(`${C}/hurt_alt.mp3`, 0.7) },
   ],
   splash: [
-    { label: "A · bubbly plips (descending water drops)", play: (c) => {
-        [820, 560, 380].forEach((fq, i) => aTone(c, fq, 0.12, "sine", 0.3, fq * 0.55, c.currentTime + i * 0.06));
-        const t = c.currentTime;
-        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
-        f.type = "bandpass"; f.frequency.value = 1800; f.Q.value = 0.5;
-        g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
-        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.18);
-    }},
-    { label: "B · sharp plip (single quick water-drop)", play: (c) => {
-        const t = c.currentTime;
-        aTone(c, 1100, 0.1, "sine", 0.4, 420, t);
-        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
-        f.type = "highpass"; f.frequency.value = 1500;
-        g.gain.setValueAtTime(0.2, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
-        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.1);
-    }},
-    { label: "C · fizzy spray (bright hissing sheet)", play: (c) => {
-        const t = c.currentTime;
-        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
-        f.type = "highpass"; f.frequency.setValueAtTime(4000, t); f.frequency.exponentialRampToValueAtTime(1200, t + 0.3);
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.4, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
-        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.34);
-    }},
+    { label: "Default (in engine) · swordofkings128 water splash 2 [CC0]", play: () => playAltFile(`${C}/splash.mp3`, 0.7) },
+    { label: "Alt · AardsReal Water Splash (shorter) [CC0]", play: () => playAltFile(`${C}/candidates/splash_alt.mp3`, 0.7) },
   ],
   screech: [
-    { label: "A · raspy bird shriek (square + noise, up-down)", play: (c) => {
-        const t = c.currentTime, dur = 0.5;
-        const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
-        o.type = "square";
-        o.frequency.setValueAtTime(1100, t); o.frequency.exponentialRampToValueAtTime(2000, t + 0.1); o.frequency.exponentialRampToValueAtTime(800, t + dur);
-        f.type = "bandpass"; f.frequency.value = 1800; f.Q.value = 6;
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.26, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.02);
-        const n = aNoise(c), ng = c.createGain(), nf = c.createBiquadFilter();
-        nf.type = "highpass"; nf.frequency.value = 3000;
-        ng.gain.setValueAtTime(0.12, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        n.connect(nf); nf.connect(ng); ng.connect(c.destination); n.start(t); n.stop(t + dur);
-    }},
-    { label: "B · short hawk cry (fast falling sawtooth)", play: (c) => {
-        const t = c.currentTime, dur = 0.32;
-        const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
-        o.type = "sawtooth";
-        o.frequency.setValueAtTime(2400, t); o.frequency.exponentialRampToValueAtTime(900, t + dur);
-        f.type = "bandpass"; f.frequency.value = 2200; f.Q.value = 5;
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.28, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.02);
-    }},
-    { label: "C · warbling screech (vibrato on the cry)", play: (c) => {
-        const t = c.currentTime, dur = 0.55;
-        const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
-        const lfo = c.createOscillator(), lg = c.createGain();
-        o.type = "sawtooth";
-        o.frequency.setValueAtTime(1300, t); o.frequency.exponentialRampToValueAtTime(1700, t + 0.15); o.frequency.exponentialRampToValueAtTime(1000, t + dur);
-        lfo.type = "sine"; lfo.frequency.value = 28; lg.gain.value = 120; // wing-beat-ish vibrato
-        lfo.connect(lg); lg.connect(o.frequency);
-        f.type = "bandpass"; f.frequency.value = 1600; f.Q.value = 4;
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.27, t + 0.04); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.02); lfo.start(t); lfo.stop(t + dur);
-    }},
+    { label: "Default (in engine) · TheKingOfGeeks360 \"Ratites - Cassowary, Groan\" (#843486) — real cassowary groan, the azhdarchid analog (no avian syrinx → deep ratite boom, not a bird screech) [CC0]", play: () => playAltFile(`${C}/screech.mp3`, 0.55) },
+    { label: "Alt · Ovkovko \"CrocodilianTypeGrowl\" (#825609) — deep resonant reptilian grumble/snarl [CC0]", play: () => playAltFile(`${C}/candidates/screech_alt.mp3`, 0.55) },
   ],
   bite: [
-    { label: "A · wet snap (fast click + short crunch)", play: (c) => {
-        const t = c.currentTime;
-        aTone(c, 240, 0.05, "sine", 0.3, 90, t);
-        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
-        f.type = "bandpass"; f.frequency.value = 1200; f.Q.value = 1;
-        g.gain.setValueAtTime(0.45, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
-        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t + 0.01); n.stop(t + 0.08);
-    }},
-    { label: "B · heavy chomp (deep thunk + flesh slap)", play: (c) => {
-        const t = c.currentTime;
-        aTone(c, 140, 0.12, "sine", 0.5, 50, t);
-        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
-        f.type = "lowpass"; f.frequency.value = 700;
-        g.gain.setValueAtTime(0.4, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.1);
-    }},
-    { label: "C · double snap (two quick jaw clacks)", play: (c) => {
-        [0, 0.07].forEach((d) => {
-          const t = c.currentTime + d;
-          const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
-          f.type = "highpass"; f.frequency.value = 900;
-          g.gain.setValueAtTime(0.4, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
-          n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.05);
-          aTone(c, 200, 0.05, "square", 0.25, 80, t);
-        });
-    }},
+    { label: "Default (in engine) · Breviceps \"Biting on bones\" (#445987) — crunchy flesh-and-bone chomp [CC0]", play: () => playAltFile(`${C}/bite.mp3`, 0.9) },
+    { label: "Alt · clif_creates \"Hard Candy / Bone Crunch\" (#392883) [CC0]", play: () => playAltFile(`${C}/candidates/bite_alt.mp3`, 0.9) },
+  ],
+  stegosaurus: [
+    { label: "Default (in engine) · noahpardo \"Deep Groan 2\" (#345727) — grunt-ier deep saurian groan [CC0]", play: () => playAltFile(`${C}/stegosaurus.mp3`, 0.7) },
+    { label: "Alt · noahpardo \"Deep Groan 3\" (#345734) [CC0]", play: () => playAltFile(`${C}/candidates/stegosaurus_alt.mp3`, 0.7) },
+  ],
+  apatosaurus: [
+    { label: "Default (in engine) · joelu2001 \"Distant Sinister Moan\" (#360593) — vast deep moan, trimmed to ~3.5s with a fade-out for an in-game call [CC0]", play: () => playAltFile(`${C}/apatosaurus.mp3`, 0.7) },
+    { label: "Alt · Thanra \"Monster bellowing\" (#245429) — a vast, deep saurian moan [CC0]", play: () => playAltFile(`${C}/candidates/apatosaurus_alt.mp3`, 0.7) },
+  ],
+  creaturecall: [
+    { label: "Default (in engine) · Chobiboko \"monster roar in distance\" (#261147) — distant menacing non-bovine call [CC0]", play: () => playAltFile(`${C}/creaturecall.mp3`, 0.7) },
+    { label: "Alt · joelu2001 \"Distant Sinister Moan\" (#360593) [CC0]", play: () => playAltFile(`${C}/candidates/creaturecall_alt.mp3`, 0.7) },
+  ],
+  trex: [
+    { label: "Default (in engine) · DeqstersLab Monster Guttural Growl, Dry, slowed to a rumble [CC0]", play: () => playAltFile(`${C}/trex.mp3`, 0.85) },
+    { label: "Alt · PJ_Bear ominous_growl [CC0]", play: () => playAltFile(`${C}/candidates/trex_alt.mp3`, 0.85) },
   ],
   bigstep: [
-    { label: "A · soft deep boom (sub sine, no click)", play: (c) => {
-        const t = c.currentTime;
-        const o = c.createOscillator(), g = c.createGain();
-        o.type = "sine"; o.frequency.setValueAtTime(70, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.35);
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
-        o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.42);
-    }},
-    { label: "B · earthy thud (lowpass noise + sub)", play: (c) => {
-        const t = c.currentTime;
-        const n = aNoise(c), g = c.createGain(), f = c.createBiquadFilter();
-        f.type = "lowpass"; f.frequency.setValueAtTime(220, t); f.frequency.exponentialRampToValueAtTime(70, t + 0.25);
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.45, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-        n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.3);
-        aTone(c, 55, 0.28, "sine", 0.35, 34, t);
-    }},
-    { label: "C · distant rumble-step (longer felt boom)", play: (c) => {
-        const t = c.currentTime;
-        const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
-        o.type = "triangle"; o.frequency.setValueAtTime(58, t); o.frequency.exponentialRampToValueAtTime(30, t + 0.5);
-        f.type = "lowpass"; f.frequency.value = 160;
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.42, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
-        o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.57);
-    }},
-  ],
-  lose: [
-    { label: "A · low brass-ish fall (sawtooth, slower)", play: (c) => {
-        [196, 165, 131, 98].forEach((fq, i) => setTimeout(() => aTone(c, fq, 0.55, "sawtooth", 0.28, fq * 0.9), i * 200));
-    }},
-    { label: "B · two-note minor stab (deep, final)", play: (c) => {
-        const t = c.currentTime;
-        aTone(c, 220, 0.5, "triangle", 0.3, null, t);
-        aTone(c, 175, 0.7, "triangle", 0.3, null, t + 0.18); // minor third down
-        aTone(c, 110, 0.9, "sine", 0.25, null, t + 0.36);    // low root under it
-    }},
-    { label: "C · slow detune wail (pitch sags down)", play: (c) => {
-        const t = c.currentTime, dur = 1.2;
-        [262, 264].forEach((fq) => { // slightly detuned pair -> mournful beating
-          const o = c.createOscillator(), g = c.createGain();
-          o.type = "sawtooth"; o.frequency.setValueAtTime(fq, t); o.frequency.exponentialRampToValueAtTime(fq * 0.5, t + dur);
-          g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22, t + 0.08); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-          const f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 1400;
-          o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.02);
-        });
-    }},
+    { label: "Default (in engine) · Faulkin Boom_01 (deep hollow earth thud) [CC0]", play: () => playAltFile(`${C}/bigstep.mp3`, 0.9) },
+    { label: "Alt · andysm DinoSteps1 (deeper, longer subsonic boom) [CC0]", play: () => playAltFile(`${C}/candidates/bigstep_alt.mp3`, 0.9) },
   ],
 };
 
@@ -364,8 +219,8 @@ const GROUPS = [
       },
       {
         name: "Footstep — wading", kind: "sample",
-        src: "Kenney CC0 footstep + procedural wet-splat layer",
-        role: "Per footfall while crossing the pond. Dry step plus a watery splat layer.",
+        src: "Kenney CC0 footstep + the SAME splash sample (swordofkings128 #398039) reused as the wet layer",
+        role: "Per footfall while crossing the pond. Dry step plus the splash sample (owner verdict: wading reuses SPLASH, not a separate water layer).",
         play: (a) => a.footstep(0.3, false, true), // AUDIO.footstepWadeVolume
       },
       {
@@ -394,22 +249,21 @@ const GROUPS = [
       },
       {
         name: "Whoosh — dash", kind: "proc",
-        src: "Procedural — bandpass noise sweep 600→2600 Hz",
+        src: "Procedural — bandpass noise sweep 600→2600 Hz (not flagged — kept)",
         role: "Dash / dodge-roll (F). A quick airy swish, distinct from the splash.",
         play: (a) => a.whoosh(),
-        alts: "whoosh",
       },
       {
-        name: "Splash", kind: "proc",
-        src: "Procedural — lowpass noise burst 3500→400 Hz + watery blip",
-        role: "Player wading into the pond. A bright splash sweeping down.",
+        name: "Splash", kind: "sample",
+        src: "Freesound CC0 — swordofkings128 \"water splash 2\" (#398039)",
+        role: "Player wading into the pond. A real water splash; procedural fallback if load fails.",
         play: (a) => a.splash(),
         alts: "splash",
       },
       {
-        name: "Hurt", kind: "proc",
-        src: "Procedural — sawtooth 140→80 Hz",
-        role: "Player takes damage (any bite / charge hit). A dissonant low buzz.",
+        name: "Hurt", kind: "sample",
+        src: "Freesound CC0 — MrFossy pain grunts #547197 + #547205 (random one of the two per hit)",
+        role: "Player takes damage. hurt() randomly fires one of two MrFossy grunts each hit, so repeated hits vary.",
         play: (a) => a.hurt(),
         alts: "hurt",
       },
@@ -421,9 +275,10 @@ const GROUPS = [
     items: [
       {
         name: "Vocalise — T-Rex", kind: "sample",
-        src: "Mixkit (royalty-free) — growl/thunder pitched down (trex.mp3), lifted +25% rate",
-        role: "Apex predator. Ambient roars as it hunts; also on prey-bite/feed events.",
+        src: "Freesound CC0 — DeqstersLab \"Monster Guttural Growl, Dry\" (#734900), slowed to an eerie closed-mouth rumble",
+        role: "Apex predator's voice (no roar — the guttural rumble IS the T-Rex). Ambient growls as it hunts; also on lock-on / prey-bite / feed events.",
         play: (a) => a.vocalise("trex", 1.0, 0.4),
+        alts: "trex",
       },
       {
         name: "Vocalise — Raptor", kind: "sample",
@@ -445,103 +300,93 @@ const GROUPS = [
       },
       {
         name: "Vocalise — Stegosaurus", kind: "sample",
-        src: "Mixkit (royalty-free) — creature low (herbivore_b.mp3)",
-        role: "Herbivore ambient bellow. Stegosaurus + Apatosaurus share sample B.",
+        src: "Freesound CC0 — noahpardo \"Deep Groan 2\" (#345727) — a grunt-ier deep saurian groan (re-sourced: NOT a cow/bull)",
+        role: "Herbivore ambient call — a smaller, grunt-ier deep saurian groan, distinct from the apatosaurus moan.",
         play: (a) => a.vocalise("stegosaurus", 1.0, 0),
+        alts: "stegosaurus",
       },
       {
         name: "Vocalise — Apatosaurus", kind: "sample",
-        src: "Mixkit (royalty-free) — creature low (herbivore_b.mp3, same as Stegosaurus)",
-        role: "Herbivore ambient bellow. Shares sample B with the Stegosaurus.",
+        src: "Freesound CC0 — joelu2001 \"Distant Sinister Moan\" (#360593), trimmed to ~3.5s with a fade-out (promoted to default; was the alt)",
+        role: "Herbivore ambient call — the biggest sauropod gets a vast, deep sinister moan, tightened to an in-game call length.",
         play: (a) => a.vocalise("apatosaurus", 1.0, 0),
+        alts: "apatosaurus",
       },
       {
         name: "Big step", kind: "sample",
-        src: "Mixkit — low bellow REPURPOSED as a footfall (bigstep.mp3) — wrong: reads as 'bricks'. No dedicated footfall sample exists in candidates; needs a procedural deep boom or a sourced thud.",
-        role: "Giant-sauropod footfall thud on nearby big dinos' step cadence (~1.2s). Gain lowered in-engine after the 'too loud' note.",
+        src: "Freesound CC0 — Faulkin \"Boom_01\" (#336487) — a deep hollow organic earth thud (re-sourced: deeper/heavier, not clicky)",
+        role: "Giant-sauropod footfall thud on nearby big dinos' step cadence (~1.2s). Gain kept low in-engine.",
         play: (a) => a.bigStep(1.0),
         alts: "bigstep",
       },
       {
-        name: "Bite", kind: "proc",
-        src: "Procedural — square pitch-drop 180→60 Hz + highpass noise burst",
+        name: "Bite", kind: "sample",
+        src: "Freesound CC0 — Breviceps \"Biting on bones\" (#445987) — a crunchy flesh-and-bone chomp (re-sourced: solid crunch, not a wet squelch)",
         role: "Predator chomp: T-Rex biting prey, and the triceratops charge cue.",
         play: (a) => a.bite(),
         alts: "bite",
       },
       {
-        name: "Screech", kind: "proc",
-        src: "Procedural — sawtooth 900→2200→700 Hz through a bandpass",
-        role: "Pterosaur dive telegraph — a shrill cry warning of a swoop from above.",
+        name: "Screech", kind: "sample",
+        src: "Freesound CC0 — TheKingOfGeeks360 \"Ratites - Cassowary, Groan\" (#843486) — a real cassowary groan, the azhdarchid analog (no avian syrinx → deep ratite boom, not a bird screech)",
+        role: "Quetzalcoatlus / pterosaur dive telegraph — a deep guttural cassowary groan (current azhdarchid thinking), warning of a swoop.",
         play: (a) => a.screech(),
         alts: "screech",
       },
       {
-        name: "Roar (procedural)", kind: "proc",
-        src: "Procedural — detuned saws ~70Hz sweeping down, lowpass, + breath noise",
-        role: "Predator roar fallback (used if a sample is missing) + cursed-egg / feed cue.",
-        play: (a) => a.roar(1.0, 0.4),
-      },
-      {
-        name: "Creature call (procedural)", kind: "proc",
-        src: "Procedural — two-tone hooting moan ~180 Hz through a lowpass",
-        role: "Herbivore call fallback (used if a herbivore sample is missing).",
+        name: "Creature call", kind: "sample",
+        src: "Freesound CC0 — Chobiboko \"monster roar in distance\" (#261147) — a distant menacing non-bovine creature call (re-sourced: was a cow moo)",
+        role: "Generic herbivore/creature call (used when a per-species sample is missing). A distant menacing low roar.",
         play: (a) => a.creatureCall(1.0, 1),
+        alts: "creaturecall",
       },
     ],
   },
   {
     title: "Pickups / UI",
-    desc: "Reward, heal, and game-end cues. bank() and beacon() still fire in the current build but are being removed with the old banking/ward loop.",
+    desc: "Reward, heal, UI and game-end cues. All organic samples now except Tension, which the owner kept (heartbeat pulse). Procedural recipes remain as load-failure fallbacks.",
     items: [
       {
-        name: "Pickup — egg", kind: "proc",
-        src: "Procedural — triangle/sine blip 660→990 Hz",
-        role: "Collecting an ordinary egg. A bright ascending blip.",
+        name: "Pickup — egg", kind: "sample",
+        src: "Freesound CC0 — dvdfu \"Kalimba C3\" (#536549). Real thumb-piano note.",
+        role: "Collecting an ordinary egg. A soft organic kalimba pluck.",
         play: (a) => a.pickup(false),
       },
       {
-        name: "Pickup — golden egg", kind: "proc",
-        src: "Procedural — egg blip + 1320/1760/2093 Hz sparkle arpeggio",
-        role: "Collecting a rare golden egg. The blip plus an extra reward sparkle.",
+        name: "Pickup — golden egg", kind: "sample",
+        src: "Freesound CC0 — arseniiv \"crystal bell\" (#614832). Real glass bell.",
+        role: "Collecting a rare golden egg. A brighter crystal-bell chime.",
         play: (a) => a.pickup(true),
       },
       {
-        name: "Heal", kind: "proc",
-        src: "Procedural — sine swell 330→495 + 495→660 Hz",
-        role: "Eating meat to heal. A warm restorative swell.",
+        name: "Heal", kind: "sample",
+        src: "Freesound CC0 — midge-f \"temple bowl\" (#810426). Real singing bowl.",
+        role: "Eating meat to heal. A warm restorative bowl swell.",
         play: (a) => a.heal(),
       },
       {
-        name: "Win", kind: "proc",
-        src: "Procedural — rising triangle arpeggio 523/659/784/1047 Hz",
-        role: "Victory / sanctuary reached. A bright ascending fanfare.",
+        name: "UI tap", kind: "sample",
+        src: "Freesound CC0 — stwime \"wood_block\" (#555545). Real wood block.",
+        role: "Subtle tactile UI feedback — a soft woody tap (a.ui()).",
+        play: (a) => a.ui(),
+      },
+      {
+        name: "Win", kind: "sample",
+        src: "Freesound CC0 — FunWithSound \"Music Dramatic Orchestral Ending\" (#588390) — a triumphant orchestral sting (re-sourced: bigger than the old approval bell)",
+        role: "Victory / sanctuary reached. A dramatic rising orchestral fanfare swell (a.win()).",
         play: (a) => a.win(),
       },
       {
-        name: "Lose", kind: "proc",
-        src: "Procedural — falling sawtooth 330/247/196/147 Hz",
-        role: "Game over (eaten). A descending dejected motif.",
+        name: "Lose", kind: "sample",
+        src: "Freesound CC0 — thma \"gong hit loud close\" (#245878) — a longer, deeper, more reverberant gong (re-sourced: owner kept the GONG, wanted it more drawn-out)",
+        role: "Game over (eaten). A long, deep, reverberant gong with a slow decay.",
         play: (a) => a.lose(),
-        alts: "lose",
       },
       {
         name: "Tension", kind: "proc",
-        src: "Procedural — sine heartbeat pulse 50–80 Hz (intensity-scaled)",
-        role: "Heartbeat pulse that quickens as a predator closes in.",
+        src: "Procedural — sine heartbeat pulse 50–80 Hz (intensity-scaled). KEPT (owner's pick).",
+        role: "Heartbeat pulse that quickens as a predator closes in. Deliberately left procedural.",
         play: (a) => a.tension(0.8),
-      },
-      {
-        name: "Bank", kind: "removing",
-        src: "Procedural — warm major chord 440/554/660 Hz (being removed)",
-        role: "Banking an egg at the nest. From the old banking loop — slated for removal.",
-        play: (a) => a.bank(),
-      },
-      {
-        name: "Beacon", kind: "removing",
-        src: "Procedural — rising triangle arpeggio 523/659/784 Hz (being removed)",
-        role: "Ward beacon igniting. From the old ward loop — slated for removal.",
-        play: (a) => a.beacon(),
       },
     ],
   },
@@ -617,9 +462,8 @@ for (const g of GROUPS) {
         const arow = document.createElement("div"); arow.className = "alt";
         const ab = document.createElement("button"); ab.textContent = "▶"; ab.title = "Play " + alt.label;
         ab.addEventListener("click", () => {
-          const c = altEnsure();
-          if (c.state === "suspended") c.resume();
-          try { alt.play(c); } catch (e) { statusEl.textContent = "Error: " + e.message; console.error(e); }
+          Promise.resolve().then(() => alt.play())
+            .catch((e) => { statusEl.textContent = "Error: " + e.message; console.error(e); });
         });
         const lbl = document.createElement("div"); lbl.className = "lbl"; lbl.textContent = alt.label;
         arow.appendChild(ab); arow.appendChild(lbl); altsEl.appendChild(arow);

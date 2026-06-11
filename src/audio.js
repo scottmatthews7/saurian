@@ -19,7 +19,7 @@ export function createAudio() {
   // Decoded sample buffers (real CC0/royalty-free audio). Keyed by a logical
   // name; values are AudioBuffer | AudioBuffer[]. Loaded once on unlock; until
   // then the procedural fallbacks below cover any early sound.
-  const buffers = { footsteps: [], pant: null, creatures: {} };
+  const buffers = { footsteps: [], pant: null, creatures: {}, herbivore: null, oneshots: {} };
   let buffersLoaded = false;
   // Panting loop nodes (created lazily, gain-ramped — never hard cut).
   let pant = null;
@@ -59,8 +59,12 @@ export function createAudio() {
     buffers.footsteps = buffers.footsteps.filter(Boolean);
     buffers.pant = await load(s.pant);
     buffers.bigStep = await load(s.bigStep);
+    buffers.herbivore = await load(s.herbivore);
     for (const [kind, url] of Object.entries(s.creatures || {})) {
       buffers.creatures[kind] = await load(url);
+    }
+    for (const [key, url] of Object.entries(s.oneshots || {})) {
+      buffers.oneshots[key] = await load(url);
     }
   }
 
@@ -123,23 +127,22 @@ export function createAudio() {
       if (master) master.gain.value = muted ? 0 : AUDIO.masterVolume;
       return muted;
     },
-    // A guttural T-Rex roar: detuned saws sweeping down, filtered, plus breath.
-    // `gain` (0..1) attenuates the whole roar so a distant predator is fainter;
-    // `menace` (0..1) deepens + lengthens it (pushed up as a T-Rex closes /
-    // enrages) so the apex predator sounds more threatening the nearer it gets.
     // Play a creature's vocalisation by kind, distance-attenuated by `gain` and
-    // intensified by `menace` (0..1). Prefers the real per-species sample
-    // (T-Rex rumble / raptor screech / herbivore bellow); falls back to the
-    // procedural roar/call. `menace` deepens + slows the predator sample.
+    // intensified by `menace` (0..1). Prefers the real per-species sample (the
+    // T-Rex guttural growl/rumble / raptor screech / herbivore bellow); falls
+    // back to a procedural growl/call. The T-Rex has NO open-mouth roar — the
+    // guttural rumble IS its voice (owner verdict), played slowed by
+    // trexRumbleRate; `menace` deepens + slows the predator sample further.
     vocalise(kind, gain = 1, menace = 0) {
       if (!ctx || muted) return;
       const vol = Math.max(0, Math.min(1, gain));
       if (vol <= 0.001) return;
+      const m = Math.max(0, Math.min(1, menace));
       const buf = buffers.creatures && buffers.creatures[kind];
+      const predator = kind === "trex" || kind === "raptor";
       if (buf) {
-        const m = Math.max(0, Math.min(1, menace));
-        const predator = kind === "trex" || kind === "raptor";
-        // User feedback: the baked trex rumble was pitched down too far — lift it.
+        // T-Rex sample is an organic growl played back slowed (trexRumbleRate < 1)
+        // toward the eerie closed-mouth rumble; menace deepens it further.
         const baseRate = kind === "trex" ? AUDIO.trexRumbleRate : 1;
         playBuffer(buf, {
           gain: vol * (predator ? 0.9 : 0.7),
@@ -149,16 +152,10 @@ export function createAudio() {
         });
         return;
       }
-      // procedural fallback
-      if (kind === "trex" || kind === "raptor") api.roar(vol, menace);
-      else api.creatureCall(vol, kind === "apatosaurus" ? 0.7 : 1);
-    },
-    roar(gain = 1, menace = 0) {
-      if (!ctx || muted) return;
-      const m = Math.max(0, Math.min(1, menace));
-      const vol = Math.max(0, Math.min(1, gain));
-      if (vol <= 0.001) return;
-      const dur = 1.1 + m * 0.5;                 // more menace = a longer bellow
+      // Procedural fallback (sample not loaded / blocked). Herbivores fall back to
+      // the hoot; predators to a low guttural growl synth — NOT a Hollywood roar.
+      if (!predator) { api.creatureCall(vol, kind === "apatosaurus" ? 0.7 : 1); return; }
+      const dur = 1.1 + m * 0.5;                 // more menace = a longer growl
       const pitchMul = 1 - m * 0.25;             // and a deeper one
       const filter = ctx.createBiquadFilter();
       filter.type = "lowpass";
@@ -192,6 +189,14 @@ export function createAudio() {
       if (!ctx || muted) return;
       const vol = Math.max(0, Math.min(1, gain));
       if (vol <= 0.001) return;
+      // Prefer the organic herbivore call; bigger herbivores (lower `pitch`) play
+      // a touch slower/deeper. Falls back to the procedural hoot below.
+      if (buffers.herbivore) {
+        playBuffer(buffers.herbivore, {
+          gain: vol * 0.7, rate: pitch, jitter: 0.05, attack: 0.02, release: 0.12,
+        });
+        return;
+      }
       const dur = 0.85;
       const base = 180 * pitch;
       const filter = ctx.createBiquadFilter();
@@ -242,6 +247,8 @@ export function createAudio() {
     // bite (T-Rex on the player / on prey) — not the player's attack.
     bite() {
       if (!ctx || muted) return;
+      const buf = buffers.oneshots && buffers.oneshots.bite;
+      if (buf) { playBuffer(buf, { gain: 0.9, jitter: 0.06, attack: 0.004, release: 0.05 }); return; }
       tone(180, 0.12, "square", 0.4, 60);
       const n = noise(), g = ctx.createGain(), f = ctx.createBiquadFilter();
       f.type = "highpass"; f.frequency.value = 800;
@@ -254,17 +261,37 @@ export function createAudio() {
     // sparkle arpeggio so the rare pickup feels rewarding.
     pickup(golden) {
       if (!ctx || muted) return;
+      const key = golden ? "pickupGolden" : "pickup";
+      const buf = buffers.oneshots && buffers.oneshots[key];
+      if (buf) { playBuffer(buf, { gain: golden ? 0.7 : 0.6, jitter: 0.02, attack: 0.005, release: 0.08 }); return; }
       tone(660, 0.14, "triangle", 0.35, 990);
       tone(990, 0.18, "sine", 0.25, 1320);
       if (golden) {
         [1320, 1760, 2093].forEach((f, i) => setTimeout(() => tone(f, 0.16, "triangle", 0.22), 60 + i * 70));
       }
     },
-    // Warm restorative swell when eating meat to heal.
+    // Warm restorative swell when eating meat to heal (organic singing-bowl).
     heal() {
       if (!ctx || muted) return;
+      const buf = buffers.oneshots && buffers.oneshots.heal;
+      if (buf) { playBuffer(buf, { gain: 0.55, jitter: 0, attack: 0.03, release: 0.2 }); return; }
       tone(330, 0.3, "sine", 0.3, 495);
       tone(495, 0.35, "sine", 0.2, 660);
+    },
+    // Soft tactile UI tap (organic wood block). Subtle by design.
+    ui() {
+      if (!ctx || muted) return;
+      const buf = buffers.oneshots && buffers.oneshots.ui;
+      if (buf) { playBuffer(buf, { gain: 0.5, jitter: 0.03, attack: 0.002, release: 0.03 }); return; }
+      tone(440, 0.04, "sine", 0.18);
+    },
+    // Victory cue (bright organic bell). Referenced by the audit dashboard and
+    // available for a win/sanctuary event.
+    win() {
+      if (!ctx || muted) return;
+      const buf = buffers.oneshots && buffers.oneshots.win;
+      if (buf) { playBuffer(buf, { gain: 0.6, jitter: 0, attack: 0.005, release: 0.12 }); return; }
+      [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.18, "triangle", 0.3), i * 90));
     },
     // A grounded footfall for the human. Two layers: a low body thud (the
     // weight landing) plus a short filtered-noise scuff (foot on dirt). The
@@ -287,21 +314,26 @@ export function createAudio() {
           jitter: 0.08,                          // ±8% pitch per step
         });
         if (wading) {
-          // Watery splash layer over the dry step: a bright spray sizzle (a foot
-          // breaking the surface) plus a quick pitched water-drop "plip", so it
-          // reads as WATER, not a dull wet thud. Same recipe as splash() but
-          // shorter/lighter — it's a footfall, not a plunge.
-          const wn = noise(), wg = ctx.createGain(), wf = ctx.createBiquadFilter();
-          wf.type = "bandpass"; wf.Q.value = 0.6;
-          wf.frequency.setValueAtTime(2600, now());                    // bright spray on entry
-          wf.frequency.exponentialRampToValueAtTime(700, now() + 0.22); // settling back into the water
-          wg.gain.setValueAtTime(0.0001, now());
-          wg.gain.exponentialRampToValueAtTime(vol * 1.1, now() + 0.01);
-          wg.gain.exponentialRampToValueAtTime(0.0001, now() + 0.24);
-          wn.connect(wf); wf.connect(wg); wg.connect(master);
-          wn.start(); wn.stop(now() + 0.24);
-          // pitched water-drop blip (the round "plip" of a splash)
-          tone(900, 0.12, "sine", vol * 0.5, 380);
+          // Wet layer over the dry step: reuse the SAME splash sample as splash()
+          // (owner verdict) so a wading footfall and a body splash share one water
+          // sound. Lighter/shorter than a full plunge — it's a footfall, so it's
+          // played quieter, with a touch of pitch jitter per step. Falls back to
+          // the procedural spray below if the splash buffer hasn't loaded.
+          const splashBuf = buffers.oneshots && buffers.oneshots.splash;
+          if (splashBuf) {
+            playBuffer(splashBuf, { gain: vol * 0.8, jitter: 0.08, attack: 0.005, release: 0.08 });
+          } else {
+            const wn = noise(), wg = ctx.createGain(), wf = ctx.createBiquadFilter();
+            wf.type = "bandpass"; wf.Q.value = 0.6;
+            wf.frequency.setValueAtTime(2600, now());                    // bright spray on entry
+            wf.frequency.exponentialRampToValueAtTime(700, now() + 0.22); // settling back into the water
+            wg.gain.setValueAtTime(0.0001, now());
+            wg.gain.exponentialRampToValueAtTime(vol * 1.1, now() + 0.01);
+            wg.gain.exponentialRampToValueAtTime(0.0001, now() + 0.24);
+            wn.connect(wf); wf.connect(wg); wg.connect(master);
+            wn.start(); wn.stop(now() + 0.24);
+            tone(900, 0.12, "sine", vol * 0.5, 380);
+          }
         }
         return;
       }
@@ -322,6 +354,8 @@ export function createAudio() {
     // little watery blip. Played when the raptor enters the pond.
     splash() {
       if (!ctx || muted) return;
+      const buf = buffers.oneshots && buffers.oneshots.splash;
+      if (buf) { playBuffer(buf, { gain: 0.7, jitter: 0.05, attack: 0.005, release: 0.08 }); return; }
       const n = noise(), g = ctx.createGain(), f = ctx.createBiquadFilter();
       f.type = "lowpass";
       f.frequency.setValueAtTime(3500, now());
@@ -349,6 +383,8 @@ export function createAudio() {
     // Pterosaur screech: a shrill rising-then-falling cry warning of a dive.
     screech() {
       if (!ctx || muted) return;
+      const buf = buffers.oneshots && buffers.oneshots.screech;
+      if (buf) { playBuffer(buf, { gain: 0.55, jitter: 0.05, attack: 0.01, release: 0.1 }); return; }
       const dur = 0.55;
       const o = ctx.createOscillator();
       const g = ctx.createGain();
@@ -364,9 +400,20 @@ export function createAudio() {
       o.connect(f); f.connect(g); g.connect(master);
       o.start(); o.stop(now() + dur + 0.02);
     },
-    // Player hurt: dissonant low buzz.
+    // Player hurt: a real male pain grunt. Two grunt variants (hurt + hurtAlt)
+    // are loaded; each hit randomly fires one of the two (owner verdict) so
+    // repeated hits don't sound identical. Falls back to a procedural buzz if
+    // neither sample loaded.
     hurt() {
       if (!ctx || muted) return;
+      const a = buffers.oneshots && buffers.oneshots.hurt;
+      const b = buffers.oneshots && buffers.oneshots.hurtAlt;
+      const choices = [a, b].filter(Boolean);
+      if (choices.length) {
+        const buf = choices[(Math.random() * choices.length) | 0];
+        playBuffer(buf, { gain: 0.7, jitter: 0.05, attack: 0.004, release: 0.05 });
+        return;
+      }
       tone(140, 0.3, "sawtooth", 0.4, 80);
     },
     // A single heartbeat-like tension pulse; intensity (0..1) raises pitch+gain.
@@ -386,6 +433,8 @@ export function createAudio() {
     },
     lose() {
       if (!ctx || muted) return;
+      const buf = buffers.oneshots && buffers.oneshots.lose;
+      if (buf) { playBuffer(buf, { gain: 0.6, jitter: 0, attack: 0.005, release: 0.2 }); return; }
       [330, 247, 196, 147].forEach((f, i) => setTimeout(() => tone(f, 0.5, "sawtooth", 0.35), i * 160));
     },
     // Ambient drone removed — the user hated the constant sine hum. Kept as a
