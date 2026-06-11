@@ -528,47 +528,50 @@ export const OCEAN = {
   foamColor: { r: 0.92, g: 0.95, b: 0.96 },    // near-white foam line at the waterline
 };
 
-// AQUATIC PREDATOR (wishlist item 5). A plesiosaur-like lurker that lives in the
-// lake: it patrols SUBMERGED (only a faint wake shows), then SURFACES and LUNGES
-// at a player near the shoreline or in the water, before submerging again — so
-// the water's edge feels dangerous. Built procedurally in aquatic.js (a long
-// neck + head + humped body + flippers); no glb, animated by node transforms.
+// AQUATIC PREDATOR (the OCEAN apex creature). A procedural elasmosaurid
+// plesiosaur (src/procmesh/plesiosaur.js) that lives in the EASTERN OCEAN (east
+// of OCEAN.shoreX). It patrols SUBMERGED in open water (only a wake shows), then
+// SURFACES and rears its long neck, and LUNGES at a player near the coast or in
+// the sea before submerging again — so the water's edge feels dangerous. No glb;
+// the neck-segment + flipper pivots are animated by node transforms.
 // All values are arcade-feel design choices, tuned against the existing chase
-// economy (player walk 7 / sprint 16.5, T-Rex bite 22) and the pond geometry
-// (WATER.radius 17, centre at -34,28).
+// economy (player walk 7 / sprint 16.5, T-Rex bite 22) and the OCEAN geometry
+// (shoreX 120, seaLevel -1.4, seabed -5.4, plesiosaur biome centre 150,0 r90).
 export const AQUATIC = {
-  // --- Build proportions (world units) — PRD-plesiosaur.md @ L=10 u --------
-  // Ratios: neck 0.58 L, trunk 0.12 L, head 0.03 L, flippers 0.13 L, tail 0.25 L
-  bodyLength: 1.2,        // compact trunk spindle (~0.12 L)
-  bodyRadius: 0.85,       // oval girth (~0.085 L depth)
-  neckLength: 5.8,        // absurd elasmosaur neck (~0.58 L) — dominates silhouette
-  neckSegments: 8,        // tapering segments for a smooth surface arc
-  headLength: 0.32,       // tiny strike head (~0.03 L)
-  flipperLength: 1.3,     // paddle flipper chord (~0.13 L)
-  tailLength: 2.5,        // short steering tail (~0.25 L)
-  // --- Colours (PRD §Visual appearance) ------------------------------------
-  bodyColor: { r: 0.165, g: 0.227, b: 0.220 },  // slate-teal dorsal #2a3a38
-  bellyColor: { r: 0.655, g: 0.733, b: 0.706 },  // pale green-grey ventral
+  // --- Build scale ---------------------------------------------------------
+  // The procmesh plesiosaur is built at the procgen unit scale (~11.5 u long,
+  // neck crest ~3.7 u high). Open water lets it be large: scaled up so it reads
+  // as a genuine sea monster. Art-direction choice for the doubled arena.
+  modelScale: 2.0,        // uniform scale on the procmesh root
+  // Derived footprint helpers (model-units * modelScale). bodyRadius is the
+  // half-girth used for in/out-of-water clamps; reach uses the scaled head span.
+  bodyRadius: 2.0,        // ~half the scaled trunk width, for shore clamps
+  bodyLength: 8.0,        // scaled trunk+neck planar footprint, for "arrived" tests
+  surfacedNeckRise: 7.4,  // ~3.7 model-u neck crest * modelScale (informational)
+  // --- Colours (PRD §Visual appearance; consumed by the hit-flash) ---------
   eyeColor: { r: 0.784, g: 0.471, b: 0.094 },    // amber #c87818 + emissive
-  toothColor: { r: 0.910, g: 0.894, b: 0.847 },  // ivory fangs #e8e4d8
-  // --- Lurk / surface geometry ---------------------------------------------
-  submergedDepth: 1.1,    // lurks below surface (scaled with smaller body)
-  surfacedRise: 2.2,      // neck rears ~0.22 L on strike telegraph
-  // --- AI state machine --------------------------------------------------
-  // submerged patrol -> (player near shore/in water) surface + lunge -> bite ->
-  // submerge -> cooldown. It stays inside the pond (it's a lake creature).
-  patrolSpeed: 2.4,       // slow submerged prowl toward roaming targets inside the lake
-  lungeSpeed: 16,         // fast surge during a surfacing lunge (beats a wading/swimming player)
-  shoreLureRange: 9,      // player within this of the WATER EDGE (or in the water) can trigger a surface ambush
-  surfaceSeconds: 0.9,    // telegraph: it breaches + rears the neck for this long before the strike commits (dodge window)
-  lungeSeconds: 1.1,      // duration of the committed lunge surge after the telegraph
-  attackRange: 4.5,       // contact range for the head-strike bite
-  attackDamage: 26,       // bite damage on the player (> T-Rex 22 — the ambush is punishing if you linger at the water)
-  swimVulnMultiplier: 1.6, // bite damage multiplier while the player is SWIMMING in deep water (you're in its element)
+  // --- Lurk / surface geometry (world units, sea-scaled) -------------------
+  submergedDepth: 2.2,    // how far the root sinks below the sea surface when lurking
+  surfacedRise: 0.6,      // how far the body rises above the sea surface when breached
+  // --- Patrol region (OCEAN) ----------------------------------------------
+  patrolCenterX: 150,     // matches the plesiosaur biome centre (config DINO biomes)
+  patrolCenterZ: 0,
+  patrolRadius: 30,       // radius of the open-water roam disc east of the shore
+  // --- AI state machine ----------------------------------------------------
+  // submerged patrol -> (player near coast/in sea) surface + lunge -> bite ->
+  // submerge -> cooldown. It stays seaward of the shoreline (it's a sea creature).
+  patrolSpeed: 4.0,       // slow submerged prowl toward roaming targets in open water
+  lungeSpeed: 18,         // fast surge during a surfacing lunge (beats a swimming player)
+  shoreLureRange: 14,     // player within this of the COAST (or in the sea) can trigger a surface ambush
+  surfaceSeconds: 1.0,    // telegraph: it breaches + rears the neck before the strike commits (dodge window)
+  lungeSeconds: 1.2,      // duration of the committed lunge surge after the telegraph
+  attackRange: 8.0,       // contact range for the head-strike bite (scaled long neck)
+  attackDamage: 26,       // bite damage on the player (> T-Rex 22 — punishing if you linger at the coast)
+  swimVulnMultiplier: 1.6, // bite damage multiplier while the player is SWIMMING (you're in its element)
   attackCooldown: 1.3,    // sec between bites if the player stays in reach
-  submergeSeconds: 5.0,   // sec it lurks submerged after a strike before it can ambush again (the safe window to get out)
-  reachBeyondShore: 2.0,  // world units past the shoreline the head can still strike (it lunges OUT of the water at the bank)
-  maxHealth: 90,          // tanky; you can fight it off from the bank but it's not a quick kill — better to leave the water
+  submergeSeconds: 5.0,   // sec it lurks submerged after a strike before it can ambush again (the safe window)
+  reachBeyondShore: 4.0,  // world units inland of the coastline the head can still strike at the surf
+  maxHealth: 120,         // tanky open-water apex; fightable from the beach but no quick kill
   turnLerp: 0.05,         // slow, ponderous turning underwater
 };
 
