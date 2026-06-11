@@ -339,3 +339,23 @@ Regions, south -> north along the route:
   rocky pass -> beach -> boat (N). Lake (W) + swamp (E) are off-route side areas.
 This SUPERSEDES the current radial biome placement; world.js needs a re-layout to
 this island shape + scale. Territories (item from world overhaul) re-pin to these regions.
+
+## DINO PLACEMENT (which dino goes where — by region)
+
+**Quetzalcoatlus (owner-specified, FIRM):** nests on the **BEACH**, standing on a
+clutch of eggs. Can **take off and FLY but NEVER land** — patrols the AIR over the
+**top of the grassland + the desert**, so it threatens from above on the exposed
+upper-map legs but isn't perpetually mobbing the player. (Disturbing the beach nest
+provokes it.)
+
+**Proposed for the rest (for owner sign-off) — a route that escalates S->N:**
+- Thick jungle / start lobe: **Velociraptor packs** ambushing from dense cover.
+- Forest: **Therizinosaurus** (territorial big-claw herbivore) + raptors at the edges.
+- Lake (W side): calm/optional — minor or no aquatic threat.
+- Grassland (central crossing): **T-Rex** apex stalker (long open outrun-chases) +
+  **sauropods (Dreadnoughtus/Apatosaurus)** grazing as ambient giants.
+- Swamp (E side): **Spinosaurus** semi-aquatic apex — deadly if you detour in.
+- Desert (upper-mid): exposed; **Quetzalcoatlus overhead** (swoop threat, no cover).
+- Rocky pass (NE choke): tense bottleneck — raptor ambush / treacherous footing.
+- Beach (pre-goal): **Quetzalcoatlus nest** + **Plesiosaur** surfacing near shore.
+- Sea / Boat (goal): final sprint past the **Plesiosaur** to the boat.
