@@ -169,8 +169,8 @@ const ALT_SOUNDS = {
     { label: "Alt · AardsReal Water Splash (shorter) [CC0]", play: () => playAltFile(`${C}/candidates/splash_alt.mp3`, 0.7) },
   ],
   screech: [
-    { label: "Default (in engine) · birdOfTheNorth \"monster croak\" (#582914) — deep croaky boom for an azhdarchid pterosaur (no avian syrinx) [CC0]", play: () => playAltFile(`${C}/screech.mp3`, 0.55) },
-    { label: "Alt · Robinhood76 \"monster bird creaking\" (#276493) — croaky creature [CC-BY]", play: () => playAltFile(`${C}/candidates/screech_alt.mp3`, 0.55) },
+    { label: "Default (in engine) · TheKingOfGeeks360 \"Ratites - Cassowary, Groan\" (#843486) — real cassowary groan, the azhdarchid analog (no avian syrinx → deep ratite boom, not a bird screech) [CC0]", play: () => playAltFile(`${C}/screech.mp3`, 0.55) },
+    { label: "Alt · Ovkovko \"CrocodilianTypeGrowl\" (#825609) — deep resonant reptilian grumble/snarl [CC0]", play: () => playAltFile(`${C}/candidates/screech_alt.mp3`, 0.55) },
   ],
   bite: [
     { label: "Default (in engine) · Breviceps \"Biting on bones\" (#445987) — crunchy flesh-and-bone chomp [CC0]", play: () => playAltFile(`${C}/bite.mp3`, 0.9) },
@@ -181,8 +181,8 @@ const ALT_SOUNDS = {
     { label: "Alt · noahpardo \"Deep Groan 3\" (#345734) [CC0]", play: () => playAltFile(`${C}/candidates/stegosaurus_alt.mp3`, 0.7) },
   ],
   apatosaurus: [
-    { label: "Default (in engine) · Thanra \"Monster bellowing\" (#245429) — a vast, deep saurian moan [CC0]", play: () => playAltFile(`${C}/apatosaurus.mp3`, 0.7) },
-    { label: "Alt · joelu2001 \"Distant Sinister Moan\" (#360593) [CC0]", play: () => playAltFile(`${C}/candidates/apatosaurus_alt.mp3`, 0.7) },
+    { label: "Default (in engine) · joelu2001 \"Distant Sinister Moan\" (#360593) — vast deep moan, trimmed to ~3.5s with a fade-out for an in-game call [CC0]", play: () => playAltFile(`${C}/apatosaurus.mp3`, 0.7) },
+    { label: "Alt · Thanra \"Monster bellowing\" (#245429) — a vast, deep saurian moan [CC0]", play: () => playAltFile(`${C}/candidates/apatosaurus_alt.mp3`, 0.7) },
   ],
   creaturecall: [
     { label: "Default (in engine) · Chobiboko \"monster roar in distance\" (#261147) — distant menacing non-bovine call [CC0]", play: () => playAltFile(`${C}/creaturecall.mp3`, 0.7) },
@@ -307,8 +307,8 @@ const GROUPS = [
       },
       {
         name: "Vocalise — Apatosaurus", kind: "sample",
-        src: "Freesound CC0 — Thanra \"Monster bellowing\" (#245429) — a vast, deep saurian moan (re-sourced: NOT an elephant)",
-        role: "Herbivore ambient call — the biggest sauropod gets a vast, deep saurian moan.",
+        src: "Freesound CC0 — joelu2001 \"Distant Sinister Moan\" (#360593), trimmed to ~3.5s with a fade-out (promoted to default; was the alt)",
+        role: "Herbivore ambient call — the biggest sauropod gets a vast, deep sinister moan, tightened to an in-game call length.",
         play: (a) => a.vocalise("apatosaurus", 1.0, 0),
         alts: "apatosaurus",
       },
@@ -328,8 +328,8 @@ const GROUPS = [
       },
       {
         name: "Screech", kind: "sample",
-        src: "Freesound CC0 — birdOfTheNorth \"monster croak\" (#582914) — a deep croaky boom for an azhdarchid pterosaur (no avian syrinx → low croak/boom, not a bird screech)",
-        role: "Quetzalcoatlus / pterosaur dive telegraph — a low croaky boom (current azhdarchid thinking), warning of a swoop.",
+        src: "Freesound CC0 — TheKingOfGeeks360 \"Ratites - Cassowary, Groan\" (#843486) — a real cassowary groan, the azhdarchid analog (no avian syrinx → deep ratite boom, not a bird screech)",
+        role: "Quetzalcoatlus / pterosaur dive telegraph — a deep guttural cassowary groan (current azhdarchid thinking), warning of a swoop.",
         play: (a) => a.screech(),
         alts: "screech",
       },

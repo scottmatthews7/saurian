@@ -61,8 +61,23 @@ owner's verdict.
   one — thma "gong hit loud close" (#245878, ~37s decay).
 - **Big step** unchanged (owner: GOOD).
 
-All round-3 picks are **CC0** except the screech runner-up (Robinhood76 "monster bird
-creaking" #276493, **CC-BY** — credited above and not the in-engine default).
+**Owner audition pass — round 4 (latest):** two cues re-wired per the owner's verdict.
+- **Apatosaurus** — the owner loved the round-3 ALT (joelu2001 "Distant Sinister Moan"
+  #360593), so it is **promoted to the default** vocal. It was too long (20.8s), so it was
+  **trimmed with ffmpeg to ~3.5s** (a tight 8.3–11.8s window of the moan + a 0.6s fade-out)
+  for an in-game call. The old default (Thanra "Monster bellowing" #245429) is demoted to the
+  alt. (The separate `creaturecall` alt still points at the full #360593 — untouched.)
+- **Screech** (Quetzalcoatlus / azhdarchid call) — the round-3 "monster croak" (#582914) was
+  rejected as not working. Re-sourced to genuinely organic ratite/reptile recordings (the
+  cassowary is the standard azhdarchid analog — a real, deep, dangerous ratite with no avian
+  syrinx, à la Prehistoric Planet): **default** = TheKingOfGeeks360 "Ratites - Cassowary, Groan"
+  (#843486, a real cassowary groan), **alt** = Ovkovko "CrocodilianTypeGrowl" (#825609, a deep
+  resonant reptilian grumble). Both deep, guttural, low-mid weight — NOT a clean bird-of-prey
+  screech and NOT the old croak. (A third candidate auditioned but not wired: the same author's
+  shorter "Ratites - Cassowary" grunt #826080.)
+
+All round-3 and round-4 picks are now **CC0** (the previous CC-BY screech runner-up, Robinhood76
+"monster bird creaking" #276493, was replaced by the round-4 CC0 screech set above).
 
 | Sound (engine method) | File | Freesound | Author | Licence |
 |---|---|---|---|---|
@@ -72,14 +87,14 @@ creaking" #276493, **CC-BY** — credited above and not the in-engine default).
 | Hurt B (`hurt`, wired in) | `hurt_alt.mp3` | "AdultMale PainGrunt 07" [#547205](https://freesound.org/s/547205/) | MrFossy | CC0 |
 | Bite (`bite`) | `bite.mp3` | "Biting on bones" [#445987](https://freesound.org/s/445987/) | Breviceps | CC0 |
 | Bite — alt | `candidates/bite_alt.mp3` | "Hard Candy / Bone Crunch" [#392883](https://freesound.org/s/392883/) | clif_creates | CC0 |
-| Screech (`screech`) | `screech.mp3` | "monster croak" [#582914](https://freesound.org/s/582914/) | birdOfTheNorth | CC0 |
-| Screech — alt | `candidates/screech_alt.mp3` | "monster bird creaking" [#276493](https://freesound.org/s/276493/) | Robinhood76 | CC-BY |
+| Screech (`screech`) | `screech.mp3` | "Ratites - Cassowary, Groan" [#843486](https://freesound.org/s/843486/) | TheKingOfGeeks360 | CC0 |
+| Screech — alt | `candidates/screech_alt.mp3` | "CrocodilianTypeGrowl" [#825609](https://freesound.org/s/825609/) | Ovkovko | CC0 |
 | T-Rex rumble (`vocalise("trex")`) | `trex.mp3` | "Monster Guttural Growl, Dry" [#734900](https://freesound.org/s/734900/) | DeqstersLab | CC0 |
 | T-Rex — alt | `candidates/trex_alt.mp3` | "ominous_growl" [#708960](https://freesound.org/s/708960/) | PJ_Bear | CC0 |
 | Stegosaurus (`vocalise("stegosaurus")`) | `stegosaurus.mp3` | "Deep Groan 2" [#345727](https://freesound.org/s/345727/) | noahpardo | CC0 |
 | Stegosaurus — alt | `candidates/stegosaurus_alt.mp3` | "Deep Groan 3" [#345734](https://freesound.org/s/345734/) | noahpardo | CC0 |
-| Apatosaurus (`vocalise("apatosaurus")`) | `apatosaurus.mp3` | "Monster bellowing" [#245429](https://freesound.org/s/245429/) | Thanra | CC0 |
-| Apatosaurus — alt | `candidates/apatosaurus_alt.mp3` | "Distant Sinister Moan" [#360593](https://freesound.org/s/360593/) | joelu2001 | CC0 |
+| Apatosaurus (`vocalise("apatosaurus")`) | `apatosaurus.mp3` | "Distant Sinister Moan" [#360593](https://freesound.org/s/360593/), trimmed to ~3.5s + fade-out | joelu2001 | CC0 |
+| Apatosaurus — alt | `candidates/apatosaurus_alt.mp3` | "Monster bellowing" [#245429](https://freesound.org/s/245429/) | Thanra | CC0 |
 | Creature call (`creatureCall`) | `creaturecall.mp3` | "monster roar in distance" [#261147](https://freesound.org/s/261147/) | Chobiboko | CC0 |
 | Creature call — alt | `candidates/creaturecall_alt.mp3` | "Distant Sinister Moan" [#360593](https://freesound.org/s/360593/) | joelu2001 | CC0 |
 | Big step (`bigStep`) | `bigstep.mp3` | "Boom_01" [#336487](https://freesound.org/s/336487/) | Faulkin | CC0 |
