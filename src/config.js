@@ -875,6 +875,8 @@ export const AUDIO = {
     oneshots: {
       splash: "assets/audio/splash.mp3",
       hurt: "assets/audio/hurt.mp3",
+      hurtAlt: "assets/audio/hurt_alt.mp3", // second pain grunt; hurt() picks one of the two at random
+
       bite: "assets/audio/bite.mp3",
       screech: "assets/audio/screech.mp3",
       pickup: "assets/audio/pickup.mp3",         // kalimba note (organic)

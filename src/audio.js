@@ -314,21 +314,26 @@ export function createAudio() {
           jitter: 0.08,                          // ±8% pitch per step
         });
         if (wading) {
-          // Watery splash layer over the dry step: a bright spray sizzle (a foot
-          // breaking the surface) plus a quick pitched water-drop "plip", so it
-          // reads as WATER, not a dull wet thud. Same recipe as splash() but
-          // shorter/lighter — it's a footfall, not a plunge.
-          const wn = noise(), wg = ctx.createGain(), wf = ctx.createBiquadFilter();
-          wf.type = "bandpass"; wf.Q.value = 0.6;
-          wf.frequency.setValueAtTime(2600, now());                    // bright spray on entry
-          wf.frequency.exponentialRampToValueAtTime(700, now() + 0.22); // settling back into the water
-          wg.gain.setValueAtTime(0.0001, now());
-          wg.gain.exponentialRampToValueAtTime(vol * 1.1, now() + 0.01);
-          wg.gain.exponentialRampToValueAtTime(0.0001, now() + 0.24);
-          wn.connect(wf); wf.connect(wg); wg.connect(master);
-          wn.start(); wn.stop(now() + 0.24);
-          // pitched water-drop blip (the round "plip" of a splash)
-          tone(900, 0.12, "sine", vol * 0.5, 380);
+          // Wet layer over the dry step: reuse the SAME splash sample as splash()
+          // (owner verdict) so a wading footfall and a body splash share one water
+          // sound. Lighter/shorter than a full plunge — it's a footfall, so it's
+          // played quieter, with a touch of pitch jitter per step. Falls back to
+          // the procedural spray below if the splash buffer hasn't loaded.
+          const splashBuf = buffers.oneshots && buffers.oneshots.splash;
+          if (splashBuf) {
+            playBuffer(splashBuf, { gain: vol * 0.8, jitter: 0.08, attack: 0.005, release: 0.08 });
+          } else {
+            const wn = noise(), wg = ctx.createGain(), wf = ctx.createBiquadFilter();
+            wf.type = "bandpass"; wf.Q.value = 0.6;
+            wf.frequency.setValueAtTime(2600, now());                    // bright spray on entry
+            wf.frequency.exponentialRampToValueAtTime(700, now() + 0.22); // settling back into the water
+            wg.gain.setValueAtTime(0.0001, now());
+            wg.gain.exponentialRampToValueAtTime(vol * 1.1, now() + 0.01);
+            wg.gain.exponentialRampToValueAtTime(0.0001, now() + 0.24);
+            wn.connect(wf); wf.connect(wg); wg.connect(master);
+            wn.start(); wn.stop(now() + 0.24);
+            tone(900, 0.12, "sine", vol * 0.5, 380);
+          }
         }
         return;
       }
@@ -395,11 +400,20 @@ export function createAudio() {
       o.connect(f); f.connect(g); g.connect(master);
       o.start(); o.stop(now() + dur + 0.02);
     },
-    // Player hurt: dissonant low buzz.
+    // Player hurt: a real male pain grunt. Two grunt variants (hurt + hurtAlt)
+    // are loaded; each hit randomly fires one of the two (owner verdict) so
+    // repeated hits don't sound identical. Falls back to a procedural buzz if
+    // neither sample loaded.
     hurt() {
       if (!ctx || muted) return;
-      const buf = buffers.oneshots && buffers.oneshots.hurt;
-      if (buf) { playBuffer(buf, { gain: 0.7, jitter: 0.05, attack: 0.004, release: 0.05 }); return; }
+      const a = buffers.oneshots && buffers.oneshots.hurt;
+      const b = buffers.oneshots && buffers.oneshots.hurtAlt;
+      const choices = [a, b].filter(Boolean);
+      if (choices.length) {
+        const buf = choices[(Math.random() * choices.length) | 0];
+        playBuffer(buf, { gain: 0.7, jitter: 0.05, attack: 0.004, release: 0.05 });
+        return;
+      }
       tone(140, 0.3, "sawtooth", 0.4, 80);
     },
     // A single heartbeat-like tension pulse; intensity (0..1) raises pitch+gain.

@@ -161,20 +161,32 @@ async function playAltFile(url, gain = 0.7, rate = 1) {
 const C = "assets/audio";
 const ALT_SOUNDS = {
   hurt: [
-    { label: "Default (in engine) · MrFossy male pain grunt #18 [CC0]", play: () => playAltFile(`${C}/hurt.mp3`, 0.7) },
-    { label: "Alt · MrFossy male pain grunt #07 [CC0]", play: () => playAltFile(`${C}/candidates/hurt_alt.mp3`, 0.7) },
+    { label: "Grunt A · MrFossy male pain grunt #18 [CC0] (hurt() picks A or B at random per hit)", play: () => playAltFile(`${C}/hurt.mp3`, 0.7) },
+    { label: "Grunt B · MrFossy male pain grunt #07 [CC0] (also wired in — random per hit)", play: () => playAltFile(`${C}/hurt_alt.mp3`, 0.7) },
   ],
   splash: [
     { label: "Default (in engine) · swordofkings128 water splash 2 [CC0]", play: () => playAltFile(`${C}/splash.mp3`, 0.7) },
     { label: "Alt · AardsReal Water Splash (shorter) [CC0]", play: () => playAltFile(`${C}/candidates/splash_alt.mp3`, 0.7) },
   ],
   screech: [
-    { label: "Default (in engine) · Joao_Janz Creepy Creature Screeching 1_2 (reptilian rasp) [CC0]", play: () => playAltFile(`${C}/screech.mp3`, 0.55) },
-    { label: "Alt · Joao_Janz Creepy Creature Screeching 1_3 [CC0]", play: () => playAltFile(`${C}/candidates/screech_alt.mp3`, 0.55) },
+    { label: "Default (in engine) · birdOfTheNorth \"monster croak\" (#582914) — deep croaky boom for an azhdarchid pterosaur (no avian syrinx) [CC0]", play: () => playAltFile(`${C}/screech.mp3`, 0.55) },
+    { label: "Alt · Robinhood76 \"monster bird creaking\" (#276493) — croaky creature [CC-BY]", play: () => playAltFile(`${C}/candidates/screech_alt.mp3`, 0.55) },
   ],
   bite: [
-    { label: "Default (in engine) · MaddieCooper squelch watermelon (wet flesh chomp) [CC0]", play: () => playAltFile(`${C}/bite.mp3`, 0.9) },
-    { label: "Alt · SoundDesignForYou Squelching SFX [9] [CC0]", play: () => playAltFile(`${C}/candidates/bite_alt.mp3`, 0.9) },
+    { label: "Default (in engine) · Breviceps \"Biting on bones\" (#445987) — crunchy flesh-and-bone chomp [CC0]", play: () => playAltFile(`${C}/bite.mp3`, 0.9) },
+    { label: "Alt · clif_creates \"Hard Candy / Bone Crunch\" (#392883) [CC0]", play: () => playAltFile(`${C}/candidates/bite_alt.mp3`, 0.9) },
+  ],
+  stegosaurus: [
+    { label: "Default (in engine) · noahpardo \"Deep Groan 2\" (#345727) — grunt-ier deep saurian groan [CC0]", play: () => playAltFile(`${C}/stegosaurus.mp3`, 0.7) },
+    { label: "Alt · noahpardo \"Deep Groan 3\" (#345734) [CC0]", play: () => playAltFile(`${C}/candidates/stegosaurus_alt.mp3`, 0.7) },
+  ],
+  apatosaurus: [
+    { label: "Default (in engine) · Thanra \"Monster bellowing\" (#245429) — a vast, deep saurian moan [CC0]", play: () => playAltFile(`${C}/apatosaurus.mp3`, 0.7) },
+    { label: "Alt · joelu2001 \"Distant Sinister Moan\" (#360593) [CC0]", play: () => playAltFile(`${C}/candidates/apatosaurus_alt.mp3`, 0.7) },
+  ],
+  creaturecall: [
+    { label: "Default (in engine) · Chobiboko \"monster roar in distance\" (#261147) — distant menacing non-bovine call [CC0]", play: () => playAltFile(`${C}/creaturecall.mp3`, 0.7) },
+    { label: "Alt · joelu2001 \"Distant Sinister Moan\" (#360593) [CC0]", play: () => playAltFile(`${C}/candidates/creaturecall_alt.mp3`, 0.7) },
   ],
   trex: [
     { label: "Default (in engine) · DeqstersLab Monster Guttural Growl, Dry, slowed to a rumble [CC0]", play: () => playAltFile(`${C}/trex.mp3`, 0.85) },
@@ -207,8 +219,8 @@ const GROUPS = [
       },
       {
         name: "Footstep — wading", kind: "sample",
-        src: "Kenney CC0 footstep + procedural wet-splat layer",
-        role: "Per footfall while crossing the pond. Dry step plus a watery splat layer.",
+        src: "Kenney CC0 footstep + the SAME splash sample (swordofkings128 #398039) reused as the wet layer",
+        role: "Per footfall while crossing the pond. Dry step plus the splash sample (owner verdict: wading reuses SPLASH, not a separate water layer).",
         play: (a) => a.footstep(0.3, false, true), // AUDIO.footstepWadeVolume
       },
       {
@@ -250,8 +262,8 @@ const GROUPS = [
       },
       {
         name: "Hurt", kind: "sample",
-        src: "Freesound CC0 — MrFossy \"AdultMale PainGrunt 18\" (#547197)",
-        role: "Player takes damage (any bite / charge hit). A real male pain grunt.",
+        src: "Freesound CC0 — MrFossy pain grunts #547197 + #547205 (random one of the two per hit)",
+        role: "Player takes damage. hurt() randomly fires one of two MrFossy grunts each hit, so repeated hits vary.",
         play: (a) => a.hurt(),
         alts: "hurt",
       },
@@ -288,15 +300,17 @@ const GROUPS = [
       },
       {
         name: "Vocalise — Stegosaurus", kind: "sample",
-        src: "Freesound CC0 — TheKingOfGeeks360 \"Bull Bellowing\" (#768389)",
-        role: "Herbivore ambient bellow — now a distinct bull bellow (no longer shared with Apatosaurus).",
+        src: "Freesound CC0 — noahpardo \"Deep Groan 2\" (#345727) — a grunt-ier deep saurian groan (re-sourced: NOT a cow/bull)",
+        role: "Herbivore ambient call — a smaller, grunt-ier deep saurian groan, distinct from the apatosaurus moan.",
         play: (a) => a.vocalise("stegosaurus", 1.0, 0),
+        alts: "stegosaurus",
       },
       {
         name: "Vocalise — Apatosaurus", kind: "sample",
-        src: "Freesound CC0 — ikbenraar \"Elephant sound\" (#819668) — deepest herbivore low",
-        role: "Herbivore ambient bellow — the biggest sauropod gets the deepest organic low.",
+        src: "Freesound CC0 — Thanra \"Monster bellowing\" (#245429) — a vast, deep saurian moan (re-sourced: NOT an elephant)",
+        role: "Herbivore ambient call — the biggest sauropod gets a vast, deep saurian moan.",
         play: (a) => a.vocalise("apatosaurus", 1.0, 0),
+        alts: "apatosaurus",
       },
       {
         name: "Big step", kind: "sample",
@@ -307,23 +321,24 @@ const GROUPS = [
       },
       {
         name: "Bite", kind: "sample",
-        src: "Freesound CC0 — MaddieCooper \"squelch watermelon\" (#739184) — a wet, meaty flesh chomp (re-sourced)",
+        src: "Freesound CC0 — Breviceps \"Biting on bones\" (#445987) — a crunchy flesh-and-bone chomp (re-sourced: solid crunch, not a wet squelch)",
         role: "Predator chomp: T-Rex biting prey, and the triceratops charge cue.",
         play: (a) => a.bite(),
         alts: "bite",
       },
       {
         name: "Screech", kind: "sample",
-        src: "Freesound CC0 — Joao_Janz \"Creepy Creature Screeching 1_2\" (#483771) — a harsh reptilian rasp (re-sourced)",
-        role: "Pterosaur dive telegraph — a harsh reptilian screech-rasp warning of a swoop.",
+        src: "Freesound CC0 — birdOfTheNorth \"monster croak\" (#582914) — a deep croaky boom for an azhdarchid pterosaur (no avian syrinx → low croak/boom, not a bird screech)",
+        role: "Quetzalcoatlus / pterosaur dive telegraph — a low croaky boom (current azhdarchid thinking), warning of a swoop.",
         play: (a) => a.screech(),
         alts: "screech",
       },
       {
         name: "Creature call", kind: "sample",
-        src: "Freesound CC0 — manofham \"Moo 1\" (#700378)",
-        role: "Generic herbivore call (used when a per-species sample is missing). A real low moo.",
+        src: "Freesound CC0 — Chobiboko \"monster roar in distance\" (#261147) — a distant menacing non-bovine creature call (re-sourced: was a cow moo)",
+        role: "Generic herbivore/creature call (used when a per-species sample is missing). A distant menacing low roar.",
         play: (a) => a.creatureCall(1.0, 1),
+        alts: "creaturecall",
       },
     ],
   },
@@ -357,14 +372,14 @@ const GROUPS = [
       },
       {
         name: "Win", kind: "sample",
-        src: "Freesound CC0 — GabFitzgerald \"Approval bell\" (#625174).",
-        role: "Victory / sanctuary reached. A bright approval bell (a.win()).",
+        src: "Freesound CC0 — FunWithSound \"Music Dramatic Orchestral Ending\" (#588390) — a triumphant orchestral sting (re-sourced: bigger than the old approval bell)",
+        role: "Victory / sanctuary reached. A dramatic rising orchestral fanfare swell (a.win()).",
         play: (a) => a.win(),
       },
       {
         name: "Lose", kind: "sample",
-        src: "Freesound CC0 — grvmusic \"The Gong sound\" (#717952).",
-        role: "Game over (eaten). A final organic gong.",
+        src: "Freesound CC0 — thma \"gong hit loud close\" (#245878) — a longer, deeper, more reverberant gong (re-sourced: owner kept the GONG, wanted it more drawn-out)",
+        role: "Game over (eaten). A long, deep, reverberant gong with a slow decay.",
         play: (a) => a.lose(),
       },
       {

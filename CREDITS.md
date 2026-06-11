@@ -38,29 +38,58 @@ Bite, screech and the big-step thud were re-sourced to more organic clips: a wet
 meaty flesh squelch (bite), a harsh reptilian creature screech-rasp (screech), and a
 deep hollow organic earth-boom (big step) — none clicky/robotic or clean birdsong.
 
+**Owner audition pass — round 3 (latest):** seven cues re-sourced or re-wired per the
+owner's verdict.
+- **Footstep-wading** now reuses the SAME splash sample as `splash()` for its wet layer
+  (no separate water sound).
+- **Hurt** now randomly alternates per hit between the two MrFossy pain grunts
+  (#547197 / #547205) — both are wired into the engine (`hurt` + `hurtAlt`).
+- **Stegosaurus / Apatosaurus** re-sourced to distinct deep saurian calls (NOT cattle /
+  elephant): stego = noahpardo "Deep Groan 2" (#345727, smaller/grunt-ier), apato = Thanra
+  "Monster bellowing" (#245429, a vast deep moan).
+- **Bite** re-sourced to a solid crunchy flesh-and-bone chomp — Breviceps "Biting on bones"
+  (#445987) — not a wet squelch.
+- **Screech** is the QUETZALCOATLUS / azhdarchid pterosaur call. Azhdarchids had no avian
+  syrinx; current thinking (and Prehistoric Planet's archosaur-analog approach) favours
+  LOW croaks / booms / hisses over a bird-of-prey screech. Re-sourced to birdOfTheNorth
+  "monster croak" (#582914) — a deep croaky boom.
+- **Creature call** re-sourced from a cow moo to Chobiboko "monster roar in distance"
+  (#261147) — a distant menacing non-bovine call.
+- **Win** replaced with a bigger triumphant orchestral sting — FunWithSound "Music Dramatic
+  Orchestral Ending" (#588390).
+- **Lose** kept as a GONG (owner's pick) but swapped for a longer, deeper, more reverberant
+  one — thma "gong hit loud close" (#245878, ~37s decay).
+- **Big step** unchanged (owner: GOOD).
+
+All round-3 picks are **CC0** except the screech runner-up (Robinhood76 "monster bird
+creaking" #276493, **CC-BY** — credited above and not the in-engine default).
+
 | Sound (engine method) | File | Freesound | Author | Licence |
 |---|---|---|---|---|
 | Splash (`splash`) | `splash.mp3` | "water splash 2" [#398039](https://freesound.org/s/398039/) | swordofkings128 | CC0 |
 | Splash — alt | `candidates/splash_alt.mp3` | "Water Splash" [#829676](https://freesound.org/s/829676/) | AardsReal | CC0 |
-| Hurt (`hurt`) | `hurt.mp3` | "AdultMale PainGrunt 18" [#547197](https://freesound.org/s/547197/) | MrFossy | CC0 |
-| Hurt — alt | `candidates/hurt_alt.mp3` | "AdultMale PainGrunt 07" [#547205](https://freesound.org/s/547205/) | MrFossy | CC0 |
-| Bite (`bite`) | `bite.mp3` | "squelch watermelon" [#739184](https://freesound.org/s/739184/) | MaddieCooper | CC0 |
-| Bite — alt | `candidates/bite_alt.mp3` | "Squelching SFX [9]" [#649978](https://freesound.org/s/649978/) | SoundDesignForYou | CC0 |
-| Screech (`screech`) | `screech.mp3` | "Creepy Creature Screeching 1_2" [#483771](https://freesound.org/s/483771/) | Joao_Janz | CC0 |
-| Screech — alt | `candidates/screech_alt.mp3` | "Creepy Creature Screeching 1_3" [#483778](https://freesound.org/s/483778/) | Joao_Janz | CC0 |
+| Hurt A (`hurt`) | `hurt.mp3` | "AdultMale PainGrunt 18" [#547197](https://freesound.org/s/547197/) | MrFossy | CC0 |
+| Hurt B (`hurt`, wired in) | `hurt_alt.mp3` | "AdultMale PainGrunt 07" [#547205](https://freesound.org/s/547205/) | MrFossy | CC0 |
+| Bite (`bite`) | `bite.mp3` | "Biting on bones" [#445987](https://freesound.org/s/445987/) | Breviceps | CC0 |
+| Bite — alt | `candidates/bite_alt.mp3` | "Hard Candy / Bone Crunch" [#392883](https://freesound.org/s/392883/) | clif_creates | CC0 |
+| Screech (`screech`) | `screech.mp3` | "monster croak" [#582914](https://freesound.org/s/582914/) | birdOfTheNorth | CC0 |
+| Screech — alt | `candidates/screech_alt.mp3` | "monster bird creaking" [#276493](https://freesound.org/s/276493/) | Robinhood76 | CC-BY |
 | T-Rex rumble (`vocalise("trex")`) | `trex.mp3` | "Monster Guttural Growl, Dry" [#734900](https://freesound.org/s/734900/) | DeqstersLab | CC0 |
 | T-Rex — alt | `candidates/trex_alt.mp3` | "ominous_growl" [#708960](https://freesound.org/s/708960/) | PJ_Bear | CC0 |
-| Stegosaurus (`vocalise("stegosaurus")`) | `stegosaurus.mp3` | "Bull Bellowing" [#768389](https://freesound.org/s/768389/) | TheKingOfGeeks360 | CC0 |
-| Apatosaurus (`vocalise("apatosaurus")`) | `apatosaurus.mp3` | "Elephant sound" [#819668](https://freesound.org/s/819668/) | ikbenraar | CC0 |
-| Creature call (`creatureCall`) | `creaturecall.mp3` | "Moo 1" [#700378](https://freesound.org/s/700378/) | manofham | CC0 |
+| Stegosaurus (`vocalise("stegosaurus")`) | `stegosaurus.mp3` | "Deep Groan 2" [#345727](https://freesound.org/s/345727/) | noahpardo | CC0 |
+| Stegosaurus — alt | `candidates/stegosaurus_alt.mp3` | "Deep Groan 3" [#345734](https://freesound.org/s/345734/) | noahpardo | CC0 |
+| Apatosaurus (`vocalise("apatosaurus")`) | `apatosaurus.mp3` | "Monster bellowing" [#245429](https://freesound.org/s/245429/) | Thanra | CC0 |
+| Apatosaurus — alt | `candidates/apatosaurus_alt.mp3` | "Distant Sinister Moan" [#360593](https://freesound.org/s/360593/) | joelu2001 | CC0 |
+| Creature call (`creatureCall`) | `creaturecall.mp3` | "monster roar in distance" [#261147](https://freesound.org/s/261147/) | Chobiboko | CC0 |
+| Creature call — alt | `candidates/creaturecall_alt.mp3` | "Distant Sinister Moan" [#360593](https://freesound.org/s/360593/) | joelu2001 | CC0 |
 | Big step (`bigStep`) | `bigstep.mp3` | "Boom_01" [#336487](https://freesound.org/s/336487/) | Faulkin | CC0 |
 | Big step — alt | `candidates/bigstep_alt.mp3` | "DinoSteps1" [#77027](https://freesound.org/s/77027/) | andysm | CC0 |
 | Pickup — egg (`pickup(false)`) | `pickup.mp3` | "Kalimba C3" [#536549](https://freesound.org/s/536549/) | dvdfu | CC0 |
 | Pickup — golden (`pickup(true)`) | `pickup_golden.mp3` | "crystal bell" [#614832](https://freesound.org/s/614832/) | arseniiv | CC0 |
 | Heal (`heal`) | `heal.mp3` | "temple bowl" [#810426](https://freesound.org/s/810426/) | midge-f | CC0 |
 | UI tap (`ui`) | `ui_tap.mp3` | "wood_block" [#555545](https://freesound.org/s/555545/) | stwime | CC0 |
-| Win (`win`) | `win.mp3` | "Approval bell" [#625174](https://freesound.org/s/625174/) | GabFitzgerald | CC0 |
-| Lose (`lose`) | `lose.mp3` | "The Gong sound" [#717952](https://freesound.org/s/717952/) | grvmusic | CC0 |
+| Win (`win`) | `win.mp3` | "Music Dramatic Orchestral Ending" [#588390](https://freesound.org/s/588390/) | FunWithSound | CC0 |
+| Lose (`lose`) | `lose.mp3` | "gong hit loud close" [#245878](https://freesound.org/s/245878/) | thma | CC0 |
 
 **Kept (not flagged / owner's pick):** Tension heartbeat (procedural), the dash Whoosh /
 melee Swing & Thud (procedural), the Kenney footsteps, OpenGameArt panting, the Raptor
