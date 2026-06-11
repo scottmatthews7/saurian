@@ -57,9 +57,9 @@ function smoothNormalsByPosition(B, mesh) {
 // Every OTHER species keeps its glb mesh, just SMOOTH-SHADED + recoloured + given
 // eyes (see SPECIES_LOOK) — clean, cheap, ships. (Spino's sail comes later.)
 const PROC_BUILDERS = {
-  // T-Rex now ships as the hi-poly textured glb with baked clips (MODELS.trex), so
-  // it loads natively — no procmesh swap. (trex.js procmesh kept for reference.)
-  raptor: (scene) => buildRaptor(scene, { palette: "chestnut" }), // jungle/forest colourway
+  // T-Rex AND raptor now ship as hi-poly textured glbs with baked clips (see
+  // MODELS + HIPOLY_PIPELINE.md), loaded natively — no procmesh swap. The trex.js /
+  // velociraptor.js procmeshes are kept on disk for reference.
 };
 
 // Look for glb-rendered species: flat recolour + eye placement on the Head bone.
@@ -73,7 +73,6 @@ const SPECIES_LOOK = {
   // glb head already has a sculpted eye-socket dimple.) dorsal/belly auto-derived.
   apatosaurus: { color: [0.36, 0.32, 0.26], scaleSize: 18 },  // Dreadnoughtus warm grey-brown
   brachiosaurus: { color: [0.46, 0.50, 0.55], scaleSize: 18 },
-  triceratops: { color: [0.42, 0.35, 0.27], scaleSize: 14 },
   stegosaurus: { color: [0.40, 0.42, 0.30], scaleSize: 14 },
   parasaur: { color: [0.48, 0.39, 0.27], scaleSize: 13 },
 };
@@ -84,9 +83,9 @@ const SPECIES_LOOK = {
 const CLIP_KEYS = ["Idle", "Walk", "Run", "Jump", "Attack", "Attack2", "Attack3", "Death"];
 
 const MODELS = {
-  raptor: "assets/models/raptor.glb",
-  trex: "assets/models/trex_hi_anim.glb", // hi-poly textured T-Rex, Quaternius clips retargeted+baked onto its own rig (see HIPOLY_PIPELINE.md)
-  triceratops: "assets/models/triceratops.glb",
+  raptor: "assets/models/raptor_hi_anim.glb",       // hi-poly feathered raptor, retargeted+baked (HIPOLY_PIPELINE.md)
+  trex: "assets/models/trex_hi_anim.glb",           // hi-poly textured T-Rex, retargeted+baked
+  triceratops: "assets/models/triceratops_hi_anim.glb", // hi-poly textured triceratops, retargeted+baked
   stegosaurus: "assets/models/stegosaurus.glb",
   apatosaurus: "assets/models/apatosaurus.glb",
   parasaur: "assets/models/parasaur.glb",
