@@ -359,3 +359,21 @@ provokes it.)
 - Rocky pass (NE choke): tense bottleneck — raptor ambush / treacherous footing.
 - Beach (pre-goal): **Quetzalcoatlus nest** + **Plesiosaur** surfacing near shore.
 - Sea / Boat (goal): final sprint past the **Plesiosaur** to the boat.
+
+### DINO PLACEMENT — APPROVED (owner signed off). Build to this.
+Semi-realistic; start = gentle learning beat; predators gate the route legs,
+herbivores cluster where they'd graze.
+- **Thick jungle (START):** raptors LURK but ESCALATE as the player pushes deeper —
+  NOT on spawn (learn-the-game beat). A peaceful **Parasaurolophus** cruises the
+  clearing + tiny **Compsognathus** skitter as ambient life.
+- **Forest:** **Therizinosaurus** (territorial), **Velociraptor** packs; **Stegosaurus** browsing.
+- **Lake (W):** calm drinking spot — **Triceratops** + **Parasaurolophus** gather.
+- **Grassland (main crossing):** **T-Rex** apex (open outrun-chases); sauropod herds
+  **Apatosaurus / Brachiosaurus / Dreadnoughtus**; **Triceratops** herds (defensive if crowded).
+- **Swamp (E):** **Spinosaurus** apex; **Ankylosaurus** in the wet margins.
+- **Desert:** **Quetzalcoatlus** overhead (firm spec above); **Pachycephalosaurus** in dry
+  scrub. LOW density — sparse + tense, no cover.
+- **Rocky pass:** **Velociraptor** ambush; treacherous footing (choke point).
+- **Beach:** **Quetzalcoatlus** nest (firm) + **Plesiosaur** surfacing offshore.
+- **Sea -> Boat:** **Plesiosaur**; final sprint to escape.
+Every roster dino placed. Territories re-pin to these regions on the item-23 re-layout.
