@@ -61,6 +61,12 @@ Death-Stranding-with-dinos traverse. Everything below serves this.
   fleshed silhouette tracks the rig. **Keep ONLY the skin + feathers treatment**
   (fuzzy-down coat, dense shingled feathers, the 3 colourways) — **do NOT carry over
   the iter48 head; rebuild the head fresh** to the glb proportions.
+- **RELEASE-PREP — world roster = the 6-rig species only:** at release-prep, take the
+  **non-rig creatures out of the world — the bespoke plesiosaur (ocean) and the
+  pterosaur flyer (flock + dive)** — since the first release ships only the 6
+  glb-rig-backed procmesh species (+ their DINO_VARIANTS, which all stay). Owner: just
+  NOTE for now, don't touch the world yet; prefer DISABLE (flag off spawns, keep code)
+  over deleting when the time comes. Re-add plesiosaur/flyer in a later release.
 
 ## P4 — GAMEPLAY FEATURES (after the campaign skeleton works)
 - **Health pickups en route** + slow regen (passive regen DONE; world/route packs
