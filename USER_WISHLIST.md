@@ -127,3 +127,18 @@ herbivores cluster where they'd graze.
 - 6 procedural dino builds on branches: Quetzalcoatlus, Velociraptor, Spinosaurus,
   Therizinosaurus, Plesiosaur, Dreadnoughtus + T-Rex polish.
 - Deploy config (GitHub Pages + OG card).
+
+## BUILD METHOD — every dino needs a real SKULL (not a loft-taper cone)
+Systemic issue: swept-loft dinos build the head as the body/neck loft tapering to a
+point → it reads as a CONE/blob, not a head (the raptor's recurring "cone head").
+FIX (applies to ALL procedural dinos): build the head as a SEPARATE, sculpted SKULL
+component, merged to the neck — NOT the end of the body tube. A reusable skull
+builder per species:
+- Deeper rounded **braincase/cranium** at the back (volume behind/above the eye).
+- A shaped **muzzle/snout** off the front (species shape: deep croc snout for Spino,
+  boxy for T-Rex, narrow down-tipped for raptor, toothless beak for Quetzal, etc.).
+- A distinct **lower JAW** with a visible mouth gap + teeth/beak.
+- **Eye sockets + brow ridge** so the eye sits in a real orbit.
+PLAN: the raptor head pass is the prototype → extract a reusable `skull` builder →
+re-run each dino's build (T-Rex, Spino, Theri, Quetzal, Dread, Raptor) with a proper
+skull. Add this requirement to every PRD's build-technique section.
