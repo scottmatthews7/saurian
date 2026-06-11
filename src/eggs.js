@@ -15,9 +15,10 @@ export function createEggs(scene, shadow, groundFn) {
   const B = window.BABYLON;
 
   const eggMat = new B.StandardMaterial("eggMat", scene);
-  eggMat.diffuseColor = new B.Color3(0.95, 0.9, 0.75);
-  eggMat.emissiveColor = new B.Color3(0.5, 0.45, 0.2).scale(EGGS.glowIntensity);
-  eggMat.specularColor = new B.Color3(0.6, 0.6, 0.5);
+  // Ordinary eggs are WHITE (eggshell), not yellow (owner). Golden egg stays gold below.
+  eggMat.diffuseColor = new B.Color3(0.95, 0.95, 0.93);
+  eggMat.emissiveColor = new B.Color3(0.46, 0.46, 0.44).scale(EGGS.glowIntensity);
+  eggMat.specularColor = new B.Color3(0.65, 0.65, 0.65);
 
   // Golden egg material — brighter, warmer, with a stronger glow.
   const goldMat = new B.StandardMaterial("goldEggMat", scene);
@@ -47,7 +48,7 @@ export function createEggs(scene, shadow, groundFn) {
     e.mesh.scaling.setAll(golden ? 1.25 : 1);
     e.mesh.position.set(x, e.baseY, z);
     e.mesh.setEnabled(true);
-    e.light.diffuse = golden ? new B.Color3(1, 0.8, 0.3) : new B.Color3(1, 0.9, 0.5);
+    e.light.diffuse = golden ? new B.Color3(1, 0.8, 0.3) : new B.Color3(1, 1, 0.96);
     e.light.intensity = golden ? 1.0 : 0.6;
     e.light.range = golden ? 14 : 10;
     e.light.position.copyFrom(e.mesh.position);

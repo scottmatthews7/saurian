@@ -294,3 +294,17 @@ PREP (high priority — player wants the repo PUBLIC + contributions):
    - Ties the whole opening together: crash → scavenge the wreck (health) → find
      the pilot (GPS/radar) → then survive. Replaces the always-on radar + the bare
      plane-crash spawn (item 13).
+
+23. **CORE OBJECTIVE — escape the island (A→B traversal, the campaign).** The goal
+   of a run: cross the map and escape.
+   - **Start:** the Cessna crash site is in the **JUNGLE** at one end.
+   - **End:** a **BOAT waiting off the island** at the far end — reaching it = WIN.
+   - **Route:** cross the biomes in sequence — **jungle -> grasslands -> swamp ->
+     desert -> shore/boat** — surviving each biome's territory predators en route.
+   - Makes the map a LINEAR A->B journey (Death-Stranding-with-dinos), not a radial
+     arena. Implies a world RE-LAYOUT: biomes arranged as a traversable sequence
+     between the two ends, boat as the goal marker. Win = reach the boat; lose =
+     devoured. Supersedes the survival-timer interim objective.
+
+24. **[DONE] Eggs are WHITE, not yellow.** Ordinary egg pickups recoloured to
+   eggshell white; the golden special egg stays gold.
