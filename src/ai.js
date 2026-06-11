@@ -197,13 +197,17 @@ function randPointInTerritory(T) {
 // T-Rex render height (world units). OWNER FIX ("the t rex is too small compared
 // to the man"): the man is 2.0u (~1.8m); the old 4.2 left the rex barely twice
 // his height — pony-sized for a 9-tonne animal. Raised to 6.0u so it TOWERS over
-// the player. The procedural mesh's proportions put the hip at ~0.58 of the
-// standing head height, so at 6.0u total the hip sits ~3.5u and the head ~6u —
-// roughly 3× the 2.0u player, the massive, threatening read the owner wants
-// (a real T-Rex hip ~4m, head ~5-6m vs a 1.8m human). Provenance: owner request
-// + the PRD-trex.md fossil proportions (hip ~0.31 L, head-height the silhouette
-// top), eyeballed beside the player in a headless scale screenshot.
-const TREX_RENDER_HEIGHT = 6.0;
+// the player, sized LIFESIZE for "Scotty"-scale Tyrannosaurus. loadDino scales
+// the whole rig UNIFORMLY by targetHeight/nativeBboxHeight, so this value sets
+// the rig's overall scale (length and height grow together). Provenance: the
+// game scale is ~0.9 m/unit (1.8 m human at 2.0u). A real T-Rex is ~13 m long
+// (~14.4u) with a standing head ~5-6 m (~5.5-6.7u). Measured headless, the rig
+// at the old 6.0 came out only ~5.4u LONG / ~2.15u tall — barely bigger than the
+// human. Because scaling is uniform, length scales linearly with this number:
+// to hit 14.4u of length we need 6.0 × 14.4/5.38 ≈ 16.0, which also lifts the
+// standing height to ~5.75u (~5.2 m) — both inside the lifesize band. Verified
+// beside the 2.0u human in a headless bbox measurement (tools/wall_probe.mjs).
+const TREX_RENDER_HEIGHT = 16.0;
 
 export async function createTrex(scene, shadow, groundFn) {
   const dino = await loadDino(scene, "trex", TREX_RENDER_HEIGHT, shadow);

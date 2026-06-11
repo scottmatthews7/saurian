@@ -669,7 +669,21 @@ export const ENV = {
   leafCardOpacity: "leaf_opacity.png",
   grassCardAlbedo: "grass_blade_albedo.png", // green grass blades (Foliage001)
   grassCardOpacity: "grass_blade_opacity.png",
-  alphaCutOff: 0.4,        // alpha-test threshold for the cutout cards
+  alphaCutOff: 0.4,        // alpha-test threshold for the cutout cards (leaves/canopy)
+  // GRASS dark-sliver fix (owner: "glitchy dark vertical slivers across the
+  // grass"). The grass-blade albedo is a DARK olive (measured avg ≈
+  // RGB[80,104,51]/255 over the opaque pixels) and the cards get no IBL, so the
+  // thin blades rendered far darker than the bright PBR grass ground = dark
+  // slivers. Two grass-only knobs (see makeCardMaterial in world.js):
+  //  - grassAlphaCutOff: lower than the leaf 0.4 so more of the fuller blade body
+  //    survives the alpha-test (less of a thin spine).
+  //  - grassBrighten: lift the sampled albedo (texLevel) and self-illuminate the
+  //    blade from its own brightened texture (selfIllum) so it sits in the lit
+  //    ground's brightness band instead of going dark. Values chosen empirically
+  //    against the ground in headless eye-level shots (tools/grass_probe.mjs):
+  //    texLevel 1.8 / selfIllum 1.0 reads as lush green grass without neon glow.
+  grassAlphaCutOff: 0.2,
+  grassBrighten: { texLevel: 1.8, selfIllum: 1.0 },
   cardsPerCanopy: 5,       // textured leaf cards crossed per tree (irregular, broken-up crown)
   windStrength: 0.06,      // radians of canopy/grass sway amplitude
   windSpeed: 1.3,          // sway frequency (rad/sec)
@@ -683,6 +697,20 @@ export const ENV = {
     [0.50, 0.60, 0.38],   // moss
     [0.70, 0.74, 0.52],   // dry olive
     [0.44, 0.54, 0.34],   // deep olive
+  ],
+  // GRASS-BLADE tints, kept SEPARATE from foliageGreens (which also tints the
+  // tree canopy). The canopy reads fine, but the grass blades — thin vertical
+  // StandardMaterial cards with no IBL — were tinted with the darker greens
+  // above and read as "dark vertical slivers" against the brighter PBR grass
+  // ground (grassTint ≈ [0.66,0.72,0.52]). These tints are lifted to sit in the
+  // ground's brightness band (centred on grassTint, varied around it) so the
+  // blades read as grass, not dark spikes. Chosen empirically against the
+  // ground in headless eye-level shots (tools/grass_probe.mjs).
+  grassGreens: [
+    [0.66, 0.72, 0.50],   // matches the ground grass tint
+    [0.58, 0.68, 0.44],   // a touch deeper
+    [0.72, 0.76, 0.54],   // lighter sun-caught
+    [0.62, 0.70, 0.48],   // mid sage
   ],
   trunkColor: [0.42, 0.34, 0.26], // bark tint multiplied onto the albedo
   deadTrunkColor: [0.40, 0.36, 0.30], // greyer, sun-bleached bark for dead/gnarled trees
