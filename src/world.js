@@ -798,6 +798,7 @@ function buildAtmosphere(scene, heightAt) {
     // hit/screech callbacks so the swoop can react to the raptor's position.
     updateThreats(dt, player, onScreech, onHit) {
       const D = PTERO_DIVE;
+      if (!D.enabled) { if (dive.state !== "idle") endDive(dive.bird); return; } // swoop disabled — flock just circles
       if (player.dead) { if (dive.state !== "idle") endDive(dive.bird); return; }
       const pp = player.dino.root.position;
 

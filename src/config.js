@@ -919,6 +919,7 @@ export const ATMOSPHERE = {
 // dodged; contact at the bottom of the swoop deals a small hit, then it climbs
 // back to the orbit. A second airborne threat besides the ground predators.
 export const PTERO_DIVE = {
+  enabled: false,     // OFF (owner): pterosaurs stay circling in the sky, never swoop at the player
   minInterval: 9,     // sec — minimum gap between dive attempts
   maxInterval: 16,    // sec — maximum gap
   telegraphTime: 1.1, // sec of warning screech/glow before the swoop commits
