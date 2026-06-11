@@ -45,13 +45,15 @@ Death-Stranding-with-dinos traverse. Everything below serves this.
   PRD before building. Don't eyeball.
 - **⭐ NEXT (in-game pipeline — see `DINO_LAB.md`):** Velociraptor is now skinned +
   animating in-game (procmesh → `metadata.skin` → `glb-skin.mjs` → `dino.js`
-  `PROC_BUILDERS`). **Start the next session here:** map the remaining core dinos
-  (**Dreadnoughtus, Spinosaurus, Therizinosaurus, Quetzalcoatlus**) onto existing
-  Quaternius glb rigs to speed the build — reuse a close rig, skin on, then **scale
-  up in-game** (e.g. Dreadnoughtus huge) and adjust **limb/segment lengths** via the
-  `boneRest` table / per-axis `stretch`. And build future procmeshes **directly on
-  the rigged glb's joints** so dimensions match from the start (faster iteration).
-  Verify each with `tools/dino-lab.html?mode=both`.
+  `PROC_BUILDERS`). **FIRST RELEASE SCOPE (owner): build procmeshes ONLY on top of
+  the 6 glb rigs we already have** — `trex, raptor, triceratops, stegosaurus,
+  apatosaurus, parasaur`. trex + raptor done → **next: triceratops, stegosaurus,
+  apatosaurus, parasaurolophus**, each built on its OWN rig's joints. Defer
+  Spinosaurus / Therizinosaurus / Quetzalcoatlus / Dreadnoughtus to a later release
+  (they'd reuse one of the 6 rigs — scaled up, limbs adjusted via `boneRest` /
+  per-axis `stretch` — or get new rigs then). Build each procmesh **directly on the
+  rigged glb's joints** so dimensions match from the start. Verify with
+  `tools/dino-lab.html?mode=both`.
 - **⭐ REBUILD the Velociraptor on raptor.glb's joints:** the current veloci was built
   standalone then retrofitted to the rig, so its proportions don't perfectly match
   (body reads long/low vs the glb in `dino-lab` `mode=both`). Re-author the procmesh
