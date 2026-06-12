@@ -71,8 +71,6 @@ const PROC_BUILDERS = {
 const SPECIES_LOOK = {
   // color = mid hide tone; scaleSize = scale-texture cell px. (No eyes added — the
   // glb head already has a sculpted eye-socket dimple.) dorsal/belly auto-derived.
-  apatosaurus: { color: [0.36, 0.32, 0.26], scaleSize: 18 },  // Dreadnoughtus warm grey-brown
-  brachiosaurus: { color: [0.46, 0.50, 0.55], scaleSize: 18 },
   stegosaurus: { color: [0.40, 0.42, 0.30], scaleSize: 14 },
   parasaur: { color: [0.48, 0.39, 0.27], scaleSize: 13 },
 };
@@ -87,7 +85,7 @@ const MODELS = {
   trex: "assets/models/trex_hi_anim.glb",           // hi-poly textured T-Rex, retargeted+baked
   triceratops: "assets/models/triceratops_hi_anim.glb", // hi-poly textured triceratops, retargeted+baked
   stegosaurus: "assets/models/stegosaurus.glb",
-  apatosaurus: "assets/models/apatosaurus.glb",
+  apatosaurus: "assets/models/brachiosaurus_hi_anim.glb", // sauropod slot: hi-poly textured brachiosaurus, retargeted+baked (HIPOLY_PIPELINE.md)
   parasaur: "assets/models/parasaur.glb",
   human: "assets/models/human.glb",
 };
@@ -125,7 +123,89 @@ const CLIP_ALIASES = {
 };
 
 // approximate native model height so we can normalise scale to a target height
+// Death topple (see dino.die): the rig rolls onto its side and settles over this
+// many seconds. First-pass tuning — owner eyeballs. (~85° reads as fully on-side.)
+const DEATH_FALL_SECONDS = 1.0;
+const DEATH_ROLL = (Math.PI / 2) * 0.95;
+
 const cache = {};
+
+// Measure a gait clip's intrinsic GROUND SPEED (world units/sec at playback rate
+// 1.0) by sampling the support foot's backward sweep over one cycle on the loaded,
+// scaled rig. Returns null on any failure so callers can fall back to a fixed
+// clip rate. SAMPLES/footBand/pathFrac are measurement-fidelity heuristics, not
+// gameplay tuning. The clips are in-place, so the planted foot's horizontal speed
+// equals the ground speed the gait conveys.
+const GAIT_SAMPLES = 32;          // poses sampled across one cycle
+const GAIT_FOOT_BAND = 0.25;      // bones in the lowest 25% of the rig height = candidate feet
+const GAIT_FOOT_PATHFRAC = 0.3;   // ...that also travel >=30% of the busiest bone's path
+function measureGaitWorldSpeed(B, group, skeleton, root) {
+  try {
+    if (!group || !skeleton || !skeleton.bones || !skeleton.bones.length) return null;
+    const nodes = skeleton.bones.map((b) => (b.getTransformNode ? b.getTransformNode() : null));
+    if (!nodes.some(Boolean)) return null;
+    const from = group.from, to = group.to;
+    const fps = (group.targetedAnimations && group.targetedAnimations[0] &&
+      group.targetedAnimations[0].animation && group.targetedAnimations[0].animation.framePerSecond) || 60;
+    const durSec = Math.abs(to - from) / fps;
+    if (durSec <= 0) return null;
+
+    group.start(false, 1, from, to, false);
+    group.pause();
+    const frames = [];
+    for (let s = 0; s < GAIT_SAMPLES; s++) {
+      group.goToFrame(from + (to - from) * (s / GAIT_SAMPLES));
+      root.computeWorldMatrix(true);
+      const pos = nodes.map((n) => {
+        if (!n) return null;
+        n.computeWorldMatrix(true);
+        const p = n.getAbsolutePosition();
+        return { x: p.x, y: p.y, z: p.z };
+      });
+      frames.push(pos);
+    }
+    group.stop();
+
+    const B_ = nodes.length;
+    // per-bone vertical mean + horizontal path length over the cycle
+    let yLo = Infinity, yHi = -Infinity, pathMax = 0;
+    const yMean = new Array(B_).fill(0), path = new Array(B_).fill(0);
+    for (let b = 0; b < B_; b++) {
+      if (!frames[0][b]) { yMean[b] = Infinity; continue; }
+      let ys = 0, pl = 0;
+      for (let s = 0; s < GAIT_SAMPLES; s++) {
+        const p = frames[s][b], g = frames[(s + 1) % GAIT_SAMPLES][b];
+        ys += p.y;
+        pl += Math.hypot(g.x - p.x, g.z - p.z);
+      }
+      yMean[b] = ys / GAIT_SAMPLES; path[b] = pl;
+      if (yMean[b] < yLo) yLo = yMean[b];
+      if (yMean[b] > yHi) yHi = yMean[b];
+      if (pl > pathMax) pathMax = pl;
+    }
+    const footBand = yLo + (yHi - yLo) * GAIT_FOOT_BAND;
+    const feet = [];
+    for (let b = 0; b < B_; b++) if (yMean[b] <= footBand && path[b] >= pathMax * GAIT_FOOT_PATHFRAC) feet.push(b);
+    if (!feet.length) return null;
+
+    // support foot each frame = lowest candidate; its horizontal speed ~ ground speed
+    const dt = durSec / GAIT_SAMPLES;
+    const speeds = [];
+    for (let s = 0; s < GAIT_SAMPLES; s++) {
+      let lo = -1, ly = Infinity;
+      for (const b of feet) if (frames[s][b] && frames[s][b].y < ly) { ly = frames[s][b].y; lo = b; }
+      if (lo < 0) continue;
+      const p = frames[s][lo], g = frames[(s + 1) % GAIT_SAMPLES][lo];
+      speeds.push(Math.hypot(g.x - p.x, g.z - p.z) / dt);
+    }
+    if (!speeds.length) return null;
+    speeds.sort((a, b) => a - b);
+    const median = speeds[Math.floor(speeds.length / 2)];
+    return median > 0 ? median : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function loadDino(scene, kind, targetHeight, shadow) {
   const B = window.BABYLON;
@@ -284,8 +364,20 @@ export async function loadDino(scene, kind, targetHeight, shadow) {
 
   const facingOffset = FACING_OFFSET[kind] || 0;
 
+  // ANIMATION-PACED LOCOMOTION: the walk/run clips are in-place (the root never
+  // translates), so the ground speed a gait implies is the speed its PLANTED
+  // (support) foot sweeps backwards. Measure that here, in the real engine, on the
+  // already-scaled rig (so it's correct world units/sec at playback rate 1.0,
+  // including per-individual size and any inverse-bind scale quirks). The AI then
+  // plays the clip at rate = moveSpeed / gaitSpeed so the feet never slide at any
+  // speed. Returns null on any failure → the caller falls back to a fixed rate.
+  const gaitSpeed = {
+    Walk: measureGaitWorldSpeed(B, clips.Walk, res.skeletons[0], root),
+    Run: measureGaitWorldSpeed(B, clips.Run, res.skeletons[0], root),
+  };
+
   const dino = {
-    kind, root, clips,
+    kind, root, clips, gaitSpeed,
     meshes: res.meshes,
     skeleton: res.skeletons[0] || null,
     current: null,
@@ -321,6 +413,40 @@ export async function loadDino(scene, kind, targetHeight, shadow) {
       g.speedRatio = speed;
       g.start(loop, speed, g.from, g.to, false);
       this.current = g;
+    },
+    // Death: play the (in-place) Death clip for the thrash AND topple the whole rig
+    // onto its side, settling onto the ground over DEATH_FALL_SECONDS — the baked
+    // Death clips don't translate the root, so without this the corpse freezes
+    // upright/pitched instead of lying down. Self-ticked via onBeforeRender.
+    die() {
+      if (this._dying) return;
+      this._dying = true;
+      this.play("Death", { loop: false });
+      const B = window.BABYLON;
+      const scene = this.root.getScene();
+      const dir = (this.root.position.x + this.root.position.z) % 2 < 1 ? 1 : -1; // deterministic side
+      const totalRoll = dir * DEATH_ROLL;
+      let t = 0, applied = 0;
+      this._deathObs = scene.onBeforeRenderObservable.add(() => {
+        const dt = scene.getEngine().getDeltaTime() / 1000;
+        t = Math.min(DEATH_FALL_SECONDS, t + dt);
+        const k = t / DEATH_FALL_SECONDS;
+        const eased = 1 - (1 - k) * (1 - k);     // ease-out
+        const target = totalRoll * eased;
+        this.root.rotate(B.Axis.Z, target - applied, B.Space.LOCAL); // roll onto side about body-forward
+        applied = target;
+        if (t >= DEATH_FALL_SECONDS && this._deathObs) {
+          scene.onBeforeRenderObservable.remove(this._deathObs);
+          this._deathObs = null;
+        }
+      });
+    },
+    // Hand orientation back to setYaw after a soft revive (clears the fallen quaternion).
+    revivePose() {
+      this._dying = false;
+      if (this._deathObs) { this.root.getScene().onBeforeRenderObservable.remove(this._deathObs); this._deathObs = null; }
+      this.root.rotationQuaternion = null;
+      this.root.rotation.set(0, this.root.rotation.y || 0, 0);
     },
     // Fully tear down a loaded dino. Disposing only the meshes leaks the
     // animation groups and skeleton, which accumulate across soft restarts that

@@ -2,6 +2,37 @@ import { TREX, HERBIVORE, TRICERATOPS, RAPTOR, ARENA, JUICE, WATER, AI_AVOID, DU
 import { loadDino } from "./dino.js";
 import { isStaggered } from "./tools.js";
 
+// ANIMATION-PACED LOCOMOTION (owner: "all dinos should move at their animation
+// pace"). The walk/run clips are in-place, so each carries an intrinsic ground
+// speed (measured at load: dino.gaitSpeed[gait], world units/sec at rate 1.0).
+// Play the clip at rate = moveSpeed / gaitSpeed so the planted foot matches travel
+// and never slides — at ANY speed, so the tuned chase/flee speeds are preserved.
+// Falls back to a fixed rate if the measurement was unavailable for a clip.
+// GAIT_MIN_USABLE: some clips are essentially in-place (e.g. the raptor "Walk" is
+// a stalk whose feet barely translate — measured ~0.06 u/s). Dividing by that
+// would spin the legs absurdly, so treat anything below this as "no usable ground
+// motion" and fall back to the fixed rate. 0.2 u/s sits well below every real gait
+// measured in-engine (slowest real one is the sauropod walk at 0.45) and above the
+// degenerate in-place clips.
+const GAIT_MIN_USABLE = 0.2;
+function gaitRate(dino, gait, moveSpeed, fallback) {
+  const g = dino.gaitSpeed && dino.gaitSpeed[gait];
+  if (!g || g < GAIT_MIN_USABLE) return fallback;
+  return moveSpeed / g;
+}
+
+// Per-species move-speed scale: heavy/long-strided species should plod, not zip
+// (1 = the herd baseline, which the parasaur — the visually-correct reference —
+// uses). Because clip cadence tracks speed via gaitRate, slowing these also slows
+// their legs into a proper plod. FIRST-PASS values — owner to eyeball + nudge.
+const LOCO_SPEED_SCALE = { apatosaurus: 0.5, stegosaurus: 0.6, triceratops: 0.5 };
+
+// Brachiosaurus herd (owner: "bracs travel in herds of 4-5"). A shared roaming
+// centre keeps the herd clustered while it ambles across its range.
+const HERD_BRACH_MIN = 4, HERD_BRACH_MAX = 5;   // owner: herds of 4-5
+const HERD_SPREAD = 14;     // u — radius members scatter around the herd centre (tight sauropod cluster)
+const HERD_ROAM_STEP = 20;  // u — how far the herd centre advances toward its roam point each re-target
+
 // Solid obstacle footprints ({x, z, r}) the AI steers around. Injected from the
 // world build; the pond is appended so one routine handles every avoidance.
 let OBSTACLES = [];
@@ -119,6 +150,25 @@ function avoidObstacles(pos, dx, dz, steerState) {
   return { dx: mx / m, dz: mz / m };
 }
 
+// Hard de-penetration: dinos integrate position directly (no moveWithCollisions),
+// so the soft steer above can still let a goal behind an obstacle draw a creature
+// into the footprint, where it orbits/buzzes. After integrating, project the
+// position back out to each footprint's boundary. The push is always OUTWARD to a
+// fixed radius, so it cannot oscillate; combined with the tangential steer the
+// creature simply glides along the edge instead of pressing in. Clamps to each
+// obstacle's own radius — no extra tuning constant.
+function pushOutOfObstacles(pos) {
+  for (let i = 0; i < OBSTACLES.length; i++) {
+    const o = OBSTACLES[i];
+    const ox = pos.x - o.x, oz = pos.z - o.z;
+    const d = Math.hypot(ox, oz);
+    if (d >= o.r || d < 1e-4) continue;   // outside the footprint (or dead-centre): leave it
+    const k = o.r / d;                    // scale the offset out to the boundary
+    pos.x = o.x + ox * k;
+    pos.z = o.z + oz * k;
+  }
+}
+
 // AI agents: one apex T-Rex predator with a patrol/chase/attack FSM, and a
 // herd of herbivores that wander and flee from threats (player + trex).
 
@@ -140,7 +190,13 @@ const HERB_KINDS = [
 
 // Per-kind target model height (world units). Variants carry their own `height`
 // in DINO_VARIANTS; the four originals are listed here. Falls back to 3.
-const HERB_HEIGHTS = { triceratops: 2.6, stegosaurus: 2.8, apatosaurus: 5.5, parasaur: 3.2 };
+// Target render heights (bbox u). Anchored to the human (1.99u measured ≈ 1.8m).
+// NB bbox height ≠ standing height for some rigs (the T-Rex bbox is tail-inflated;
+// it stands ~5.75u at TREX_RENDER_HEIGHT 16 — lifesize, see that comment). The
+// sauropod slot (now the hi-poly BRACHIOSAURUS) is neck-dominated so its bbox ≈ its
+// standing head height: 20u so it TOWERS far above the T-Rex's ~5.75u standing
+// height. Stego is tall for its back plates (~4m). First-pass — owner eyeballs.
+const HERB_HEIGHTS = { triceratops: 3.2, stegosaurus: 4.2, apatosaurus: 20.0, parasaur: 3.3 };
 function herbHeight(kind) {
   const v = DINO_VARIANTS[kind];
   return (v && v.height) || HERB_HEIGHTS[kind] || 3;
@@ -162,14 +218,15 @@ function herbCanCharge(kind) {
 export function pickPrey(state, pos, distP, herd, sightRange, loseRange, lockedToPlayer) {
   if (lockedToPlayer || !herd) return null;
   // Keep current prey if still valid (alive + not escaped).
-  if (state.prey && !state.prey.dead) {
+  if (state.prey && !state.prey.dead && state.prey.kind !== "apatosaurus") {
     const pp = state.prey.dino.root.position;
     if (Math.hypot(pp.x - pos.x, pp.z - pos.z) <= loseRange) return state.prey;
   }
   // Acquire: nearest live herbivore in prey-sight that is clearly nearer than the raptor.
   let best = null, bd = Infinity;
   for (const h of herd) {
-    if (h.dead) continue;
+    // A T-Rex never takes on the brachiosaurus — a 30-tonne sauropod isn't prey.
+    if (h.dead || h.kind === "apatosaurus") continue;
     const hp = h.dino.root.position;
     const d = Math.hypot(hp.x - pos.x, hp.z - pos.z);
     if (d < TREX.preySightRange && d < distP - TREX.preyCloserBy && d < bd) { bd = d; best = h; }
@@ -192,6 +249,20 @@ function randPointInTerritory(T) {
   const d = Math.hypot(x, z), lim = ARENA.radius - 6;
   if (d > lim) { const k = lim / d; x *= k; z *= k; }
   return { x, z };
+}
+
+// Next wander target for a grazing herbivore. A herd member stays near its herd's
+// shared roaming centre (which ambles toward a re-rolled roam point), so the herd
+// moves as a clustered group; a solo grazer just picks a fresh point in its range.
+function nextWanderTarget(state) {
+  const h = state.herd;
+  if (!h) return randPointInTerritory(state.territory);
+  const dx = h.roam.x - h.center.x, dz = h.roam.z - h.center.z;
+  const d = Math.hypot(dx, dz);
+  if (d < HERD_ROAM_STEP) h.roam = randPointInTerritory(h.territory);  // arrived — pick a new roam point
+  else { h.center.x += (dx / d) * HERD_ROAM_STEP; h.center.z += (dz / d) * HERD_ROAM_STEP; }
+  const a = Math.random() * Math.PI * 2, r = Math.random() * HERD_SPREAD;
+  return { x: h.center.x + Math.cos(a) * r, z: h.center.z + Math.sin(a) * r };
 }
 
 // T-Rex render height (world units). OWNER FIX ("the t rex is too small compared
@@ -397,9 +468,18 @@ export async function createTrex(scene, shadow, groundFn) {
     dino.setYaw(state.facing);
 
     if (speed > 0) {
-      pos.x += dir.dx * speed * dt;
-      pos.z += dir.dz * speed * dt;
-      dino.play("Run", { speed: state.mode === "chase" ? (enraged ? 1.5 : 1.2) : 0.85 });
+      // Translate along the SMOOTHED facing, not the raw avoidance dir: near an
+      // obstacle footprint dir can snap-reverse frame-to-frame (side-commit flip /
+      // goal-behind cancellation), which used to lurch the body in place. Following
+      // the lerped heading turns that into a gentle arc — no jitter.
+      pos.x += Math.sin(state.facing) * speed * dt;
+      pos.z += Math.cos(state.facing) * speed * dt;
+      pushOutOfObstacles(pos);
+      // Gait by mode: stalk/patrol uses the WALK cycle, chase uses RUN — both
+      // speed-matched. (Playing RUN at patrol speed slowed it to a leg-flapping
+      // slow-mo; the walk cycle reads correctly at the slow pace.)
+      const tgait = state.mode === "chase" ? "Run" : "Walk";
+      dino.play(tgait, { speed: gaitRate(dino, tgait, speed, state.mode === "chase" ? (enraged ? 1.5 : 1.2) : 0.85) });
     } else if (state.attackTimer > TREX.attackCooldown - 0.5) {
       // attacking
     } else {
@@ -413,7 +493,7 @@ export async function createTrex(scene, shadow, groundFn) {
     if (state.dead) return;
     state.health = Math.max(0, state.health - amount);
     dino.flash(JUICE.hitFlashSeconds, new window.BABYLON.Color3(1.0, 0.25, 0.15));
-    if (state.health <= 0) { state.dead = true; dino.play("Death", { loop: false }); }
+    if (state.health <= 0) { state.dead = true; dino.die(); }
   };
 
   // Soft restart: revive at a fresh spot in its territory, full health, on patrol.
@@ -436,6 +516,7 @@ export async function createTrex(scene, shadow, groundFn) {
     state.feeding = 0;
     state.feedGlow = 0;
     state.dead = false;
+    dino.revivePose();
     dino.play("Idle");
   };
 
@@ -549,21 +630,13 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
     let goal, speed;
     if (state.mode === "chase") {
       speed = RAPTOR.chaseSpeed + state.speedBonus + duskSpeed;
-      // FLANKING: each member holds a FIXED, evenly-spaced slot on a ring around
-      // the player (slot i of packCount → angle i·2π/packCount, plus a small
-      // stable per-member jitter so the ring isn't robotic). It steers to that
-      // ring point to encircle, then drops the slot and darts straight in once
-      // inside lungeRange. Fixed slots keep the swarm fanned out instead of two
-      // members converging on the same bearing.
-      if (distP > RAPTOR.lungeRange) {
-        const slotAngle = (state.slot / state.packCount) * Math.PI * 2 + state.slotWobble;
-        goal = {
-          x: pp.x + Math.sin(slotAngle) * RAPTOR.surroundRadius,
-          z: pp.z + Math.cos(slotAngle) * RAPTOR.surroundRadius,
-        };
-      } else {
-        goal = { x: pp.x, z: pp.z };   // committed — straight in for the nip
-      }
+      // Close STRAIGHT in for the kill. The old "encircle" held each member on a
+      // standoff ring at surroundRadius (6) — bigger than lungeRange (5) — so the
+      // pack ORBITED the prey at ~6u and never dropped inside to bite, and a member
+      // whose slot sat on the far side ran AROUND the player to reach it (owner:
+      // "veloci run round in circles"). Members already arrive from spread bearings
+      // because the pack is dispersed, so they still fan in naturally.
+      goal = { x: pp.x, z: pp.z };
       if (distP < RAPTOR.attackRange) {
         speed = 0;
         if (state.attackTimer <= 0) {
@@ -590,9 +663,12 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
     dino.setYaw(state.facing);
 
     if (speed > 0) {
-      pos.x += dir.dx * speed * dt;
-      pos.z += dir.dz * speed * dt;
-      dino.play("Run", { speed: state.mode === "chase" ? 1.5 : 1.0 });
+      // Translate along the smoothed facing (not raw dir) — see T-Rex note: stops
+      // the in-place lurch when skirting an obstacle footprint.
+      pos.x += Math.sin(state.facing) * speed * dt;
+      pos.z += Math.cos(state.facing) * speed * dt;
+      pushOutOfObstacles(pos);
+      dino.play("Run", { speed: gaitRate(dino, "Run", speed, state.mode === "chase" ? 1.5 : 1.0) });
     } else if (state.attackTimer > RAPTOR.attackCooldown - 0.4) {
       // mid-bite
     } else {
@@ -606,7 +682,7 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
     if (state.dead) return;
     state.health = Math.max(0, state.health - amount);
     dino.flash(JUICE.hitFlashSeconds, new window.BABYLON.Color3(1.0, 0.25, 0.15));
-    if (state.health <= 0) { state.dead = true; dino.play("Death", { loop: false }); }
+    if (state.health <= 0) { state.dead = true; dino.die(); }
   };
 
   state.reset = function () {
@@ -620,6 +696,7 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
     state.lastStrikeId = -1;
     state.dead = false;
     pack.calledOut = false;
+    dino.revivePose();
     dino.play("Idle");
   };
 
@@ -628,23 +705,36 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
 
 export async function createHerd(scene, shadow, groundFn) {
   const herd = [];
+  // Solo grazers: one of each kind in rotation. The brachiosaurus is skipped here
+  // and spawned as a cohesive HERD below (owner: "bracs travel in herds of 4-5").
   for (let i = 0; i < HERBIVORE.count; i++) {
     const kind = HERB_KINDS[i % HERB_KINDS.length];
-    const h = await createHerbivore(scene, shadow, groundFn, kind);
-    herd.push(h);
+    if (kind === "apatosaurus") continue;
+    herd.push(await createHerbivore(scene, shadow, groundFn, kind));
+  }
+  // Brachiosaurus herd: 4-5 sharing a roaming centre so they amble together.
+  if (HERB_KINDS.includes("apatosaurus")) {
+    const T = territoryFor("apatosaurus");
+    const c = randPointInTerritory(T);
+    const brachHerd = { center: { x: c.x, z: c.z }, roam: randPointInTerritory(T), territory: T };
+    const n = HERD_BRACH_MIN + Math.floor(Math.random() * (HERD_BRACH_MAX - HERD_BRACH_MIN + 1));
+    for (let i = 0; i < n; i++) herd.push(await createHerbivore(scene, shadow, groundFn, "apatosaurus", brachHerd));
   }
   return herd;
 }
 
-async function createHerbivore(scene, shadow, groundFn, kind) {
+async function createHerbivore(scene, shadow, groundFn, kind, herd = null) {
   const variant = DINO_VARIANTS[kind] || null;
   const dino = await loadDino(scene, kind, herbHeight(kind), shadow);
   // Per-variant stat mods: tankier armour (healthMul), quicker little darters
   // (speedMul). Defaults to the HERBIVORE baseline for the four originals.
   const maxHealth = Math.round(HERBIVORE.maxHealth * ((variant && variant.healthMul) || 1));
-  const speedMul = (variant && variant.speedMul) || 1;
+  const speedMul = ((variant && variant.speedMul) || 1) * (LOCO_SPEED_SCALE[kind] || 1);
   const territory = territoryFor(kind);   // each species grazes in its own region
-  const start = randPointInTerritory(territory);
+  // Herd members spawn clustered around the herd centre; solo grazers anywhere in range.
+  const start = herd
+    ? { x: herd.center.x + (Math.random() * 2 - 1) * HERD_SPREAD, z: herd.center.z + (Math.random() * 2 - 1) * HERD_SPREAD }
+    : randPointInTerritory(territory);
   dino.root.position.set(start.x, groundFn(start.x, start.z), start.z);
 
   // A charger uses its own crisper turn rate + a post-charge recover settle so it
@@ -658,6 +748,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
   const state = {
     dino, kind,
     territory,
+    herd,
     facing: rand(0, 6),
     target: randPointInTerritory(territory),
     fleeing: false,
@@ -673,6 +764,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     onCharge: null,     // (set by game) called when a charge starts
     onDown: null,       // (position) called when killed by the player
   };
+  state.target = nextWanderTarget(state);   // herd-aware first target (clustered if in a herd)
 
   state.update = function (dt, player, trex) {
     dino.updateFlash(dt);
@@ -707,13 +799,14 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
       dino.setYaw(state.facing);
       pos.x += (cdx / cd) * TRICERATOPS.chargeSpeed * dt;
       pos.z += (cdz / cd) * TRICERATOPS.chargeSpeed * dt;
+      pushOutOfObstacles(pos);
       pos.y = groundFn(pos.x, pos.z);
       clampArena(pos);
       if (!state.chargeHitDone && cd < TRICERATOPS.chargeHitRange && !player.dead) {
         state.chargeHitDone = true;
         player.takeDamage(TRICERATOPS.chargeDamage);
       }
-      dino.play("Run", { speed: 1.5 });
+      dino.play("Run", { speed: gaitRate(dino, "Run", TRICERATOPS.chargeSpeed, 1.5) });
       if (state.charging <= 0) state.recover = TRICERATOPS.recoverSeconds;  // settle after the charge
       return;
     }
@@ -746,8 +839,12 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     } else {
       goal = state.target;
       speed = HERBIVORE.wanderSpeed * speedMul;
-      if (Math.hypot(goal.x - pos.x, goal.z - pos.z) < 3) state.target = randPointInTerritory(state.territory);
+      if (Math.hypot(goal.x - pos.x, goal.z - pos.z) < 3) state.target = nextWanderTarget(state);
     }
+    // The brachiosaurus never runs — a sauropod just ambles away at walk pace even
+    // when spooked (owner: "it should always walk"). Keep the flee heading, drop to
+    // walk speed.
+    if (kind === "apatosaurus") speed = HERBIVORE.wanderSpeed * speedMul;
 
     const dx0 = goal.x - pos.x, dz0 = goal.z - pos.z;
     const dist = Math.hypot(dx0, dz0) || 1;
@@ -761,12 +858,16 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     state.facing = lerpAngle(state.facing, targetYaw, turnLerp);
     dino.setYaw(state.facing);
 
-    pos.x += dir.dx * speed * dt;
-    pos.z += dir.dz * speed * dt;
+    // Translate along the smoothed facing (not raw dir) — see T-Rex note: stops
+    // the in-place lurch when skirting an obstacle footprint.
+    pos.x += Math.sin(state.facing) * speed * dt;
+    pos.z += Math.cos(state.facing) * speed * dt;
+    pushOutOfObstacles(pos);
     pos.y = groundFn(pos.x, pos.z);
     clampArena(pos);
 
-    dino.play(state.fleeing ? "Run" : "Walk", { speed: state.fleeing ? 1.3 : walkClipSpeed });
+    const gait = (state.fleeing && kind !== "apatosaurus") ? "Run" : "Walk";  // brachiosaurus never runs
+    dino.play(gait, { speed: gaitRate(dino, gait, speed, gait === "Run" ? 1.3 : walkClipSpeed) });
   };
 
   state.takeDamage = function (amount) {
@@ -775,7 +876,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     dino.flash(JUICE.hitFlashSeconds, new window.BABYLON.Color3(0.9, 0.3, 0.2));
     if (state.health <= 0) {
       state.dead = true;
-      dino.play("Death", { loop: false });
+      dino.die();
       if (state.onDown) state.onDown(dino.root.position.clone());
     }
   };
@@ -793,6 +894,7 @@ async function createHerbivore(scene, shadow, groundFn, kind) {
     state.lastStrikeId = -1;
     state.recover = 0;
     state.target = randPointInTerritory(state.territory);
+    dino.revivePose();
     dino.play("Idle");
   };
   return state;
