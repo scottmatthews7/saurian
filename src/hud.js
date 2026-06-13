@@ -107,7 +107,9 @@ export function createHUD() {
     // Stowed health-pack count; hidden at zero. Shows the H-to-use hint.
     setMedkits(n) {
       if (!medkitEl) return;
-      if (n > 0) { medkitEl.style.display = ""; medkitEl.innerHTML = `<span class="mkIcon">✚</span> ${n} <span class="mkHint">[H]</span>`; }
+      // NB: must set an explicit visible display — the element's stylesheet base
+      // is display:none, so clearing the inline style would re-hide it.
+      if (n > 0) { medkitEl.style.display = "block"; medkitEl.innerHTML = `<span class="mkIcon">✚</span> ${n} <span class="mkHint">[H]</span>`; }
       else medkitEl.style.display = "none";
     },
     // Soft red edge glow that THROBS while a predator is hunting the player.

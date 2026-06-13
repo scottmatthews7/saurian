@@ -1959,9 +1959,14 @@ async function buildMountainWalls(scene, heightAt, island, obstacles) {
     { kind: "whole", targetHeight: cfg.targetHeight, trees: [{ id: "cliff" }] }, sources);
   const parts = sources.cliff;
 
+  // Rocky-pass SOUTH entrance throat (derived from the grid's southernmost R
+  // frontier). Skip cliff pieces here so none hovers over the passage start
+  // (owner: "remove the glb rock that hovers above the start of the passage").
+  const ROCK_ENTRANCE = { x: 24, z: 219, r: 11 };
   const placed = [];
   const perMesh = new Map();
   for (const e of island.mountainEdges) {
+    if ((e.x - ROCK_ENTRANCE.x) ** 2 + (e.z - ROCK_ENTRANCE.z) ** 2 < ROCK_ENTRANCE.r ** 2) continue;
     let clear = true;
     for (const q of placed) {
       if ((q.x - e.x) ** 2 + (q.z - e.z) ** 2 < cfg.spacing * cfg.spacing) { clear = false; break; }
