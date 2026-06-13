@@ -1,7 +1,9 @@
 name: Deploy to GitHub Pages
 
 # Static site (vendored Babylon + ES modules + assets) — no build step.
-# On every push to main, publishes the whole repo to GitHub Pages.
+# On every push to main, publishes the SHIPPING allowlist (tools/make_dist.sh) to
+# GitHub Pages — design sources, tools and never-loaded assets stay out
+# (~120 MB of dead weight; see docs/DEPLOY.md).
 # Live at: https://scottmatthews7.github.io/saurian/
 
 on:
@@ -28,8 +30,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Build shipping artefact (runtime allowlist)
+        run: bash tools/make_dist.sh
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: "."          # publish the repo as-is (static)
+          path: "dist"
       - id: deployment
         uses: actions/deploy-pages@v4

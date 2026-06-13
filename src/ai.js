@@ -1,6 +1,7 @@
 import { TREX, HERBIVORE, TRICERATOPS, RAPTOR, ARENA, JUICE, WATER, AI_AVOID, DUSK, DINO_VARIANTS, TERRITORY } from "./config.js";
 import { loadDino } from "./dino.js";
 import { isStaggered } from "./tools.js";
+import { biomeAt } from "./map.js";
 
 // ANIMATION-PACED LOCOMOTION (owner: "all dinos should move at their animation
 // pace"). The walk/run clips are in-place, so each carries an intrinsic ground
@@ -35,9 +36,31 @@ const HERD_ROAM_STEP = 20;  // u — how far the herd centre advances toward its
 
 // Solid obstacle footprints ({x, z, r}) the AI steers around. Injected from the
 // world build; the pond is appended so one routine handles every avoidance.
+// The island prop layer registers THOUSANDS of footprints (every blocking tree/
+// rock cell + the jungle shell + the cliff walls), so they are spatially hashed:
+// each obstacle is inserted into every bucket its influence circle (r +
+// clearance) touches, and the per-frame queries below read ONE bucket.
+const OB_BUCKET = 16;   // u — bucket width; must exceed the largest single-frame query offset
 let OBSTACLES = [];
+let OB_GRID = new Map();
+const OB_EMPTY = [];
 export function setObstacles(list) {
   OBSTACLES = [...list, { x: WATER.centerX, z: WATER.centerZ, r: WATER.radius + 1 }];
+  OB_GRID = new Map();
+  for (const o of OBSTACLES) {
+    const pad = o.r + AI_AVOID.clearance + 1;
+    const x0 = Math.floor((o.x - pad) / OB_BUCKET), x1 = Math.floor((o.x + pad) / OB_BUCKET);
+    const z0 = Math.floor((o.z - pad) / OB_BUCKET), z1 = Math.floor((o.z + pad) / OB_BUCKET);
+    for (let bx = x0; bx <= x1; bx++) for (let bz = z0; bz <= z1; bz++) {
+      const k = bx + "," + bz;
+      let a = OB_GRID.get(k);
+      if (!a) OB_GRID.set(k, a = []);
+      a.push(o);
+    }
+  }
+}
+function obstaclesNear(x, z) {
+  return OB_GRID.get(Math.floor(x / OB_BUCKET) + "," + Math.floor(z / OB_BUCKET)) || OB_EMPTY;
 }
 
 // Run-scoped dusk factor (0 full day .. 1 deepest dusk). Pushed in each frame
@@ -54,6 +77,35 @@ export function setDusk(f) { DUSK_FACTOR = f; }
 // loss of interest in chasing a target that sits outside the region.
 const FALLBACK_TERRITORY = { centerX: 0, centerZ: 0, radius: ARENA.radius, edgeSoftness: 24 };
 function territoryFor(kind) { return TERRITORY[kind] || FALLBACK_TERRITORY; }
+
+// BIOME MASK (design/MAP_SPEC.md, signed off): "a dino may ONLY enter cells
+// whose code is in its biomes list" — the mask is the HARD constraint; the
+// radius + soft edge above is just the loose cap. A territory without a
+// `biomes` list (the fallback) is unmasked.
+function maskAllows(T, x, z) {
+  return !T.biomes || T.biomes.includes(biomeAt(x, z));
+}
+
+// Rejection-sampling budget when looking for an allowed cell. 40 keeps the
+// failure odds negligible even for the sparsest mask (the swamp-only
+// ankylosaurus) while staying cheap — spawn/wander-target picks only.
+// first-pass for owner eyeball
+const MASK_SAMPLE_TRIES = 40;
+
+// Hard backstop, the mask's pushOutOfObstacles: if an integrated move landed on
+// a forbidden cell, slide along the biome edge (axis-separated) or revert to the
+// pre-move spot. If the PREVIOUS spot was already forbidden (bad spawn, mid-edge
+// shove) the move is allowed to stand so the territory pull can walk the dino
+// home instead of freezing it. Returns true when the move was blocked/altered —
+// callers use that to re-roll an unreachable wander target.
+function clampToMask(T, pos, px, pz) {
+  if (maskAllows(T, pos.x, pos.z)) return false;
+  if (!maskAllows(T, px, pz)) return false;   // already off-mask: let it walk out
+  if (maskAllows(T, pos.x, pz)) { pos.z = pz; return true; }
+  if (maskAllows(T, px, pos.z)) { pos.x = px; return true; }
+  pos.x = px; pos.z = pz;
+  return true;
+}
 
 // 0 (comfortably inside) .. 1 (at/over the soft edge) for a point vs a region.
 function territoryWeight(T, x, z) {
@@ -90,8 +142,11 @@ function applyTerritory(T, pos, dx, dz) {
 // True if a CHASE target sits outside this dino's territory far enough that it
 // should lose interest and break off (so a predator won't chase the player
 // across the whole map). Uses the same soft edge but tests the TARGET point.
+// A target standing on a cell the dino's BIOME MASK forbids is also "beyond":
+// the predator could never reach it, so it breaks off instead of grinding
+// against the biome edge (e.g. raptors give up once you step onto savannah).
 function targetBeyondTerritory(T, tx, tz) {
-  return territoryWeight(T, tx, tz) >= 1;
+  return territoryWeight(T, tx, tz) >= 1 || !maskAllows(T, tx, tz);
 }
 
 // Steer a move (unit dir dx,dz) away from nearby obstacle footprints. Adds an
@@ -110,8 +165,9 @@ function targetBeyondTerritory(T, tx, tz) {
 function avoidObstacles(pos, dx, dz, steerState) {
   // Find the most-intruding obstacle this frame (the one we must skirt).
   let worst = null, worstW = 0;
-  for (let i = 0; i < OBSTACLES.length; i++) {
-    const o = OBSTACLES[i];
+  const near = obstaclesNear(pos.x, pos.z);
+  for (let i = 0; i < near.length; i++) {
+    const o = near[i];
     const ox = pos.x - o.x, oz = pos.z - o.z;
     const d = Math.hypot(ox, oz);
     const margin = o.r + AI_AVOID.clearance;
@@ -158,8 +214,9 @@ function avoidObstacles(pos, dx, dz, steerState) {
 // creature simply glides along the edge instead of pressing in. Clamps to each
 // obstacle's own radius — no extra tuning constant.
 function pushOutOfObstacles(pos) {
-  for (let i = 0; i < OBSTACLES.length; i++) {
-    const o = OBSTACLES[i];
+  const near = obstaclesNear(pos.x, pos.z);
+  for (let i = 0; i < near.length; i++) {
+    const o = near[i];
     const ox = pos.x - o.x, oz = pos.z - o.z;
     const d = Math.hypot(ox, oz);
     if (d >= o.r || d < 1e-4) continue;   // outside the footprint (or dead-centre): leave it
@@ -239,16 +296,22 @@ function rand(a, b) { return a + Math.random() * (b - a); }
 // spawns and wander targets so each dino lives in its region. Sampled within
 // the comfort radius (radius − edgeSoftness) so wander targets don't sit out on
 // the soft edge.
+// Rejection-sampled against the BIOME MASK so spawns and wander targets always
+// sit on an allowed cell; falls back to the territory centre (map.json centres
+// are validated to sit on allowed cells).
 function randPointInTerritory(T) {
   const comfort = Math.max(8, T.radius - T.edgeSoftness);
-  const r = Math.sqrt(Math.random()) * comfort;
-  const a = Math.random() * Math.PI * 2;
-  let x = T.centerX + Math.cos(a) * r;
-  let z = T.centerZ + Math.sin(a) * r;
-  // keep inside the playable disc
-  const d = Math.hypot(x, z), lim = ARENA.radius - 6;
-  if (d > lim) { const k = lim / d; x *= k; z *= k; }
-  return { x, z };
+  for (let i = 0; i < MASK_SAMPLE_TRIES; i++) {
+    const r = Math.sqrt(Math.random()) * comfort;
+    const a = Math.random() * Math.PI * 2;
+    let x = T.centerX + Math.cos(a) * r;
+    let z = T.centerZ + Math.sin(a) * r;
+    // keep inside the playable disc
+    const d = Math.hypot(x, z), lim = ARENA.radius - 6;
+    if (d > lim) { const k = lim / d; x *= k; z *= k; }
+    if (maskAllows(T, x, z)) return { x, z };
+  }
+  return { x: T.centerX, z: T.centerZ };
 }
 
 // Next wander target for a grazing herbivore. A herd member stays near its herd's
@@ -261,8 +324,14 @@ function nextWanderTarget(state) {
   const d = Math.hypot(dx, dz);
   if (d < HERD_ROAM_STEP) h.roam = randPointInTerritory(h.territory);  // arrived — pick a new roam point
   else { h.center.x += (dx / d) * HERD_ROAM_STEP; h.center.z += (dz / d) * HERD_ROAM_STEP; }
-  const a = Math.random() * Math.PI * 2, r = Math.random() * HERD_SPREAD;
-  return { x: h.center.x + Math.cos(a) * r, z: h.center.z + Math.sin(a) * r };
+  // Cluster point near the herd centre, masked like everything else; fall back
+  // to a fresh masked territory point if the spread keeps landing off-mask.
+  for (let i = 0; i < MASK_SAMPLE_TRIES; i++) {
+    const a = Math.random() * Math.PI * 2, r = Math.random() * HERD_SPREAD;
+    const x = h.center.x + Math.cos(a) * r, z = h.center.z + Math.sin(a) * r;
+    if (maskAllows(state.territory, x, z)) return { x, z };
+  }
+  return randPointInTerritory(state.territory);
 }
 
 // T-Rex render height (world units). OWNER FIX ("the t rex is too small compared
@@ -472,9 +541,13 @@ export async function createTrex(scene, shadow, groundFn) {
       // obstacle footprint dir can snap-reverse frame-to-frame (side-commit flip /
       // goal-behind cancellation), which used to lurch the body in place. Following
       // the lerped heading turns that into a gentle arc — no jitter.
+      const px = pos.x, pz = pos.z;
       pos.x += Math.sin(state.facing) * speed * dt;
       pos.z += Math.cos(state.facing) * speed * dt;
       pushOutOfObstacles(pos);
+      // BIOME MASK backstop: never step onto a forbidden cell. A blocked patrol
+      // target is unreachable across the forbidden biome — re-roll it.
+      if (clampToMask(T, pos, px, pz) && state.mode === "patrol") state.target = randPointInTerritory(T);
       // Gait by mode: stalk/patrol uses the WALK cycle, chase uses RUN — both
       // speed-matched. (Playing RUN at patrol speed slowed it to a leg-flapping
       // slow-mo; the walk cycle reads correctly at the slow pace.)
@@ -552,11 +625,15 @@ export async function createRaptorPack(scene, shadow, groundFn, count) {
 async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, center, territory) {
   const dino = await loadDino(scene, "raptor", RAPTOR.modelHeight, shadow);
   const jitter = () => (Math.random() - 0.5) * 10;
-  dino.root.position.set(
-    Math.max(-ARENA.radius + 4, Math.min(ARENA.radius - 4, center.x + jitter())),
-    0,
-    Math.max(-ARENA.radius + 4, Math.min(ARENA.radius - 4, center.z + jitter())),
-  );
+  // Jittered spawn around the pack centre, masked: each member must land on an
+  // allowed cell (the centre itself is mask-sampled by randPointInTerritory).
+  let sx = center.x, sz = center.z;
+  for (let i = 0; i < MASK_SAMPLE_TRIES; i++) {
+    const jx = Math.max(-ARENA.radius + 4, Math.min(ARENA.radius - 4, center.x + jitter()));
+    const jz = Math.max(-ARENA.radius + 4, Math.min(ARENA.radius - 4, center.z + jitter()));
+    if (maskAllows(territory, jx, jz)) { sx = jx; sz = jz; break; }
+  }
+  dino.root.position.set(sx, 0, sz);
   dino.root.position.y = groundFn(dino.root.position.x, dino.root.position.z);
 
   const state = {
@@ -665,9 +742,13 @@ async function createRaptor(scene, shadow, groundFn, pack, slot, packCount, cent
     if (speed > 0) {
       // Translate along the smoothed facing (not raw dir) — see T-Rex note: stops
       // the in-place lurch when skirting an obstacle footprint.
+      const px = pos.x, pz = pos.z;
       pos.x += Math.sin(state.facing) * speed * dt;
       pos.z += Math.cos(state.facing) * speed * dt;
       pushOutOfObstacles(pos);
+      // BIOME MASK backstop (raptors: jungle wall + clearing + path + desert/rocky,
+      // never savannah). A blocked patrol target is unreachable — re-roll it.
+      if (clampToMask(T, pos, px, pz) && state.mode === "patrol") state.target = randPointInTerritory(T);
       dino.play("Run", { speed: gaitRate(dino, "Run", speed, state.mode === "chase" ? 1.5 : 1.0) });
     } else if (state.attackTimer > RAPTOR.attackCooldown - 0.4) {
       // mid-bite
@@ -731,10 +812,20 @@ async function createHerbivore(scene, shadow, groundFn, kind, herd = null) {
   const maxHealth = Math.round(HERBIVORE.maxHealth * ((variant && variant.healthMul) || 1));
   const speedMul = ((variant && variant.speedMul) || 1) * (LOCO_SPEED_SCALE[kind] || 1);
   const territory = territoryFor(kind);   // each species grazes in its own region
-  // Herd members spawn clustered around the herd centre; solo grazers anywhere in range.
-  const start = herd
-    ? { x: herd.center.x + (Math.random() * 2 - 1) * HERD_SPREAD, z: herd.center.z + (Math.random() * 2 - 1) * HERD_SPREAD }
-    : randPointInTerritory(territory);
+  // Herd members spawn clustered around the herd centre; solo grazers anywhere
+  // in range. Both ON an allowed cell (BIOME MASK); a herd member that can't
+  // find one in the cluster falls back to the (mask-validated) herd centre.
+  let start = null;
+  if (herd) {
+    start = { x: herd.center.x, z: herd.center.z };
+    for (let i = 0; i < MASK_SAMPLE_TRIES; i++) {
+      const x = herd.center.x + (Math.random() * 2 - 1) * HERD_SPREAD;
+      const z = herd.center.z + (Math.random() * 2 - 1) * HERD_SPREAD;
+      if (maskAllows(territory, x, z)) { start = { x, z }; break; }
+    }
+  } else {
+    start = randPointInTerritory(territory);
+  }
   dino.root.position.set(start.x, groundFn(start.x, start.z), start.z);
 
   // A charger uses its own crisper turn rate + a post-charge recover settle so it
@@ -797,9 +888,11 @@ async function createHerbivore(scene, shadow, groundFn, kind, herd = null) {
       const yaw = Math.atan2(cdx / cd, cdz / cd);
       state.facing = lerpAngle(state.facing, yaw, 0.25);
       dino.setYaw(state.facing);
+      const cpx = pos.x, cpz = pos.z;
       pos.x += (cdx / cd) * TRICERATOPS.chargeSpeed * dt;
       pos.z += (cdz / cd) * TRICERATOPS.chargeSpeed * dt;
       pushOutOfObstacles(pos);
+      clampToMask(state.territory, pos, cpx, cpz);  // a charge still can't leave the mask
       pos.y = groundFn(pos.x, pos.z);
       clampArena(pos);
       if (!state.chargeHitDone && cd < TRICERATOPS.chargeHitRange && !player.dead) {
@@ -860,9 +953,13 @@ async function createHerbivore(scene, shadow, groundFn, kind, herd = null) {
 
     // Translate along the smoothed facing (not raw dir) — see T-Rex note: stops
     // the in-place lurch when skirting an obstacle footprint.
+    const px = pos.x, pz = pos.z;
     pos.x += Math.sin(state.facing) * speed * dt;
     pos.z += Math.cos(state.facing) * speed * dt;
     pushOutOfObstacles(pos);
+    // BIOME MASK backstop: even a fleeing herbivore can't bolt into a forbidden
+    // biome (the mask is hard); a blocked graze target gets re-rolled.
+    if (clampToMask(state.territory, pos, px, pz) && !state.fleeing) state.target = nextWanderTarget(state);
     pos.y = groundFn(pos.x, pos.z);
     clampArena(pos);
 

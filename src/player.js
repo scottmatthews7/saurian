@@ -1,5 +1,33 @@
-import { PLAYER, CAMERA, ARENA, WATER } from "./config.js";
+import { PLAYER, CAMERA, ARENA, WATER, BOAT, SPAWN } from "./config.js";
 import { loadDino } from "./dino.js";
+import { biomeAt, propAt, isBlockingProp } from "./map.js";
+
+// The wreck clearing around spawn must be freely walkable — the survivor reaches
+// the pilot/GPS/medkit and the trail head without snagging on edge-tree colliders
+// (owner: "a block stops you going to the pilot / start of the trail"). Props
+// inside this radius don't block the player.
+const SPAWN_CLEAR_RADIUS = 16;
+
+// Open sea is walkable ONLY within this radius of the boat — the final wade out
+// to the escape. Everywhere else the sea is a wall so the player can't slip off
+// the map edge and walk around the island in the shallows (owner: "escaped off
+// the map behind the forest"). Covers the beach->boat approach (boat sits ~6u
+// past the grid's north edge) plus the win radius, with margin.
+const BOAT_APPROACH = BOAT.winRadius + 24;
+
+// Island grid walls (MAP_SPEC M1): the J jungle tree-wall and M mountains are
+// FULLY solid — the player can never enter those cells — and every blocking
+// prop cell (trees, rocks) is solid too. The open sea / off-map (~) is solid
+// too EXCEPT the boat approach, so there's no way off the island but the boat.
+// Cheap per-axis cell test; the axis split below gives a natural slide.
+function wallAt(x, z) {
+  const code = biomeAt(x, z);
+  if (code === "J" || code === "M") return true;
+  if (code === "~") return Math.hypot(x - BOAT.position.x, z - BOAT.position.z) > BOAT_APPROACH;
+  // Wreck clearing: walk freely past edge-tree colliders to the pilot/trail head.
+  if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < SPAWN_CLEAR_RADIUS) return false;
+  return isBlockingProp(propAt(x, z));
+}
 
 // Third-person human controller: WASD relative to camera, Shift to sprint,
 // Space to jump, click / J to punch/kick. Uses Babylon moveWithCollisions.
@@ -195,6 +223,19 @@ export async function createPlayer(scene, shadow, input) {
       horiz.x += Math.sin(state.facing) * lunge;
       horiz.z += Math.cos(state.facing) * lunge;
     }
+    // Grid-wall clamp (jungle/mountain biomes + blocking prop cells): test each
+    // axis a small feather ahead and zero the blocked component so the player
+    // slides along the wall instead of sticking. If we somehow START inside a
+    // wall cell (warp/spawn edge case), skip the clamp so we can walk out.
+    if (!wallAt(collider.position.x, collider.position.z)) {
+      const f = PLAYER.wallFeather;
+      const px = collider.position.x, pz = collider.position.z;
+      if (horiz.x !== 0 && wallAt(px + horiz.x + Math.sign(horiz.x) * f, pz)) horiz.x = 0;
+      if (horiz.z !== 0 && wallAt(px, pz + horiz.z + Math.sign(horiz.z) * f)) horiz.z = 0;
+      if ((horiz.x !== 0 || horiz.z !== 0) && wallAt(px + horiz.x, pz + horiz.z)) {
+        horiz.x = 0; horiz.z = 0;
+      }
+    }
     const disp = new B.Vector3(horiz.x, state.velY * dt, horiz.z);
     collider.moveWithCollisions(disp);
 
@@ -365,14 +406,29 @@ export function createFollowCamera(scene, target) {
   canvas.addEventListener("pointermove", () => { if (dragging) manualHold = CAMERA.manualHoldSeconds; });
   canvas.addEventListener("wheel", () => { manualHold = CAMERA.manualHoldSeconds; }, { passive: true });
 
+  let fpv = false;   // first-person while standing on the muddy path
   const rig = {
     cam,
     frozen: false,   // headless harnesses set this to park the camera manually
     update(shake, dt) {
       if (rig.frozen) return;   // verification harness owns the camera
       const p = target.dino.root.position;
+
+      // First-person on the path AND in the forest: drop to eye level and pull
+      // the camera in to the head; restore the third-person orbit elsewhere.
+      // Radius/beta ease so the swap reads as a smooth zoom, not a cut.
+      const code = biomeAt(p.x, p.z);
+      fpv = code === "P" || code === "F";
+      const eyeY = fpv ? CAMERA.fpvEyeHeight : 3;
+      const targetRadius = fpv ? CAMERA.fpvRadius : CAMERA.distance;
+      cam.radius += (targetRadius - cam.radius) * CAMERA.modeLerp;
+      // Keep the lower limit below the current radius so the ease never clamps;
+      // off the path it caps at 7 again so manual wheel-zoom stays bounded.
+      cam.lowerRadiusLimit = fpv ? CAMERA.fpvRadius : Math.min(cam.radius, 7);
+      if (fpv) cam.beta = lerpAngle(cam.beta, CAMERA.fpvBeta, CAMERA.modeLerp);
+
       smoothTarget.x += (p.x - smoothTarget.x) * CAMERA.lerp;
-      smoothTarget.y += (p.y + 3 - smoothTarget.y) * CAMERA.lerp;
+      smoothTarget.y += (p.y + eyeY - smoothTarget.y) * CAMERA.lerp;
       smoothTarget.z += (p.z - smoothTarget.z) * CAMERA.lerp;
 
       // Auto-follow: ease the orbit angle to sit behind the raptor's heading

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<!-- Biome staging gallery: builds ONE biome vignette at a time from the real asset
+     glbs (scaled to eyeball target sizes — staging only, not game values) so the
+     owner can get a feel for each proposed biome. Driven by tools/biome_shots.mjs.
+     Ground colours are pulled from the live game config (OCEAN.beachColor,
+     ENV.dryZone.sandColor, ENV.grassTint) so underfoot matches the existing game. -->
+<html>
+<head><meta charset="utf-8"><style>html,body,#c{margin:0;width:100%;height:100%;overflow:hidden}</style></head>
+<body>
+<canvas id="c"></canvas>
+<script src="../lib/babylon.js"></script>
+<script src="../lib/babylonjs.loaders.min.js"></script>
+<script>
+const B = BABYLON;
+const engine = new B.Engine(document.getElementById("c"), true);
+const scene = new B.Scene(engine);
+scene.clearColor = B.Color4.FromHexString("#9fc7e8ff");
+const cam = new B.UniversalCamera("cam", new B.Vector3(0, 30, -40), scene);
+cam.minZ = 0.1; cam.maxZ = 2000;
+new B.HemisphericLight("hemi", new B.Vector3(0, 1, 0), scene).intensity = 0.65;
+const sun = new B.DirectionalLight("sun", new B.Vector3(-0.4, -1, 0.35), scene);
+sun.intensity = 0.85;
+engine.runRenderLoop(() => scene.render());
+
+function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+// staging-only target sizes (u): scale each glb so its bbox matches; pure eyeball
+const ASSET_SIZE = {
+  "jungle_tree.glb": { h: 14 }, "forest_trees.glb": { h: 11 }, "monstera.glb": { h: 2.2 },
+  "fern.glb": { h: 1.1 }, "fern2.glb": { h: 1.1 }, "geranium.glb": { h: 0.7 }, "geranium2.glb": { h: 0.7 },
+  "lupine.glb": { h: 0.9 }, "dead_tree.glb": { h: 6 }, "desert_old_tree.glb": { h: 7 },
+  "crashed_plane.glb": { d: 20 }, "dead_pilot.glb": { d: 2 }, "gps_device.glb": { d: 0.35 },
+  "health_pack.glb": { d: 0.45 }, "raptor_nest.glb": { d: 1.6 }, "fishing_boat.glb": { d: 13 },
+  "desert__rocks__stones__pack.glb": { d: 7 }, "desert_shrubs.glb": { h: 1.2 }, "free_cliff_rock.glb": { h: 26 }, "cliff.glb": { d: 60 },
+  "stego_skeleton.glb": { d: 8 }, "locust_tree_pack.glb": { h: 12 }, "realistic_trees_pack_of_2_free.glb": { h: 13 },
+};
+// ground palettes — base/fleck pairs; sand + grass values converted from src/config.js
+const GROUND = {
+  thickjungle: ["#1d4023", "#142d18"], clearing: ["#a8b885", "#8ca06b"],   // clearing floor = GRASS (owner)
+  muddypath: ["#6b4f2a", "#57401f"], savannah: ["#a8b885", "#8ca06b"],     // ENV.grassTint olive-sage
+  forest: ["#55703f", "#465e33"], swamp: ["#333d23", "#252d18"],
+  desert: ["#c7b083", "#a6916a"],                                          // ENV.dryZone.sandColor
+  beach: ["#ccb88a", "#a3906b"],                                           // OCEAN.beachColor
+  rockypass: ["#6e6b64", "#43413b"],   // floor matches the dark cliff.glb rock family
+};
+
+function groundMat(biome) {
+  const [base, fleck] = GROUND[biome];
+  const m = new B.StandardMaterial("ground_" + biome, scene);
+  const tex = new B.DynamicTexture("gtex_" + biome, 1024, scene, false);   // NO mips: headless GL lacks aniso and mips erase the detail
+  const ctx = tex.getContext();
+  ctx.fillStyle = base; ctx.fillRect(0, 0, 1024, 1024);
+  const r = rng(biome.length * 131);
+  ctx.fillStyle = fleck;
+  for (let i = 0; i < 42; i++) {   // large soft blotches break up the flatness
+    ctx.globalAlpha = 0.25 + r() * 0.25;
+    ctx.beginPath(); ctx.ellipse(r() * 1024, r() * 1024, 50 + r() * 140, 36 + r() * 110, r() * 3.14, 0, 6.3); ctx.fill();
+  }
+  for (let i = 0; i < 9000; i++) { ctx.globalAlpha = 0.45 + r() * 0.45; const s = 3 + r() * 8; ctx.fillRect(r() * 1024, r() * 1024, s, s); }
+  if (biome === "rockypass") {   // bake in stones + cracks so the floor reads as rock, not render-flat grey
+    for (let i = 0; i < 120; i++) {
+      const x = r() * 1024, y = r() * 1024, w = 16 + r() * 52, h = 12 + r() * 40, a = r() * 3.14;
+      ctx.globalAlpha = 0.7; ctx.fillStyle = "#26241f";
+      ctx.beginPath(); ctx.ellipse(x + 2, y + 2, w, h, a, 0, 6.3); ctx.fill();
+      ctx.globalAlpha = 0.85; ctx.fillStyle = r() < 0.5 ? "#9a968a" : "#3a3833";
+      ctx.beginPath(); ctx.ellipse(x, y, w, h, a, 0, 6.3); ctx.fill();
+      ctx.fillStyle = fleck;
+    }
+    ctx.strokeStyle = "#2e2c27"; ctx.lineWidth = 2.5;
+    for (let i = 0; i < 26; i++) {   // hairline cracks
+      ctx.globalAlpha = 0.4 + r() * 0.3;
+      ctx.beginPath();
+      let cx2 = r() * 1024, cy2 = r() * 1024;
+      ctx.moveTo(cx2, cy2);
+      for (let k = 0; k < 5; k++) { cx2 += (r() - 0.5) * 70; cy2 += (r() - 0.5) * 70; ctx.lineTo(cx2, cy2); }
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1; tex.update();
+  tex.uScale = 1.5; tex.vScale = 1.5;
+  tex.updateSamplingMode(B.Texture.BILINEAR_SAMPLINGMODE);
+  m.diffuseTexture = tex; m.specularColor = B.Color3.Black();
+  return m;
+}
+
+const cache = {};
+async function loadAsset(file) {
+  if (cache[file]) return cache[file];
+  const res = await B.SceneLoader.LoadAssetContainerAsync("../assets/models/", file, scene);
+  let mn = new B.Vector3(1e9, 1e9, 1e9), mx = new B.Vector3(-1e9, -1e9, -1e9);
+  const entries = res.instantiateModelsToScene((n) => `${file}_tpl_${n}`);
+  const root = entries.rootNodes[0];
+  const junk = [];
+  root.getChildMeshes(false).forEach((m) => {
+    if (!m.getBoundingInfo || m.getTotalVertices() === 0) return;
+    m.computeWorldMatrix(true);
+    const b = m.getBoundingInfo().boundingBox;
+    const ext = b.maximumWorld.subtract(b.minimumWorld);
+    // baked-in ground/shadow planes (flat wide quads, e.g. jungle_tree's 4-vert black
+    // "Material.003" square) — DISPOSE them; merely disabling leaks back via instantiateHierarchy
+    if (ext.y < 0.04 * Math.max(ext.x, ext.z) && Math.max(ext.x, ext.z) > 0.5) { junk.push(m); return; }
+    mn = B.Vector3.Minimize(mn, b.minimumWorld); mx = B.Vector3.Maximize(mx, b.maximumWorld);
+  });
+  junk.forEach((m) => m.dispose());
+  const size = mx.subtract(mn);
+  const spec = ASSET_SIZE[file] || { h: 2 };
+  const scale = spec.h ? spec.h / (size.y || 1) : spec.d / (Math.max(size.x, size.y, size.z) || 1);
+  root.scaling.scaleInPlace(scale);
+  root.position.y = -mn.y * scale;   // feet on the ground
+  root.setEnabled(false);
+  cache[file] = { container: res, template: root };
+  return cache[file];
+}
+
+let placed = [];
+async function place(file, x, z, opts = {}) {
+  const { template } = await loadAsset(file);
+  const c = template.instantiateHierarchy(null) || template.clone(file + placed.length);
+  c.setEnabled(true);
+  c.position.x = x; c.position.z = z;
+  if (opts.rotY !== undefined || opts.rotX || opts.rotZ) { c.rotationQuaternion = null; c.rotation.set(opts.rotX || 0, opts.rotY || 0, opts.rotZ || 0); }
+  if (opts.scaleMul) c.scaling.scaleInPlace(opts.scaleMul);
+  if (opts.y !== undefined) c.position.y = opts.y;
+  else {   // ground-clamp: drop the instance so its lowest vertex touches y=0 (owner: "floating trees")
+    c.computeWorldMatrix(true);
+    let minY = 1e9;
+    c.getChildMeshes(false).forEach((m) => { if (!m.getBoundingInfo || m.getTotalVertices() === 0) return; m.computeWorldMatrix(true); minY = Math.min(minY, m.getBoundingInfo().boundingBox.minimumWorld.y); });
+    if (minY < 1e8) c.position.y -= minY;
+  }
+  placed.push(c);
+  return c;
+}
+
+async function scatter(file, count, half, seed, opts = {}) {
+  const r = rng(seed);
+  for (let i = 0; i < count; i++) {
+    const x = (r() - 0.5) * 2 * half, z = (r() - 0.5) * 2 * half;
+    if (opts.keepClear && Math.hypot(x, z) < opts.keepClear) continue;
+    await place(file, x, z, { rotY: r() * 6.28, scaleMul: 0.8 + r() * 0.45 });
+  }
+}
+
+// per-biome vignettes, ~70x70u patch (counts scaled from map prop densities, capped for staging)
+const BIOMES = {
+  thickjungle: async () => { await scatter("jungle_tree.glb", 260, 34, 1); await scatter("monstera.glb", 90, 34, 2); await scatter("fern.glb", 60, 34, 3); await scatter("fern2.glb", 40, 34, 4); },
+  clearing: async () => {
+    await place("crashed_plane.glb", 6, 4, { rotY: 0.6 });
+    await place("dead_pilot.glb", -9, -7);
+    await place("gps_device.glb", -9, -7, { y: 1.0 });
+    await place("health_pack.glb", 11, -7, { y: 0.6 });
+    await place("raptor_nest.glb", -13, 11);
+    await scatter("jungle_tree.glb", 90, 34, 5, { keepClear: 16 });
+    await scatter("fern.glb", 30, 34, 6, { keepClear: 15 });
+  },
+  muddypath: async () => {
+    const trail = B.MeshBuilder.CreateGround("trail", { width: 2.2, height: 70 }, scene);
+    trail.position.y = 0.02; trail.material = groundMat("muddypath");
+    for (const side of [-1, 1]) await scatter("jungle_tree.glb", 110, 34, 7 + side, { keepClear: 0 });
+    placed.forEach((c) => { if (c.name.startsWith("jungle_tree") && Math.abs(c.position.x) < 3.4) c.position.x = 3.4 * Math.sign(c.position.x || 1); });
+    await scatter("fern.glb", 40, 34, 9, { keepClear: 2.5 });
+  },
+  // savannah: the in-game grass blades + ground STAY AS-IS (owner likes them) — this
+  // stage only previews tree placement. forest_trees here is a PLACEHOLDER: owner
+  // wants a different, higher-poly savannah tree style (acacia-ish glb, to source).
+  // savannah: owner-supplied tree packs to TRY (locust vs realistic pair), side by side
+  savannah: async () => {
+    await place("locust_tree_pack.glb", -16, 6, { rotY: 0.4 });
+    await place("locust_tree_pack.glb", -26, -16, { rotY: 2.1, scaleMul: 0.9 });
+    await place("realistic_trees_pack_of_2_free.glb", 16, 2, { y: -0.8, rotY: 1.1 });
+    await place("realistic_trees_pack_of_2_free.glb", 28, -18, { y: -0.7, rotY: 3.6, scaleMul: 0.85 });
+    await scatter("lupine.glb", 70, 34, 11);
+  },
+  forest: async () => { await scatter("forest_trees.glb", 24, 32, 12); await scatter("fern.glb", 75, 34, 13); await scatter("geranium.glb", 38, 34, 14); await scatter("geranium2.glb", 30, 34, 15); },
+  swamp: async () => {
+    const wr = rng(33);
+    for (let i = 0; i < 9; i++) {   // murky standing-water pools
+      const pool = B.MeshBuilder.CreateDisc("trail", { radius: 2 + wr() * 4, tessellation: 28 }, scene);
+      pool.rotation.x = Math.PI / 2; pool.position.set((wr() - 0.5) * 60, 0.02, (wr() - 0.5) * 60);
+      const pm = new B.StandardMaterial("pool" + i, scene); pm.diffuseColor = B.Color3.FromHexString("#2e4644"); pm.alpha = 0.95; pm.specularColor = new B.Color3(0.25, 0.25, 0.25);
+      pool.material = pm;
+    }
+    await scatter("fern.glb", 110, 34, 16); await scatter("fern2.glb", 100, 34, 17); await scatter("dead_tree.glb", 3, 28, 20);
+  },
+  desert: async () => {
+    await scatter("desert_old_tree.glb", 4, 30, 18); await scatter("dead_tree.glb", 4, 30, 19);
+    await scatter("desert__rocks__stones__pack.glb", 5, 30, 22); await scatter("desert_shrubs.glb", 18, 32, 23);
+    await place("stego_skeleton.glb", 14, -10, { y: -0.5, rotX: 0.12, rotY: 0.7, rotZ: 1.5 });   // STEGO_SKELETON pose from config.js: rolled ~86° onto its side, slumped + sunk
+  },
+  rockypass: async () => {   // cliff.glb walls either side (owner's new cliff asset)
+    for (const [x, z, s] of [[-42, -10, 1.3], [-48, 26, 1.15], [42, -16, 1.35], [48, 20, 1.2]])
+      await place("cliff.glb", x, z, { rotY: x > 0 ? Math.PI : 0, scaleMul: s });
+    const br = rng(77);
+    for (let i = 0; i < 6; i++)   // grey boulders = small cliff chunks, matches the walls
+      await place("cliff.glb", (br() - 0.5) * 40, (br() - 0.5) * 50, { rotY: br() * 6.28, scaleMul: 0.06 + br() * 0.07 });
+    await scatter("desert_shrubs.glb", 6, 18, 25);
+  },
+  beach: async () => {
+    const sea = B.MeshBuilder.CreateGround("sea", { width: 200, height: 90 }, scene);
+    sea.position.z = 62; sea.position.y = -0.22;
+    const sm = new B.StandardMaterial("seaMat", scene);
+    sm.diffuseColor = B.Color3.FromHexString("#37657f"); sm.alpha = 0.92; sm.specularColor = new B.Color3(0.2, 0.2, 0.2);
+    sea.material = sm;
+    await place("fishing_boat.glb", 0, 22, { y: -1.1, rotY: 1.2 });   // IN THE SEA just off the sand (owner)
+  },
+};
+
+let ground = null;
+window.__stage = {
+  ready: false, err: null,
+  build: async (biome) => {
+    window.__stage.ready = false;
+    try {
+      placed.forEach((c) => c.dispose()); placed = [];
+      scene.meshes.filter((m) => m.name === "ground" || m.name === "trail" || m.name === "sea").forEach((m) => m.dispose());
+      ground = B.MeshBuilder.CreateGround("ground", { width: 90, height: 90, subdivisions: 64, updatable: true }, scene);
+      ground.material = groundMat(biome);
+      if (biome === "beach") {     // sand slopes down into the sea -> real waterline ~z 15
+        const pos = ground.getVerticesData(B.VertexBuffer.PositionKind);
+        for (let i = 0; i < pos.length; i += 3) {
+          const x = pos[i], edge = 12 + 3.5 * Math.sin(x * 0.12) + 2 * Math.sin(x * 0.31 + 1.7);
+          const z = pos[i + 2];
+          if (z > edge) pos[i + 1] = -(z - edge) * 0.09;
+        }
+        ground.updateVerticesData(B.VertexBuffer.PositionKind, pos);
+        const norms = [];
+        B.VertexData.ComputeNormals(pos, ground.getIndices(), norms);
+        ground.updateVerticesData(B.VertexBuffer.NormalKind, norms);
+      }
+      if (biome === "rockypass") {   // gentle rocky undulation (owner: like the desert's)
+        const pos = ground.getVerticesData(B.VertexBuffer.PositionKind);
+        for (let i = 0; i < pos.length; i += 3) {
+          const x = pos[i], z = pos[i + 2];
+          pos[i + 1] = 0.7 * Math.sin(x * 0.11 + 0.6) * Math.sin(z * 0.09) + 0.35 * Math.sin(x * 0.23 + z * 0.17);
+        }
+        ground.updateVerticesData(B.VertexBuffer.PositionKind, pos);
+        const norms = [];
+        B.VertexData.ComputeNormals(pos, ground.getIndices(), norms);
+        ground.updateVerticesData(B.VertexBuffer.NormalKind, norms);
+      }
+      if (biome === "desert") {   // dune undulation like the existing game's desert
+        const pos = ground.getVerticesData(B.VertexBuffer.PositionKind);
+        for (let i = 0; i < pos.length; i += 3) {
+          const x = pos[i], z = pos[i + 2];
+          pos[i + 1] = 1.1 * Math.sin(x * 0.09 + 1.3) * Math.sin(z * 0.07) + 0.5 * Math.sin(x * 0.2 + z * 0.15);
+        }
+        ground.updateVerticesData(B.VertexBuffer.PositionKind, pos);
+        const norms = [];
+        B.VertexData.ComputeNormals(pos, ground.getIndices(), norms);
+        ground.updateVerticesData(B.VertexBuffer.NormalKind, norms);
+      }
+      await BIOMES[biome]();
+      await scene.whenReadyAsync();
+      window.__stage.ready = true;
+    } catch (e) { window.__stage.err = e.message || String(e); }
+    return window.__stage.ready;
+  },
+  lookAt: (px, py, pz, tx, ty, tz) => { cam.position.set(px, py, pz); cam.setTarget(new B.Vector3(tx, ty, tz)); return "ok"; },
+  biomes: Object.keys(BIOMES),
+};
+</script>
+</body>
+</html>

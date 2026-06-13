@@ -76,6 +76,12 @@
           const cam = g.camRig.cam;
           g.camRig.frozen = true;
           cam.maxZ = 2000;   // see far across the doubled map / out to the horizon
+          // The game caps the follow-cam orbit (upperRadiusLimit 26 in
+          // player.js) — that CLAMPS any lookAt framing further than 26u from
+          // its target (overheads silently ended up at ~26u). Lift the limits
+          // for manual framing.
+          cam.lowerRadiusLimit = null;
+          cam.upperRadiusLimit = null;
           window.__verify.cam = cam;
           window.__verify.B = B;
           window.__verify.heightAt = g.world.heightAt;

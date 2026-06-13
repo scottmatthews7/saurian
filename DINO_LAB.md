@@ -38,6 +38,16 @@ the rigged glb FIRST, read its bone rest positions, and build the procedural mes
 directly around those joints.** Then dimensions match from the start, the
 `boneRest` table falls out of the glb itself, and iteration is much faster.
 
+## ⭐ The core method (owner's framing)
+
+Don't author meshes or rigs from scratch. For each species: **take the glb's bones
+as-is → build a SMOOTH, more animal-like skin over them** (swept lofts that smooth
+away the low-poly facets) → **change the dimensions** (limb/segment lengths, girth,
+overall scale) → **bolt on species-specific features** (e.g. a **Spinosaurus sail /
+dorsal spine**, a Parasaurolophus crest, Triceratops frill + horns). The rig and its
+clips are untouched; only the visible skin, proportions, and add-ons change. This is
+why one rig can serve several species.
+
 ## ⭐ Future priority — map the remaining core dinos onto existing rigs
 
 Don't author a bespoke rig per species. Reuse a Quaternius glb rig whose skeleton

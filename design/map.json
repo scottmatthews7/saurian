@@ -1,0 +1,269 @@
+{
+  "units": {
+    "metresPerUnit": 0.9,
+    "axes": "X east+, Z north+, Y up",
+    "note": "biome regions are in design/map.grid.json"
+  },
+  "scaleKmNS": 0.87,
+  "legend": {
+    "~": {
+      "biome": "sea",
+      "fill": "#37657f",
+      "impassable": true
+    },
+    "G": {
+      "biome": "savannah",
+      "fill": "#88a64c",
+      "impassable": false
+    },
+    "F": {
+      "biome": "forest",
+      "fill": "#2f7d3a",
+      "impassable": false
+    },
+    "J": {
+      "biome": "thickjungle",
+      "fill": "#173f1e",
+      "impassable": true
+    },
+    "S": {
+      "biome": "swamp",
+      "fill": "#3e4a2a",
+      "impassable": false
+    },
+    "M": {
+      "biome": "mountain",
+      "fill": "#7c7468",
+      "impassable": true
+    },
+    "R": {
+      "biome": "rocky",
+      "fill": "#8f8c86",
+      "impassable": false
+    },
+    "D": {
+      "biome": "desert",
+      "fill": "#d6b66b",
+      "impassable": false
+    },
+    "B": {
+      "biome": "beach",
+      "fill": "#e7daa6",
+      "impassable": false
+    },
+    "C": {
+      "biome": "clearing",
+      "fill": "#a3b277",
+      "impassable": false
+    },
+    "P": {
+      "biome": "muddypath",
+      "fill": "#6b4f2a",
+      "impassable": false
+    }
+  },
+  "spawn": {
+    "x": 0,
+    "z": -250,
+    "note": "player crash-land start, inside the clearing (cell code C)"
+  },
+  "assets": [
+    {
+      "id": "crashed_plane",
+      "glb": "assets/models/crashed_plane.glb",
+      "x": 8,
+      "z": -244,
+      "note": "in the clearing; survivor wakes beside it"
+    },
+    {
+      "id": "dead_pilot",
+      "glb": "assets/models/dead_pilot.glb",
+      "x": -8,
+      "z": -256,
+      "note": "prone on the ground, NW of the plane"
+    },
+    {
+      "id": "gps_device",
+      "glb": "assets/models/gps_device.glb",
+      "x": -8,
+      "z": -256,
+      "note": "hovering + spinning ABOVE the pilot"
+    },
+    {
+      "id": "health_pack",
+      "glb": "assets/models/health_pack.glb",
+      "x": 2,
+      "z": -250,
+      "note": "beside the plane; hovering/spinning pickup"
+    },
+    {
+      "id": "raptor_nest",
+      "glb": "assets/models/raptor_nest.glb",
+      "x": -40,
+      "z": -283,
+      "note": "in the thick-jungle tree-wall, off the clearing"
+    },
+    {
+      "id": "fishing_boat",
+      "glb": "assets/models/fishing_boat.glb",
+      "x": 0,
+      "z": 582,
+      "note": "floating IN THE SEA just off the beach tip. Heading: STERN points out to sea (almost directly away from the beach) with a ~10 degree offset. Sits at a proper draft (hull NOT sunk deep) and BOBS gently. THE GOAL — win when the player reaches its radius from the waterline."
+    }
+  ],
+  "territoriesRule": "a dino may ONLY enter cells whose code is in its biomes list, within radius of its centre",
+  "territories": [
+    {
+      "dino": "raptor",
+      "centerX": 0,
+      "centerZ": -230,
+      "radius": 800,
+      "biomes": [
+        "J",
+        "C",
+        "P",
+        "D",
+        "R"
+      ]
+    },
+    {
+      "dino": "compsognathus",
+      "centerX": 40,
+      "centerZ": -120,
+      "radius": 90,
+      "biomes": [
+        "G"
+      ]
+    },
+    {
+      "dino": "parasaur",
+      "centerX": -30,
+      "centerZ": -60,
+      "radius": 95,
+      "biomes": [
+        "G"
+      ]
+    },
+    {
+      "dino": "stegosaurus",
+      "centerX": -112,
+      "centerZ": 70,
+      "radius": 72,
+      "biomes": [
+        "F"
+      ]
+    },
+    {
+      "dino": "trex",
+      "centerX": 0,
+      "centerZ": 35,
+      "radius": 185,
+      "biomes": [
+        "G"
+      ]
+    },
+    {
+      "dino": "apatosaurus",
+      "centerX": 5,
+      "centerZ": 90,
+      "radius": 150,
+      "biomes": [
+        "G"
+      ]
+    },
+    {
+      "dino": "triceratops",
+      "centerX": -20,
+      "centerZ": 0,
+      "radius": 120,
+      "biomes": [
+        "G"
+      ]
+    },
+    {
+      "dino": "ankylosaurus",
+      "centerX": 125,
+      "centerZ": 95,
+      "radius": 50,
+      "biomes": [
+        "S"
+      ]
+    },
+    {
+      "dino": "pachycephalosaurus",
+      "centerX": 0,
+      "centerZ": 432,
+      "radius": 70,
+      "biomes": [
+        "D"
+      ]
+    }
+  ],
+  "wallAssets": {
+    "mountain": "assets/models/cliff.glb",
+    "junglewall": "assets/models/jungle_tree.glb",
+    "note": "build the impassable walls (M faces, jungle edge) from these models"
+  },
+  "muddyPath": {
+    "halfWidthU": 2.4,
+    "note": "the ONLY corridor through the impassable jungle tree-wall; ends at the jungle's north edge -> opens onto savannah",
+    "waypoints": [
+      {
+        "x": 0,
+        "z": -250
+      },
+      {
+        "x": -9.294463440875372,
+        "z": -242.30769230769232
+      },
+      {
+        "x": -16.45967731787313,
+        "z": -234.6153846153846
+      },
+      {
+        "x": -19.85417748196108,
+        "z": -226.92307692307693
+      },
+      {
+        "x": -18.700324853708295,
+        "z": -219.23076923076923
+      },
+      {
+        "x": -13.262453164815904,
+        "z": -211.53846153846155
+      },
+      {
+        "x": -4.786313285751154,
+        "z": -203.84615384615384
+      },
+      {
+        "x": 4.786313285751149,
+        "z": -196.15384615384616
+      },
+      {
+        "x": 13.262453164815906,
+        "z": -188.46153846153845
+      },
+      {
+        "x": 18.700324853708295,
+        "z": -180.76923076923077
+      },
+      {
+        "x": 19.85417748196108,
+        "z": -173.07692307692307
+      },
+      {
+        "x": 16.45967731787313,
+        "z": -165.3846153846154
+      },
+      {
+        "x": 9.294463440875369,
+        "z": -157.69230769230768
+      },
+      {
+        "x": 4.898587196589413e-15,
+        "z": -150
+      }
+    ]
+  }
+}

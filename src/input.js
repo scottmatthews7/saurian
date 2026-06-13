@@ -34,9 +34,9 @@ export function createInput(canvas) {
 
   return {
     keys,
-    // Sprint when Shift is held OR the Caps Lock toggle is on. Moving stops /
-    // exhaustion are handled by the player; this is purely the input intent.
-    get sprintHeld() { return keys.has("shift") || sprintToggled; },
+    // Sprint when Shift or O is held, OR the Caps Lock toggle is on. Moving stops
+    // / exhaustion are handled by the player; this is purely the input intent.
+    get sprintHeld() { return keys.has("shift") || keys.has("o") || sprintToggled; },
     consumeJump() { const v = jumpQueued; jumpQueued = false; return v; },
     consumeAttack() { const v = attackQueued; attackQueued = false; return v; },
     consumeDash() { const v = dashQueued; dashQueued = false; return v; },

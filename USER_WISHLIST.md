@@ -17,6 +17,10 @@ Death-Stranding-with-dinos traverse. Everything below serves this.
   in open ground (jungle AND desert — likely a steep heightAt step the collider
   can't climb after the map doubled); glitchy dark vertical slivers in the grass;
   and make the **T-Rex LIFESIZE** vs the 1.8 m human (Scotty ~13 m long, head ~5–6 m).
+- **Stays a WEB APP** (owner REVERTED the downloadable-desktop-app decision,
+  2026-06-12). The "can't all load" problem is now solved by the **asset budget /
+  LOD / streaming** pass alone (cap what loads at once; stream the far island; LOD
+  distant scatter) — no Tauri/Electron wrapper. Owner is fine with a 1–2 min load.
 
 ## P2 — BUILD the campaign (the core vision)
 1. **World re-layout to the canonical island** (see *CANONICAL MAP* below), sized so

@@ -1,0 +1,12 @@
+code,biome,hex,impassable
+~,sea,#37657f,true
+G,savannah,#88a64c,false
+F,forest,#2f7d3a,false
+J,thickjungle,#173f1e,true
+S,swamp,#3e4a2a,false
+M,mountain,#7c7468,true
+R,rocky,#8f8c86,false
+D,desert,#d6b66b,false
+B,beach,#e7daa6,false
+C,clearing,#a3b277,false
+P,muddypath,#6b4f2a,false

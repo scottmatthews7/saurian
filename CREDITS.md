@@ -1,5 +1,135 @@
 # Credits
 
+Third-party assets used in Saurian (Dino Arena: Survival), with sources and
+licences. Best-effort attribution, audited 2026-06-12 from embedded glTF
+metadata plus the original listings. Where a licence claim could not be
+independently confirmed, that is stated. If you are a rights-holder of any
+asset below and want different attribution or removal, please open an issue.
+
+## 3D models
+
+### Dinosaurs and player — Quaternius (CC0 / public domain)
+
+All low-poly rigged, animated dinosaurs and the human player model are by
+**Quaternius**, released **CC0 (public domain)** — no attribution legally
+required, credited here in good faith. Sourced from poly.pizza
+(`static.poly.pizza/<uuid>.glb`).
+
+| File | Species / model | Source |
+|------|-----------------|--------|
+| `assets/models/trex.glb` | T-Rex | Animated Dinosaur Bundle |
+| `assets/models/raptor.glb` | Velociraptor | Animated Dinosaur Bundle |
+| `assets/models/triceratops.glb` | Triceratops | Animated Dinosaur Bundle |
+| `assets/models/stegosaurus.glb` | Stegosaurus | Animated Dinosaur Bundle |
+| `assets/models/apatosaurus.glb` | Apatosaurus | Animated Dinosaur Bundle |
+| `assets/models/parasaur.glb` | Parasaurolophus | Animated Dinosaur Bundle |
+| `assets/models/human.glb` | Adventurer (player) | Quaternius "Adventurer" |
+
+- Bundle: https://poly.pizza/bundle/Animated-Dinosaur-Bundle-SmoLdBLO2K
+- Author: https://poly.pizza/u/Quaternius — https://quaternius.com
+- Licence: Creative Commons Zero v1.0 Universal (CC0)
+
+The wider roster (`DINO_VARIANTS`) reuses these rigs under distinct tints and
+proportions — no additional model files; all credit remains with Quaternius.
+The animation clips baked onto the hi-poly models below are also from this
+Quaternius set.
+
+### Hi-poly dinosaurs (Sketchfab uploads of Prehistoric Kingdom models)
+
+The four hi-poly animated dinosaurs are downloaded Sketchfab models with the
+Quaternius clips retargeted and baked onto their own rigs (see
+`HIPOLY_PIPELINE.md`). The Sketchfab listings are labelled **CC-BY-4.0**, but
+their descriptions state the models are **from the game Prehistoric Kingdom**
+(Blue Meridian / published by Crytivo). A game-asset extraction cannot
+validly be relicensed CC-BY by the uploader, so the CC-BY labels on these
+listings should not be relied upon; underlying rights presumably remain with
+the Prehistoric Kingdom rights-holders. Stated here plainly; contact us for
+attribution changes or removal.
+
+| File | Listing title | Uploader | Source |
+|------|---------------|----------|--------|
+| `assets/models/trex_hi_anim.glb` (+ `assets/reference/trex_hi.glb`) | "Accurate Tyrannosaurus rex" | hsejira | https://sketchfab.com/3d-models/accurate-tyrannosaurus-rex-6f9a8f6ad5ff47e28212a064b6783055 |
+| `assets/models/triceratops_hi_anim.glb` (+ `assets/reference/triceratops_hi.glb`) | "Accurate Triceratops horridus" | hsejira | https://sketchfab.com/3d-models/accurate-triceratops-horridus-e797b70c11fd4d3a91783ad41aa32893 |
+| `assets/models/brachiosaurus_hi_anim.glb` (+ `assets/reference/brachiosaurus_hi.glb`) | "Accurate Brachiosaurus altithorax" | hsejira | https://sketchfab.com/3d-models/accurate-brachiosaurus-altithorax-5c8127f0f136447888f3c73a8cac34bc |
+| `assets/models/raptor_hi_anim.glb` | "Velociraptor Accurate Rigged (Dust Devil skin)" | BB-N8 | https://sketchfab.com/3d-models/velociraptor-accurate-rigged-dust-devil-skin-5266290699c549a198b6a3c3282ab70c |
+
+- Original dinosaur models: **Prehistoric Kingdom** (Blue Meridian / Crytivo)
+  — https://www.prehistorickingdom.com
+- The "Tyrannosaurus rex" listing description: "Tyrannosaurus rex from
+  Prehistoric Kingdom" (verified on the listing page). The raptor listing
+  likewise states it is from Prehistoric Kingdom; "Dust Devil" is one of that
+  game's skins. The Triceratops and Brachiosaurus listings are by the same
+  uploader (hsejira) in the same "Accurate …" series and are presumed the
+  same provenance.
+
+### Set-dressing, vegetation and props (Sketchfab)
+
+All licence/author data below is taken from metadata embedded in the
+downloaded files at export time, i.e. what the Sketchfab listing declared.
+Listings marked "page-verified" were re-checked against the live listing on
+2026-06-12; the rest are credited from embedded metadata in good faith.
+
+Attribution format: "Title" by Author, via Sketchfab. CC-BY-4.0 items are
+licensed under https://creativecommons.org/licenses/by/4.0/ (models may be
+repacked/compressed; otherwise unmodified unless noted).
+
+| File | Title | Author | Licence | Source |
+|------|-------|--------|---------|--------|
+| `assets/models/cliff.glb` | "Cliff" | DJMaesen (sketchfab.com/bumstrum) | CC-BY-4.0 | https://sketchfab.com/3d-models/cliff-082da1166a814c6e9c9e6c1b38159e4e |
+| `assets/models/crashed_plane.glb` | "Crashed_[X]_Airplane-01" | -X-ScornGames | CC-BY-4.0 (AI-generated — Tripo material signature in file) | https://sketchfab.com/3d-models/crashed-x-airplane-01-c69d225443724acbadb0568158ad9598 |
+| `assets/models/dead_pilot.glb` | "Tactical Soldier In Combat Gear" | restore50 | CC-BY-4.0 (page-verified; listing marked "Generated with AI") | https://sketchfab.com/3d-models/tactical-soldier-in-combat-gear-970fbda053024c20a84a0714e4538887 |
+| `assets/models/dead_tree.glb` | "Dead Tree" | hayabuzaa | CC-BY-4.0 | https://sketchfab.com/3d-models/dead-tree-5bed8d70d0004c17b9ba319a4d9ed581 |
+| `assets/models/desert__rocks__stones__pack.glb` | "Desert \| Rocks \| Stones \| Pack" | Erroratten | CC-BY-4.0 | https://sketchfab.com/3d-models/desert-rocks-stones-pack-c2208f5ccc004f1681d27de67fe75799 |
+| `assets/models/desert_shrubs.glb` | "Desert Shrubs" | evolveduk | Sketchfab Standard (free download; NOT Creative Commons — see licence notes) | https://sketchfab.com/3d-models/desert-shrubs-3f116a7e0c464f2798fe25c7dae4fabb |
+| `assets/models/desert_old_tree.glb`, `assets/models/old_tree.glb` | "Old Tree 3d model free" | iGauravRajput | CC-BY-4.0 | https://sketchfab.com/3d-models/old-tree-3d-model-free-c3c76aade9ec42b9a452034a825d623f |
+| `assets/models/fern.glb` | "Realistic HD Common polypody fern (37/55)" | PlantCatalog | CC-BY-4.0 | https://sketchfab.com/3d-models/realistic-hd-common-polypody-fern-3755-eb8b02d83476411faeb72e4befd58d1f |
+| `assets/models/fern2.glb` | "Realistic HD Common polypody fern (10/55)" | PlantCatalog | CC-BY-4.0 | https://sketchfab.com/3d-models/realistic-hd-common-polypody-fern-1055-8c84a0419762417fb22a85f4fc829e02 |
+| `assets/models/fishing_boat.glb` | "Low Poly Old Rusty Fishing Boat" | Ottto3d | CC-BY-4.0 | https://sketchfab.com/3d-models/low-poly-old-rusty-fishing-boat-3713c37983ea4c04b87fe173e2631b76 |
+| `assets/models/forest_trees.glb` | "Low Poly Forest Tree Pack" | 99.Miles | CC-BY-4.0 | https://sketchfab.com/3d-models/low-poly-forest-tree-pack-5ff5a51e74324845a4e4905f182dfb2b |
+| `assets/models/free_cliff_rock.glb` | "Free_cliff_rock" | Kwinto | CC-BY-4.0 | https://sketchfab.com/3d-models/free-cliff-rock-75fb6b34dc0d46259dedc8c7cd94e7b7 |
+| `assets/models/geranium.glb` | "Realistic HD Chinese jungle geranium (6/10)" | PlantCatalog | CC-BY-4.0 | https://sketchfab.com/3d-models/realistic-hd-chinese-jungle-geranium-610-38916dda0334496c98b3aa19772fb3c7 |
+| `assets/models/geranium2.glb` | "Realistic HD Chinese jungle geranium (2/10)" | PlantCatalog | CC-BY-4.0 | https://sketchfab.com/3d-models/realistic-hd-chinese-jungle-geranium-210-268a0cc517c24094b66b27b6b8047d7c |
+| `assets/models/gps_device.glb` | "GPS device" | Mikhail Antonov (sketchfab.com/xeofox) | CC-BY-4.0 | https://sketchfab.com/3d-models/gps-device-8d739b084bb44ad7b900fe0d0649d579 |
+| `assets/models/health_pack.glb` | "Health / Medical Pack" | amftwg | CC-BY-4.0 | https://sketchfab.com/3d-models/health-medical-pack-67ac86b4022b403dbf0dc0c66dee0ade |
+| `assets/models/jungle_tree.glb` | "Realistic Jungle Tree" | Garecra | CC-BY-4.0 (see licence notes — Quixel Megascans material IDs) | https://sketchfab.com/3d-models/realistic-jungle-tree-78dc7da4047b4fff8cb83c7159f52699 |
+| `assets/models/locust_tree_pack.glb` | "Locust Tree Pack" | Jagobo | CC-BY-4.0 | https://sketchfab.com/3d-models/locust-tree-pack-7784d6ccdf314618aa3eb390808521c6 |
+| `assets/models/lupine.glb` | "Realistic HD Large-leaved lupine (10/18)" | PlantCatalog | CC-BY-4.0 | https://sketchfab.com/3d-models/realistic-hd-large-leaved-lupine-1018-aa7d756c0b754b2daa7b0d1a40435221 |
+| `assets/models/monstera.glb` | "Monstera Adansonii" | The_Structure_World | CC-BY-4.0 | https://sketchfab.com/3d-models/monstera-adansonii-08e02f5b80c34cb9b09c0a6a48deba9d |
+| `assets/models/raptor_nest.glb` | "Raptor nest" | Cradle of the Cube (sketchfab.com/Observer_Terminator) | Listed CC-BY-4.0 (page-verified) — but see licence notes: probable game extraction | https://sketchfab.com/3d-models/raptor-nest-7b5b8bb7f07349ea92a313de6079c620 |
+| `assets/models/realistic_trees_pack_of_2_free.glb` | "Realistic Trees Pack of 2 Free" | Nicholas-3D (sketchfab.com/Nicholas01) | CC-BY-4.0 | https://sketchfab.com/3d-models/realistic-trees-pack-of-2-free-08b4a9eac77a40419fd59402cc7b2deb |
+| `assets/models/stego_skeleton.glb` | "Stegosaurus skeleton" | Olof Moleman (sketchfab.com/lordtrilobite) | **CC-BY-NC-4.0** (non-commercial — see licence notes) | https://sketchfab.com/3d-models/stegosaurus-skeleton-bca2e8f0a4e84cdda146bbd286f0e84a |
+
+### Procedural (no external asset)
+
+The pterosaur flyer (`src/flyer.js`), plesiosaur, procedural dino variants and
+all remaining geometry are built in-engine — no licence applies.
+
+## Licence notes (factual)
+
+- **Hi-poly dinosaurs** (`trex_hi_anim`, `raptor_hi_anim`,
+  `triceratops_hi_anim`, `brachiosaurus_hi_anim` and the `assets/reference/`
+  source copies): extracted from the game **Prehistoric Kingdom**; the
+  Sketchfab CC-BY labels are not a valid grant from the rights-holder.
+- **`stego_skeleton.glb`**: licensed **CC-BY-NC-4.0** — the licence permits
+  non-commercial use only.
+- **`desert_shrubs.glb`**: Sketchfab **Standard** licence (not Creative
+  Commons). It permits incorporating the model into one's own creations but
+  not redistribution of the asset file itself; this game serves the raw
+  `.glb`. The listing is also tagged "rdr2" (Red Dead Redemption 2) — the
+  vegetation set may be derived from that game; unconfirmed.
+- **`raptor_nest.glb`**: the file's material is named
+  `MI_Gameplay_RaptorNest_A` (Unreal Engine material-instance naming), the
+  listing is tagged "fornite", and the uploader's name references Fortnite's
+  "Cube's Cradle". Strong indication it was extracted from **Fortnite**
+  (Epic Games); the CC-BY label would not be a valid grant in that case.
+  Unconfirmed but stated plainly.
+- **`jungle_tree.glb`**: material names embed Quixel **Megascans** asset IDs
+  (e.g. `Banyan_Bark_tfhjaeju`), i.e. the model is built from Megascans
+  surfaces, which the uploader cannot relicense CC-BY. The mesh itself may be
+  the uploader's own work.
+- **`crashed_plane.glb`** and **`dead_pilot.glb`** are AI-generated
+  (Tripo signature / Sketchfab "Generated with AI" label respectively).
+
 ## Audio
 
 Real audio samples used for footsteps, dinosaur vocalisations and player
@@ -128,70 +258,8 @@ Notes:
   the closed-mouth, infrasound-rich vocalisation hypothesised for tyrannosaurs
   (Julia Clarke et al. — crocodilian rumble + bittern boom).
 
-## Models
-
-3D models are documented in `DECISIONS.md` (Quaternius CC0 dinosaur bundle +
-the Quaternius "Adventurer" human, both from `static.poly.pizza`).
-
-## 3D models
-
-### Quaternius — Animated Dinosaur Bundle + Adventurer (CC0 / Public Domain)
-
-All rigged, animated dinosaurs and the human player model are by **Quaternius**,
-released **CC0 (Public Domain)** — no attribution legally required, credited here
-in good faith. Sourced from poly.pizza (`static.poly.pizza/<uuid>.glb`).
-
-| File | Species / model | poly.pizza |
-|------|-----------------|-----------|
-| `assets/models/trex.glb` | T-Rex | Animated Dinosaur Bundle |
-| `assets/models/raptor.glb` | Velociraptor | Animated Dinosaur Bundle |
-| `assets/models/triceratops.glb` | Triceratops | Animated Dinosaur Bundle |
-| `assets/models/stegosaurus.glb` | Stegosaurus | Animated Dinosaur Bundle |
-| `assets/models/apatosaurus.glb` | Apatosaurus | Animated Dinosaur Bundle |
-| `assets/models/parasaur.glb` | Parasaurolophus | Animated Dinosaur Bundle |
-| `assets/models/human.glb` | Adventurer (player) | Quaternius "Adventurer" |
-
-- Bundle: https://poly.pizza/bundle/Animated-Dinosaur-Bundle-SmoLdBLO2K
-- Author profile: https://poly.pizza/u/Quaternius — also https://quaternius.com
-- Licence: Creative Commons Zero v1.0 Universal (CC0)
-
-### Roster note — why the new species reuse these rigs
-
-poly.pizza hosts exactly **one** animated CC0 dinosaur set — the Quaternius
-Animated Dinosaur Bundle above — and this game already ships all six of it. There
-is **no** animated CC0 (or CC-BY) Spinosaurus / Ankylosaurus / Pachycephalosaurus
-/ Brachiosaurus / Compsognathus / Pteranodon on poly.pizza to download (the rest
-of the dinosaur search results are static, mostly legacy Poly-by-Google meshes —
-the wishlist forbids shipping static reskins).
-
-So the wider roster (`DINO_VARIANTS` in `src/config.js`) is built by **reusing the
-above Quaternius rigs** under a distinct tint + body-proportion signature, so each
-new species still animates with the shared Idle/Walk/Run/Attack/Death clip set but
-reads as a different animal. No new model files are added — all credit remains
-with Quaternius (CC0). Variants and the rig each reuses:
-
-| Variant species | Reuses rig | Behaviour |
-|-----------------|-----------|-----------|
-| Spinosaurus | T-Rex (longer, slate-teal) | tanky herbivore, charges when cornered |
-| Ankylosaurus | Stegosaurus (broad, low, mossy) | tank herbivore (×1.6 health) |
-| Pachycephalosaurus | Parasaurolophus (stocky, tan) | herbivore, headbutt-charges |
-| Brachiosaurus | Apatosaurus (taller, blue-grey) | placid giant herbivore (×1.4 health) |
-| Compsognathus | Velociraptor (tiny, olive-yellow) | fast little darter herbivore (×1.4 speed) |
-
-### Pterosaur flyer — procedural (no asset)
-
-The winged pterosaur flyer (`src/flyer.js`) that replaced the old cone-and-box
-bird is **procedural geometry built in-engine** (body spindle, beak, swept head
-crest, flapping membrane wings) — no external model, no licence required.
-
-Third-party assets used in Dino Arena: Survival, with their sources and licences.
-
-## Models (Quaternius, CC0)
-- Animated dinosaurs (raptor, T-Rex, triceratops, stegosaurus, apatosaurus,
-  parasaurolophus) and the "Adventurer" human player — Quaternius, via
-  `static.poly.pizza`. Public domain (CC0). https://quaternius.com
-
 ## Environment textures (CC0)
+
 Added for the environment realism pass. All from ambientCG, released under the
 Creative Commons CC0 1.0 licence (public domain — no attribution required;
 credited here as good practice). https://ambientcg.com
@@ -210,6 +278,7 @@ credited here as good practice). https://ambientcg.com
   (`assets/textures/leaf_*.png`). Source: https://ambientcg.com/view?id=LeafSet019
 
 ## HDRI environment map (CC0)
+
 Added for image-based lighting + realistic sky/reflections in the environment
 realism pass. From Poly Haven, released under CC0 (public domain).
 https://polyhaven.com

@@ -13,14 +13,16 @@ export function createHUD() {
   const dashBar = el("dashFill");
   const dashReady = el("dashReady");
   const vignette = el("vignette");
+  const threatGlow = el("threatGlow");
   const duskFill = el("duskFill");
-  const duskIcon = el("duskIcon");
   const duskLabel = el("duskLabel");
   const duskTint = el("duskTint");
   const hitFlashEl = el("hitFlash");
   const popups = el("popups");
   const muteBtn = el("muteBtn");
   const hotbar = el("hotbar");
+  const minimapWrap = el("minimapWrap");
+  const medkitEl = el("medkit");
 
   // One-time icon glyphs per weapon kind for the hotbar slots.
   const TOOL_ICONS = { spear: "🗡️", club: "🏏", rock: "🪨", torch: "🔥" };
@@ -67,7 +69,7 @@ export function createHUD() {
       setTimeout(() => p.remove(), 1100);
     },
     onMuteClick(fn) { if (muteBtn) muteBtn.addEventListener("click", fn); },
-    setMuteLabel(muted) { if (muteBtn) muteBtn.textContent = muted ? "🔇 Muted" : "🔊 Sound"; },
+    setMuteLabel(muted) { if (muteBtn) muteBtn.textContent = muted ? "Sound off" : "Sound on"; },
     setTrex(v, max) { trexBar.style.width = `${Math.max(0, (v / max) * 100)}%`; },
     // Dash charge: fraction 0 (just used) .. 1 (ready); pulses READY when full.
     setDash(fraction) {
@@ -77,14 +79,13 @@ export function createHUD() {
       if (dashReady) dashReady.classList.toggle("on", f >= 1);
     },
     // Time-of-day indicator. `factor` is the dusk factor (0 full day .. 1 deepest
-    // dusk). The bar shows daylight *remaining* (depletes as dusk falls); the icon
-    // and label flip to a dusk look past the midpoint; the screen edges warm amber.
+    // dusk). The bar shows daylight *remaining* (depletes as dusk falls); the
+    // label flips to a dusk look past the midpoint; the screen edges warm amber.
     setDusk(factor) {
       const f = Math.max(0, Math.min(1, factor));
       if (duskFill) duskFill.style.width = `${(1 - f) * 100}%`;
       if (duskTint) duskTint.style.opacity = `${f}`;
       const isDusk = f >= 0.5;
-      if (duskIcon) duskIcon.textContent = isDusk ? "🌆" : "☀️";
       if (duskLabel) {
         duskLabel.textContent = isDusk ? "Dusk" : "Daylight";
         duskLabel.classList.toggle("dusk", isDusk);
@@ -103,54 +104,130 @@ export function createHUD() {
       if (scoreEl) scoreEl.textContent = points.toLocaleString();
     },
     setObjective(text) { objective.textContent = text; },
-    // Objective pill with a compass arrow rotated toward a screen-space heading
-    // (radians, 0 = up). Used to guide the player to the nearest egg / nest.
+    // Stowed health-pack count; hidden at zero. Shows the H-to-use hint.
+    setMedkits(n) {
+      if (!medkitEl) return;
+      if (n > 0) { medkitEl.style.display = ""; medkitEl.innerHTML = `<span class="mkIcon">✚</span> ${n} <span class="mkHint">[H]</span>`; }
+      else medkitEl.style.display = "none";
+    },
+    // Soft red edge glow that THROBS while a predator is hunting the player.
+    // `level` 0..1 (proximity-scaled); 0 fades it out. The pulse rides a ~2s
+    // sine so it breathes rather than flickers.
+    setThreat(level) {
+      if (!threatGlow) return;
+      if (level <= 0) { threatGlow.style.opacity = "0"; return; }
+      const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 320);
+      threatGlow.style.opacity = (Math.min(1, level) * pulse).toFixed(3);
+    },
+    // Show/hide the GPS-gated UI (the minimap + the boat compass pill). Both are
+    // hidden until the player loots the pilot's GPS device.
+    setGpsUnlocked(on) {
+      if (minimapWrap) minimapWrap.style.display = on ? "" : "none";
+      if (objective) objective.style.display = on ? "" : "none";
+    },
+    // Objective pill with a VINTAGE COMPASS needle rotated toward a screen-space
+    // heading (radians, 0 = up): a brass bezel + red-north/white-south needle
+    // pointing to the boat. Used after the GPS is acquired.
     setGuide(text, headingRad) {
-      const arrow = headingRad == null ? "" :
-        `<span style="display:inline-block;transform:rotate(${headingRad}rad);margin-right:8px">⬆</span>`;
-      objective.innerHTML = `${arrow}${text}`;
+      const deg = headingRad == null ? 0 : headingRad * 180 / Math.PI;
+      const compass = headingRad == null ? "" :
+        `<span class="vcompass"><span class="vcNeedle" style="transform:rotate(${deg}deg)"></span><span class="vcPin"></span></span>`;
+      objective.innerHTML = `${compass}<span class="vcText">${text}</span>`;
     },
+    // End-of-run + pause overlays. The game supplies title/sub/cls; the screen
+    // dressing (scrim, kicker, flavour line) is keyed off cls. A trailing
+    // "Press X ..." sentence in the sub is lifted into the pulsing prompt.
     showBanner(title, sub, cls) {
-      banner.innerHTML = `<div class="bannerTitle ${cls}">${title}</div><div class="bannerSub">${sub}</div>`;
-      banner.style.display = "flex";
-    },
-    // Rich title screen: animated title, objective, a controls grid, best stats,
-    // and a pulsing prompt. Shown before the first input starts the run.
-    showTitle(bestLine) {
-      const ctrl = (k, label) => `<div class="ctrlRow"><span class="key">${k}</span><span>${label}</span></div>`;
+      const FLAVOUR = {
+        win: {
+          kicker: "The northern shore",
+          flavour: "The hull takes your weight and the island lets you go. Behind you, the roars fade into the wind. Ahead: open water, and home. Few have ever made this crossing.",
+        },
+        lose: {
+          kicker: "The island claims another",
+          flavour: "Your story ends in the long grass, beside all the others who tried. The boat still waits at the northern shore, for the next one brave enough.",
+        },
+      };
+      const f = FLAVOUR[cls];
+      let stats = sub || "", prompt = "";
+      const m = stats.match(/Press [A-Z][^.]*\.?\s*$/);
+      if (m) { prompt = m[0].trim().replace(/\.$/, ""); stats = stats.slice(0, m.index).trim(); }
+      banner.className = cls || "";
       banner.innerHTML = `
-        <div class="titleCard">
-          <div class="bannerTitle start titleBig">SAURIAN</div>
-          <div class="titleTag">SURVIVAL</div>
-          <div class="titleObjective"><b>Survive</b> the primeval valley as long as you can — the predators want you dead.<br/>Run, <b>punch</b>, <b>kick</b>, <b>dash</b>; eat <b>eggs</b> and <b>meat</b> to restore health and stamina.</div>
-          <details class="titleMore">
-            <summary>More to discover &nbsp;(optional — learn as you play)</summary>
-            <span class="titleDusk">As <b>dusk</b> falls the predators grow bolder — but every second survived pays <b>double</b>.</span><br/><span class="titleGold"><b>Golden eggs</b> glow far out in the wilds — a big heal, a full stamina refill, and triple score.</span><br/><span class="titleFeed">The T-Rex hunts the <b>herd</b> too — lead it onto a herbivore and it'll peel off. When it makes a kill it stops to <b>feed</b> (it glows <b>green</b> on the radar): rush in and strike its exposed flank for <b>double damage</b>.</span>
-          </details>
-          <div class="controls">
-            ${ctrl("WASD", "Move")}
-            ${ctrl("SHIFT", "Sprint")}
-            ${ctrl("SPACE", "Jump")}
-            ${ctrl("CLICK / J", "Punch / Kick")}
-            ${ctrl("F", "Dash")}
-            ${ctrl("1-6", "Equip tool")}
-            ${ctrl("G / RMB", "Throw rock")}
-            ${ctrl("P", "Pause")}
-            ${ctrl("M", "Mute")}
-          </div>
-          ${bestLine ? `<div class="titleBest">${bestLine}</div>` : ""}
-          <div class="titlePrompt">Press any key or click to begin</div>
+        <div class="reveal">
+          ${f ? `<div class="scrKicker">${f.kicker}</div>` : ""}
+          <div class="bannerTitle ${cls}">${title}</div>
+          ${f ? `<p class="scrHook">${f.flavour}</p>` : ""}
+          ${stats ? `<div class="scrStats">${stats}</div>` : ""}
+          ${prompt ? `<div class="scrPrompt">${prompt}</div>` : ""}
         </div>`;
       banner.style.display = "flex";
-      // Expanding "More to discover" must not also start the run (the start
-      // listeners fire on any pointerdown). Swallow the toggle interaction.
-      const more = banner.querySelector(".titleMore > summary");
-      if (more) {
-        const swallow = (e) => e.stopPropagation();
-        more.addEventListener("pointerdown", swallow);
-        more.addEventListener("click", swallow);
-      }
     },
-    hideBanner() { banner.style.display = "none"; },
+    // Intro story cards — shown ONCE at the start, BEFORE the controls/title
+    // screen (never after pause/death; those just resume/retry). One sentence
+    // per card; click/any key advances, Esc skips. Capture-phase interceptors
+    // swallow input so the game's start listeners can't fire mid-intro. Calls
+    // onDone after the last card so the caller can show the title screen next.
+    playIntro(onDone) {
+      const CARDS = [
+        "Somewhere in the southern ocean, a charter flight goes down.",
+        "You wake in the wreckage. The pilot doesn't.",
+        "His GPS marks one thing: a fishing boat, anchored off the northern shore.",
+        "Between you and it: sixty-six million years of teeth.",
+      ];
+      banner.className = "";
+      banner.style.display = "flex";
+      let card = 0;
+      const render = () => {
+        banner.innerHTML = `<div class="introCard reveal">
+          <div class="cardText">${CARDS[card]}</div>
+          <div class="cardHint">Click for more. Esc skips</div>
+        </div>`;
+      };
+      const uninstall = () => {
+        window.removeEventListener("keydown", onKey, true);
+        window.removeEventListener("pointerdown", onPtr, true);
+      };
+      const advance = (skip) => {
+        card = skip ? CARDS.length : card + 1;
+        if (card >= CARDS.length) { uninstall(); if (onDone) onDone(); return; }
+        render();
+      };
+      const onKey = (e) => { e.preventDefault(); e.stopImmediatePropagation(); advance(e.key === "Escape"); };
+      const onPtr = (e) => { e.stopImmediatePropagation(); advance(false); };
+      window.addEventListener("keydown", onKey, true);
+      window.addEventListener("pointerdown", onPtr, true);
+      render();
+    },
+    // Start screen, shown once loading completes: the crash setup, the route
+    // north, the controls, and a pulsing prompt. Any key / click begins the run
+    // (the game arms those listeners; the banner lets pointer events through).
+    showTitle(bestLine) {
+      const ctrl = (k, label) => `<div class="ctrlRow"><span class="key">${k}</span><span>${label}</span></div>`;
+      const touch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+      banner.className = "";
+      banner.innerHTML = `
+        <div class="reveal">
+          <div class="scrKicker">The crash site, southern jungle</div>
+          <div class="bannerTitle start titleBig">SAURIAN</div>
+          <div class="titleStrap">Escape the island</div>
+          <div class="route">Trail <i>&rsaquo;</i> Savannah <i>&rsaquo;</i> Pass <i>&rsaquo;</i> Desert <i>&rsaquo;</i> The boat</div>
+          ${bestLine ? `<div class="scrBest">${bestLine}</div>` : ""}
+          <div class="scrPrompt">${touch ? "Tap to play" : "Click to play"}</div>
+        </div>
+        <div class="ctrlStrip">
+          ${ctrl("WASD", "Move")}
+          ${ctrl("SHIFT", "Sprint")}
+          ${ctrl("SPACE", "Jump")}
+          ${ctrl("CLICK / J", "Strike")}
+          ${ctrl("F", "Dash")}
+          ${ctrl("G / RMB", "Throw")}
+          ${ctrl("1–6", "Tools")}
+          ${ctrl("P", "Pause")}
+          ${ctrl("M", "Sound")}
+        </div>`;
+      banner.style.display = "flex";
+    },
+    hideBanner() { banner.className = ""; banner.style.display = "none"; },
   };
 }

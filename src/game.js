@@ -7,14 +7,17 @@ import { createEggs } from "./eggs.js";
 import { createPickups } from "./pickups.js";
 import { createInventory } from "./inventory.js";
 import { createTools, applyStagger } from "./tools.js";
-import { loadCrashedPlane, loadStegoSkeleton, loadOldTree } from "./setdressing.js";
+import {
+  loadCrashedPlane, loadStegoSkeleton, loadOldTree, loadRaptorNest,
+  loadDeadPilot, loadGPS, loadHealthPack, loadBoat,
+} from "./setdressing.js";
 import { createInput } from "./input.js";
 import { createTouchControls } from "./touch.js";
 import { createHUD } from "./hud.js";
 import { createAudio } from "./audio.js";
 import { createFx } from "./fx.js";
 import { createMinimap } from "./minimap.js";
-import { PLAYER, TREX, EGGS, JUICE, AUDIO, PICKUPS, DUSK, RAPTOR, SCORE, TOOLS } from "./config.js";
+import { PLAYER, TREX, EGGS, JUICE, AUDIO, PICKUPS, DUSK, RAPTOR, SCORE, TOOLS, SPAWN, BOAT } from "./config.js";
 
 // Nearest uncollected egg to a position, or null if none remain.
 function nearestEgg(eggs, pos) {
@@ -44,8 +47,8 @@ export async function startGame() {
   const loadingEl = document.getElementById("loading");
   const setLoad = (t) => { if (loadingEl) loadingEl.querySelector(".loadMsg").textContent = t; };
 
-  setLoad("Building the valley…");
-  const world = buildWorld(scene);
+  setLoad("Building the island…");
+  const world = await buildWorld(scene);
   setObstacles(world.obstacles);  // AI steers around trees, big rocks, the pond
 
   const input = createInput(canvas);
@@ -61,7 +64,8 @@ export async function startGame() {
   player.setWaterFn(world.inWater);
   player.setDeepWaterFn(world.isDeepWater);            // deep water => the human SWIMS
   player.setWaterSurfaceFn(() => world.waterSurfaceY); // float at the surface while swimming
-  player.warpTo(0, world.heightAt(0, 0), 0);
+  // Crash-land at the SOUTH spawn lobe (the canonical start peninsula).
+  player.warpTo(SPAWN.x, world.heightAt(SPAWN.x, SPAWN.z), SPAWN.z);
 
   // Crashed plane — static set-dressing the survivor wakes beside at spawn. Pure
   // scenery (no AI/physics), but a solid box collider blocks movement, so add its
@@ -70,10 +74,28 @@ export async function startGame() {
   world.obstacles.push(plane.obstacle);
   setObstacles(world.obstacles);
 
+  // Spawn vignette around the wreck (canonical map): a DEAD PILOT lying NW of the
+  // plane, the GPS objective hovering+glowing above him, and a medkit beside the
+  // fuselage. All placed RELATIVE to the plane's planar centre so they track the
+  // wreck. Pure scenery (no collider/AI) — shadows like the plane. The medkit is
+  // VISUAL-ONLY for now (heal-on-pickup is a follow-up).
+  const planeCenter = { x: plane.obstacle.x, z: plane.obstacle.z };
+  const pilot = await loadDeadPilot(scene, world.shadow, world.heightAt, planeCenter);
+  const gps = await loadGPS(scene, world.shadow, world.heightAt, pilot.position);
+  const healthPack = await loadHealthPack(scene, world.shadow, world.heightAt, planeCenter);
+
+  // Raptor nest — in the jungle tree-wall just off the clearing (design/
+  // map.json). Static scenery glimpsed through the treeline; no collider/AI.
+  await loadRaptorNest(scene, world.shadow, world.heightAt);
+
   // Desert fossil vignette — a half-buried Stegosaurus skeleton + an old dead
   // tree beside it (static scenery, no collider/AI; shadows like the plane).
   await loadStegoSkeleton(scene, world.shadow, world.heightAt);
   await loadOldTree(scene, world.shadow, world.heightAt);
+
+  // THE BOAT — the WIN goal at the north-tip inlet (partly in the water).
+  // Reaching within BOAT.winRadius of it = escape (the win flow below).
+  const boat = await loadBoat(scene, world.shadow, world.heightAt, world.oceanSeaLevel);
 
   const camRig = createFollowCamera(scene, player);
 
@@ -83,7 +105,7 @@ export async function startGame() {
   setLoad("Releasing the herd…");
   const herd = await createHerd(scene, world.shadow, world.heightAt);
 
-  setLoad("Something stirs in the lake…");
+  setLoad("Something stirs offshore…");
   const aquatic = createAquatic(scene, world.shadow, world);
 
   setLoad("Scattering eggs…");
@@ -127,7 +149,7 @@ export async function startGame() {
   tools.onPickup = (pos, kind) => {
     audio.pickup(false);
     fx.pickupBurst(pos, new B2.Color4(0.85, 0.8, 0.7, 1));
-    hud.popup(`PICKED UP ${(TOOLS.kinds[kind] || {}).label || kind} — press 1-6 to equip`, "good");
+    hud.popup(`PICKED UP ${(TOOLS.kinds[kind] || {}).label || kind}: press 1-6 to equip`, "good");
   };
   tools.onThrow = () => audio.swing();
   tools.onProjectileHit = (pos) => {
@@ -153,13 +175,24 @@ export async function startGame() {
   player.onHurt = () => { audio.hurt(); fx.addShake(JUICE.camShakeOnHit); hud.hitFlash(); };
   // Dash: a quick whoosh + a cyan dust kick at the launch point.
   player.onDash = (pos) => {
-    audio.whoosh();
+    // whoosh removed (owner) — dash is silent now, just the dust kick
     fx.pickupBurst(pos, new B2.Color4(0.45, 0.85, 1, 1));
   };
+  // Earshot gain for world EVENT sounds (bites, grumbles happening elsewhere on
+  // the field): linear 1→0 over vocalFalloffRange from the player, SILENT beyond
+  // it — so a kill or growl across the map isn't heard at full volume. No floor
+  // (unlike the ambient loop): out of earshot means out of earshot.
+  const earshot = (x, z) => {
+    const pp = player.dino.root.position;
+    const d = Math.hypot(x - pp.x, z - pp.z);
+    return d >= AUDIO.vocalFalloffRange ? 0 : 1 - d / AUDIO.vocalFalloffRange;
+  };
   herd.forEach((h) => {
-    h.onCharge = () => { audio.bite(); fx.addShake(JUICE.chargeShake); };
+    h.onCharge = () => { audio.bite(earshot(h.dino.root.position.x, h.dino.root.position.z)); fx.addShake(JUICE.chargeShake); };
     h.onDown = (pos) => {
-      audio.hurt();
+      // A felled herbivore calls in ITS OWN voice (not the human hurt grunt),
+      // distance-attenuated to earshot.
+      audio.vocalise(h.kind, earshot(pos.x, pos.z), 0.2);
       fx.pickupBurst(pos, new B2.Color4(0.8, 0.2, 0.15, 1));
       pickups.spawn(pos.x, pos.z);
     };
@@ -170,7 +203,7 @@ export async function startGame() {
   // sinks back under. Reuses the existing splash/bite SFX + spray bursts.
   aquatic.onSurface = (pos) => {
     audio.splash();
-    audio.vocalise("trex", 1.0, 0.4);   // low predator growl on the breach (no roar)
+    audio.vocalise("trex", earshot(pos.x, pos.z), 0.4);   // low predator growl on the breach (no roar)
     fx.pickupBurst(pos, new B2.Color4(0.45, 0.7, 0.95, 1));
   };
   aquatic.onBite = () => { /* player.onHurt already fires audio.hurt + shake + flash */ };
@@ -184,18 +217,18 @@ export async function startGame() {
   const wirePredator = (p) => {
     // The predator's own guttural voice when it locks on (T-Rex rumble / raptor
     // screech) — there is no separate roar.
-    p.onRoar = () => audio.vocalise(p.kind, 1.0, 0.3);
+    p.onRoar = () => { const rp = p.dino.root.position; audio.vocalise(p.kind, earshot(rp.x, rp.z), 0.3); };
     // The T-Rex bit a herbivore (herd predation): a chomp SFX + a red spray so
     // the player reads the predator culling the herd elsewhere on the field.
     p.onPreyBite = (pos) => {
-      audio.bite();
+      audio.bite(earshot(pos.x, pos.z));
       fx.pickupBurst(pos, new B2.Color4(0.75, 0.18, 0.15, 1));
     };
     // It felled its prey and settled in to FEED — the vulnerable window. A
     // distant guttural growl + a dark spray mark the gorging so the player can
     // read (and rush) the opening on the radar.
     p.onFeed = (pos) => {
-      audio.vocalise(p.kind, 1.0, 0.3);
+      audio.vocalise(p.kind, earshot(pos.x, pos.z), 0.3);
       fx.pickupBurst(pos, new B2.Color4(0.45, 0.08, 0.1, 1));
     };
     predators.push(p);
@@ -220,6 +253,7 @@ export async function startGame() {
   // --- game state ---
   const game = {
     over: false,
+    won: false,    // true once the player reaches the boat (the escape win)
     paused: false,
     elapsed: 0,
     wave: 0,
@@ -239,13 +273,15 @@ export async function startGame() {
   // past DUSK.duskThreshold in a run. A roar + popup so the player reads it.
   let duskAnnounced = false;
 
-  hud.setObjective("Survive as long as you can. Don't get eaten.");
+  hud.setObjective("Head north. Reach the boat.");
   {
     const bt = readBest(), bs = readBestScore();
     const bestLine = (bt || bs)
       ? `Best: ${bt ? formatTime(bt) + " survived" : "—"}${bs ? " · " + bs.toLocaleString() + " pts" : ""}`
       : "";
-    hud.showTitle(bestLine);
+    // Story cards FIRST, then the controls/title screen (owner). Pause/death
+    // banners never replay the cards now — they live only in playIntro.
+    hud.playIntro(() => hud.showTitle(bestLine));
   }
   let started = false;
   const startGameLoop = () => {
@@ -260,6 +296,22 @@ export async function startGame() {
   // Touch devices: the joystick/buttons sit above the canvas, so also start on
   // the first touch anywhere on the page.
   if (touch.mounted) window.addEventListener("pointerdown", startGameLoop, { once: true });
+
+  // GPS gates the map + boat compass: both stay hidden until the player loots
+  // the pilot's GPS device. Walk-over pickups (health pack + GPS) share the meat
+  // walk-over radius.
+  let hasGps = false;
+  hud.setGpsUnlocked(false);
+  const pickRange = PICKUPS.meatRange;
+  // Stowed health packs (consumed with H, not auto-used on pickup).
+  let medkits = 0;
+  hud.setMedkits(0);
+  // Sit the medkit in open grass SW of spawn — a few metres' walk, well clear of
+  // the crashed plane's collider (the wreck is NE of spawn) so nothing blocks it.
+  if (healthPack) {
+    healthPack.root.position.x = SPAWN.x - 5;
+    healthPack.root.position.z = SPAWN.z - 3;
+  }
 
   scene.onBeforeRenderObservable.add(() => {
     const dt = Math.min(0.05, engine.getDeltaTime() / 1000);
@@ -283,9 +335,30 @@ export async function startGame() {
       // Survival score: every second alive pays, and seconds survived at dusk
       // pay up to double (the risk/reward mirror of the bolder predators).
       addScore(SCORE.survivalPerSec * (1 + DUSK.survivalBonus * dusk) * dt);
+
+      // Walk-over loot: the medkit (full heal) and the GPS (unlocks map+compass).
+      {
+        const pp0 = player.dino.root.position;
+        if (healthPack && healthPack.root.isEnabled() &&
+            Math.hypot(pp0.x - healthPack.root.position.x, pp0.z - healthPack.root.position.z) < pickRange) {
+          medkits += 1;
+          healthPack.root.setEnabled(false);
+          audio.pickup();
+          hud.popup("Health pack stowed — press H to use", "good");
+          hud.setMedkits(medkits);
+        }
+        if (gps && !hasGps && gps.root.isEnabled() &&
+            Math.hypot(pp0.x - gps.root.position.x, pp0.z - gps.root.position.z) < pickRange) {
+          hasGps = true;
+          gps.root.setEnabled(false);
+          audio.pickup(true);
+          hud.popup("GPS acquired — map & compass online", "good");
+          hud.setGpsUnlocked(true);
+        }
+      }
       if (!duskAnnounced && dusk >= DUSK.duskThreshold) {
         duskAnnounced = true;
-        hud.popup("DUSK FALLS — predators grow bolder", "warn");
+        hud.popup("DUSK FALLS: predators grow bolder", "warn");
         audio.vocalise("trex", 1.0, 0.4);   // a low predator growl marks the turn
       }
 
@@ -312,7 +385,7 @@ export async function startGame() {
           createRaptorPack(scene, world.shadow, world.heightAt, packN).then((members) => {
             members.forEach((m) => { m.speedBonus = game.wave * TREX.chaseSpeedRamp; wirePredator(m); });
             audio.vocalise("raptor", 1.0, 0.2);   // the pack yips on arrival (its own screech)
-            hud.popup("RAPTOR PACK — they hunt together!", "warn");
+            hud.popup("RAPTOR PACK: they hunt together!", "warn");
           });
         }
       }
@@ -329,6 +402,21 @@ export async function startGame() {
       }
       herd.forEach((h) => h.update(dt, player, primary));
       aquatic.update(dt, player);   // lake lurker: submerged patrol -> surface/lunge -> submerge
+
+      // Threat glow: a predator actively hunting YOU (chasing, not feeding/prey)
+      // throbs the screen edges soft red — stronger the closer it is. Aquatic
+      // lunges count too. hud.setThreat pulses it; 0 fades it out.
+      let threat = 0;
+      for (const p of predators) {
+        if (p.dead || p.prey || p.feeding > 0 || p.mode !== "chase") continue;
+        const d = Math.hypot(p.dino.root.position.x - pp0.x, p.dino.root.position.z - pp0.z);
+        threat = Math.max(threat, Math.max(0, 1 - d / TREX.sightRange));
+      }
+      if (aquatic && !aquatic.dead && (aquatic.mode === "lunge" || aquatic.mode === "surface")) {
+        threat = Math.max(threat, 0.6);
+      }
+      hud.setThreat(threat);
+
       eggs.update(dt, player);
       pickups.update(dt, player);
 
@@ -477,7 +565,7 @@ export async function startGame() {
             if (weapon && weapon.stagger) applyStagger(t);
             audio.thud();        // the blow lands: a meaty impact, not a chomp
             if (feeding) {
-              hud.popup("FEEDING FRENZY — flank hit!", "good");
+              hud.popup("FEEDING FRENZY: flank hit!", "good");
               fx.addShake(JUICE.feedHitShake);
             } else if (!player.strikeConnected) {
               player.strikeConnected = true; fx.addShake(JUICE.strikeConnectShake);
@@ -496,9 +584,27 @@ export async function startGame() {
       hud.setTrex(primary ? primary.health : 0, TREX.maxHealth);
       hud.setSurvival(formatTime(game.elapsed));
 
+      // WIN: reaching the boat = escape. Mirror the death/game-over flow but with
+      // a "You escaped" result instead of devoured. Checked before the death test.
+      {
+        const pp1 = player.dino.root.position;
+        const dBoat = Math.hypot(pp1.x - boat.position.x, pp1.z - boat.position.z);
+        if (!game.won && !player.dead && dBoat < BOAT.winRadius) {
+          game.won = true;
+          game.over = true;
+          audio.stopPanting();
+          audio.win();
+          const t = game.elapsed;
+          const points = Math.floor(score.points);
+          hud.showBanner("ESCAPED",
+            `You survived ${formatTime(t)} · score ${points.toLocaleString()}. Press R to run it again.`,
+            "win");
+        }
+      }
+
       // Death ends the run: show the survival time + score and persist bests
       // (longest survival, highest score).
-      if (player.dead) {
+      if (player.dead && !game.won) {
         game.over = true;
         audio.stopPanting();
         audio.lose();
@@ -512,29 +618,29 @@ export async function startGame() {
         if (bestScore) localStorage.setItem(BEST_SCORE_KEY, String(points));
         const bestLine = isBest ? "New best survival! " : `Best: ${formatTime(prev)}. `;
         // Acknowledge a brave run: surviving into dusk earns a flourish.
-        const duskTag = world.getDusk() >= DUSK.duskThreshold ? "🌆 You held out into dusk! " : "";
+        const duskTag = world.getDusk() >= DUSK.duskThreshold ? "You held out into dusk! " : "";
         hud.showBanner("DEVOURED",
           `You survived ${formatTime(t)} · score ${points.toLocaleString()}${bestScore ? " (best!)" : ""}. ${duskTag}${bestLine}Press R to retry.`,
           "lose");
       }
 
-      // compass + timer guide on the objective pill: point at the nearest egg
-      // (a heal + stamina top-up is always the next stop on a survival run).
+      // compass guide on the objective pill: a vintage needle pointing to the
+      // BOAT (the escape goal). Only after the GPS is looted — before that the
+      // survivor has no idea where to go.
       const pp = player.dino.root.position;
-      const t = nearestEgg(eggs, pp);
-      if (t) {
+      if (hasGps) {
         const camFwd = camRig.cam.getForwardRay().direction;
         const camBearing = Math.atan2(camFwd.x, camFwd.z);
-        const worldBearing = Math.atan2(t.x - pp.x, t.z - pp.z);
+        const worldBearing = Math.atan2(boat.position.x - pp.x, boat.position.z - pp.z);
         const heading = worldBearing - camBearing;   // 0 = straight ahead (up)
-        hud.setGuide(`Nearest egg · ${formatTime(game.elapsed)}`, heading);
-      } else {
-        hud.setGuide(`Survive · ${formatTime(game.elapsed)}`, null);
+        const dBoat = Math.hypot(boat.position.x - pp.x, boat.position.z - pp.z);
+        hud.setGuide(`the boat · ${Math.round(dBoat)}m · ${formatTime(game.elapsed)}`, heading);
       }
     }
 
-    // radar — updated whenever the game is running (even after death)
-    minimap.update(player, predators, herd, eggs, pickups, aquatic);
+    // radar — only once the GPS is looted (it IS the map). Updated even after
+    // death so the end screen keeps the map up.
+    if (hasGps) minimap.update(player, predators, herd, eggs, pickups, aquatic);
   });
 
   // Soft restart — re-rolls a fresh run in place without reloading the page
@@ -555,10 +661,16 @@ export async function startGame() {
     world.resetDusk();   // fresh run starts in full daylight again
     world.resetThreats(); // abort any in-flight pterosaur dive from the old run
     setDusk(0); hud.setDusk(0); duskAnnounced = false;
-    const c = world.heightAt(0, 0);
-    player.reset(0, c, 0);
+    // Re-arm the lootables and re-lock the map/compass for the fresh run.
+    hasGps = false;
+    hud.setGpsUnlocked(false);
+    medkits = 0;
+    hud.setMedkits(0);
+    if (gps) gps.root.setEnabled(true);
+    if (healthPack) healthPack.root.setEnabled(true);
+    player.reset(SPAWN.x, world.heightAt(SPAWN.x, SPAWN.z), SPAWN.z);
     score.points = 0;
-    game.over = false; game.paused = false;
+    game.over = false; game.won = false; game.paused = false;
     game.elapsed = 0; game.wave = 0;
     stepTimer = 0; tensionTimer = 0; vocalTimer = AUDIO.vocalIntervalMax;
     hud.setScore(0);
@@ -580,6 +692,14 @@ export async function startGame() {
     // unequips back to bare hands. Re-pressing the equipped slot also unequips.
     if (k >= "1" && k <= "9") inventory.select(parseInt(k, 10) - 1);
     if (k === "0") inventory.unequip();
+    // H uses a stowed health pack (full heal). Stowed on pickup, not auto-used.
+    if (k === "h" && started && !game.over && medkits > 0 && player.health < player.maxHealthValue) {
+      medkits -= 1;
+      player.heal(player.maxHealthValue);
+      audio.heal();
+      hud.popup("Health pack used — full health", "good");
+      hud.setMedkits(medkits);
+    }
     if (k === "r" && game.over) resetGame();
     if (k === "p" && started && !game.over) {
       game.paused = !game.paused;

@@ -244,15 +244,17 @@ export function createAudio() {
       n.start(); n.stop(now() + 0.1);
     },
     // Snappy chomp: short pitch-down click plus a noise burst. The PREDATORS'
-    // bite (T-Rex on the player / on prey) — not the player's attack.
-    bite() {
-      if (!ctx || muted) return;
+    // bite (T-Rex on the player / on prey) — not the player's attack. `gain`
+    // lets the caller distance-attenuate it so a far-off kill isn't heard at
+    // full volume (silent past earshot when the caller passes 0).
+    bite(gain = 0.9) {
+      if (!ctx || muted || gain <= 0) return;
       const buf = buffers.oneshots && buffers.oneshots.bite;
-      if (buf) { playBuffer(buf, { gain: 0.9, jitter: 0.06, attack: 0.004, release: 0.05 }); return; }
-      tone(180, 0.12, "square", 0.4, 60);
+      if (buf) { playBuffer(buf, { gain, jitter: 0.06, attack: 0.004, release: 0.05 }); return; }
+      tone(180, 0.12, "square", 0.4 * gain, 60);
       const n = noise(), g = ctx.createGain(), f = ctx.createBiquadFilter();
       f.type = "highpass"; f.frequency.value = 800;
-      g.gain.setValueAtTime(0.4, now());
+      g.gain.setValueAtTime(0.4 * gain, now());
       g.gain.exponentialRampToValueAtTime(0.0001, now() + 0.1);
       n.connect(f); f.connect(g); g.connect(master);
       n.start(); n.stop(now() + 0.12);

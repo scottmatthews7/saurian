@@ -1,5 +1,6 @@
-import { ARENA, DAYNIGHT, DUSK, ATMOSPHERE, WATER, OCEAN, PTERO_DIVE, ENV } from "./config.js";
+import { ARENA, DAYNIGHT, DUSK, ATMOSPHERE, WATER, OCEAN, PTERO_DIVE, ENV, MAP, TREE_PACKS, PROPS, UNDERSTORY, SPAWN } from "./config.js";
 import { buildFlyer } from "./flyer.js";
+import { initMap, biomeAt, loadIslandMap, getMuddyPath } from "./map.js";
 
 // Smooth basin profile for the pond: 1 at the centre, easing to 0 at the rim.
 // Carved into the terrain heightmap so the pool sits in a real depression.
@@ -10,54 +11,138 @@ function basinFactor(x, z) {
   return t * t * (3 - 2 * t); // smoothstep
 }
 
-// Microclimate zone membership: 1 at the zone centre, feathering to 0 across
-// edgeFeather just outside the radius, so each patch blends into the grassland.
-// Used by the dry rocky corner and the jungle thicket (the pond + reeds is the
-// third, wetland, microclimate) — all pockets WITHIN the one world.
-function zoneFactor(Z, x, z) {
-  const d = Math.hypot(x - Z.centerX, z - Z.centerZ);
-  if (d <= Z.radius) return 1;
-  if (d >= Z.radius + Z.edgeFeather) return 0;
-  const t = 1 - (d - Z.radius) / Z.edgeFeather;
-  return t * t * (3 - 2 * t);
-}
-const dryZoneFactor = (x, z) => zoneFactor(ENV.dryZone, x, z);
-const jungleZoneFactor = (x, z) => zoneFactor(ENV.jungleZone, x, z);
+// --- ISLAND FIELD (terrain from the design/ biome grid) ----------------------
+// The island's shape now comes from map.grid.json via map.js. At build time we
+// rasterise per-cell base heights (MAP.cellHeights) + blend masks into Float32
+// fields at 1u resolution, then box-blur them (MAP.heightBlurPasses /
+// maskBlurPasses) so the rasterised cell edges feather into organic slopes —
+// the already-jagged grid coast reads as a natural waterline, never a
+// stair-step. ONE bilinear sampler feeds the ground vertex loop AND heightAt,
+// so the render and placement/collision heights can never desync.
+const FIELD = {
+  // 40u of open-sea margin past the grid on every side (grid X −246..246,
+  // Z −396..576) so the seabed runs out under the ocean plane — first-pass for owner eyeball
+  x0: -286, z0: -436, w: 572, h: 1052,
+  height: null,   // blurred base terrain height per 1u cell
+  dune: null,     // 0..1 dune-undulation weight (desert D + rocky pass R)
+  sand: null,     // 0..1 in-shader sand-albedo replace weight (MAP.sandWeights)
+  rock: null,     // 0..1 in-shader "kill the green texture" weight (R, M, P) —
+                  // the grass detail albedo is replaced by the painted vertex
+                  // colour there, so rock/dirt floors aren't hued green
+  dry: null,      // 0..1 desert membership (D) — desert air / dry-veg systems
+  jungle: null,   // 0..1 jungle membership (J) — understorey/species systems
+};
 
-// OCEAN coast profile (task 2): the eastern margin descends from the inland
-// flats, through a sloping BEACH, down to a seabed below the sea surface. This
-// returns the terrain height for a given x (the coast runs ~north-south at
-// OCEAN.shoreX) and a blend weight 0..1 of how "coastal" the point is, so the
-// vertex loop + heightAt can blend the land height TOWARD the coast profile.
-// MUST be applied identically in the vertex loop AND heightAt (else props /
-// collisions float or sink at the shore — the same desync risk as the dunes).
-//
-// Bands east of the coastline (increasing x past shoreX):
-//   0 .. beachWidth     → beach: ramps from seaLevel+~1 down to the waterline
-//   beachWidth ..       → seabed: drops to seaLevel − seabedDepth (open water)
-// West of the coastline it returns weight 0 (land untouched).
-function oceanProfile(x, z) {
-  // a gently wavy coastline so the beach isn't a dead-straight line
-  const coast = OCEAN.shoreX + Math.sin(z * 0.045) * 6 + Math.cos(z * 0.017) * 4;
-  const e = x - coast;                // metres east of the (wavy) coastline
-  if (e <= -OCEAN.beachWidth) return { h: 0, w: 0 };  // well inland — untouched
-  let h;
-  if (e <= 0) {
-    // upper beach: from the inland flats (≈ seaLevel + a small berm) easing down
-    // to the waterline at the coastline. Smoothstep for a soft brow, no step.
-    const t = (e + OCEAN.beachWidth) / OCEAN.beachWidth;  // 0 at inland edge .. 1 at waterline
-    const s = t * t * (3 - 2 * t);
-    h = (OCEAN.seaLevel + 1.2) * (1 - s) + OCEAN.seaLevel * s;
-  } else {
-    // seabed: drop from the waterline to the deep seabed across the surf width,
-    // then hold deep (navigable open water for the future plesiosaur).
-    const t = Math.min(1, e / (OCEAN.surfWidth + OCEAN.beachWidth));
-    const s = t * t * (3 - 2 * t);
-    h = OCEAN.seaLevel * (1 - s) + (OCEAN.seaLevel - OCEAN.seabedDepth) * s;
+// Separable clamped box blur, in place. Cheap (running sums) even over the
+// full 572x1052 field.
+function boxBlurField(arr, w, h, radius, passes) {
+  const tmp = new Float32Array(arr.length);
+  const win = radius * 2 + 1;
+  for (let p = 0; p < passes; p++) {
+    for (let r = 0; r < h; r++) {           // horizontal: arr -> tmp
+      const off = r * w;
+      let sum = 0;
+      for (let c = -radius; c <= radius; c++) sum += arr[off + Math.min(w - 1, Math.max(0, c))];
+      for (let c = 0; c < w; c++) {
+        tmp[off + c] = sum / win;
+        sum += arr[off + Math.min(w - 1, c + radius + 1)] - arr[off + Math.max(0, c - radius)];
+      }
+    }
+    for (let c = 0; c < w; c++) {           // vertical: tmp -> arr
+      let sum = 0;
+      for (let r = -radius; r <= radius; r++) sum += tmp[Math.min(h - 1, Math.max(0, r)) * w + c];
+      for (let r = 0; r < h; r++) {
+        arr[r * w + c] = sum / win;
+        sum += tmp[Math.min(h - 1, r + radius + 1) * w + c] - tmp[Math.max(0, r - radius) * w + c];
+      }
+    }
   }
-  // weight ramps in across the inland beach edge so the land blends to the coast
-  const w = Math.min(1, (e + OCEAN.beachWidth) / OCEAN.beachWidth);
-  return { h, w: Math.max(0, w) };
+}
+
+// Bilinear sample of a field array at world (x, z), clamped at the margins
+// (everything past the field is open sea, so the edge value is correct).
+function sampleField(arr, x, z) {
+  const fx = Math.min(FIELD.w - 1.001, Math.max(0, x - FIELD.x0 - 0.5));
+  const fz = Math.min(FIELD.h - 1.001, Math.max(0, z - FIELD.z0 - 0.5));
+  const c0 = fx | 0, r0 = fz | 0, tx = fx - c0, tz = fz - r0;
+  const i = r0 * FIELD.w + c0;
+  return (arr[i] * (1 - tx) + arr[i + 1] * tx) * (1 - tz)
+       + (arr[i + FIELD.w] * (1 - tx) + arr[i + FIELD.w + 1] * tx) * tz;
+}
+
+// STAGE SHIM — the radial dryZone/jungleZone geometry left config.js with the
+// island remap, but the SCATTER systems below (rebuilt in the prop stage) still
+// consume centre+radius+style fields. Style values are the pre-remap config
+// values verbatim; the geometry is re-aimed at the grid regions' centroids by
+// buildIslandField so the existing desert dressing lands on the real desert.
+const JUNGLE_ZONE = {
+  centerX: 0, centerZ: -250, radius: 60, // overwritten from the grid J cells below
+  groundTint: [0.42, 0.56, 0.36],
+  grassDensityMul: 2.0,
+  junglePalette: [
+    [0.36, 0.56, 0.32], [0.30, 0.48, 0.28], [0.44, 0.62, 0.36], [0.26, 0.42, 0.26],
+  ],
+};
+const DRY_ZONE_GEO = { centerX: 0, centerZ: 430, radius: 70 }; // overwritten from the grid D cells below
+
+// Zone membership now reads the blurred grid masks (0 before the field exists,
+// which only matters if something samples before buildWorld awaits initMap).
+const dryZoneFactor = (x, z) => (FIELD.dry ? sampleField(FIELD.dry, x, z) : 0);
+const jungleZoneFactor = (x, z) => (FIELD.jungle ? sampleField(FIELD.jungle, x, z) : 0);
+
+// Rasterise + blur the fields from the loaded grid. Requires initMap() done.
+function buildIslandField() {
+  if (FIELD.height) return;
+  const { x0, z0, w, h } = FIELD;
+  const height = new Float32Array(w * h), dune = new Float32Array(w * h),
+        sand = new Float32Array(w * h), rock = new Float32Array(w * h),
+        dry = new Float32Array(w * h), jungle = new Float32Array(w * h);
+  const seaH = MAP.cellHeights["~"];
+  let dN = 0, dX = 0, dZ = 0, jN = 0, jX = 0, jZ = 0;
+  for (let r = 0; r < h; r++) {
+    const z = z0 + r + 0.5;
+    for (let c = 0; c < w; c++) {
+      const x = x0 + c + 0.5;
+      const code = biomeAt(x, z);
+      const i = r * w + c;
+      height[i] = MAP.cellHeights[code] ?? seaH;
+      dune[i] = (code === "D" || code === "R") ? 1 : 0;
+      sand[i] = MAP.sandWeights[code] || 0;
+      rock[i] = (code === "R" || code === "M" || code === "P") ? 1 : 0;
+      if (code === "D") { dry[i] = 1; dN++; dX += x; dZ += z; }
+      else if (code === "J") { jungle[i] = 1; jN++; jX += x; jZ += z; }
+    }
+  }
+  if (dN) {  // aim the legacy desert-dressing shim at the real desert region
+    DRY_ZONE_GEO.centerX = dX / dN; DRY_ZONE_GEO.centerZ = dZ / dN;
+    DRY_ZONE_GEO.radius = Math.sqrt(dN / Math.PI);  // equivalent-area disc
+  }
+  if (jN) {
+    JUNGLE_ZONE.centerX = jX / jN; JUNGLE_ZONE.centerZ = jZ / jN;
+    JUNGLE_ZONE.radius = Math.sqrt(jN / Math.PI);
+  }
+  boxBlurField(height, w, h, MAP.heightBlurRadius, MAP.heightBlurPasses);
+  boxBlurField(dune, w, h, MAP.maskBlurRadius, MAP.maskBlurPasses);
+  boxBlurField(sand, w, h, MAP.maskBlurRadius, MAP.maskBlurPasses);
+  boxBlurField(rock, w, h, MAP.maskBlurRadius, MAP.maskBlurPasses);
+  boxBlurField(dry, w, h, MAP.maskBlurRadius, MAP.maskBlurPasses);
+  boxBlurField(jungle, w, h, MAP.maskBlurRadius, MAP.maskBlurPasses);
+  FIELD.height = height; FIELD.dune = dune; FIELD.sand = sand;
+  FIELD.rock = rock; FIELD.dry = dry; FIELD.jungle = jungle;
+}
+
+// THE terrain height — the single source of truth for ground height (rendered
+// verts, placement and collisions all call this; see the desync warnings below).
+function terrainHeight(x, z) {
+  let hgt = sampleField(FIELD.height, x, z);
+  // gentle base noise carried over from the old terrain, damped so the
+  // forest/savannah/jungle floors read FLAT per the spec — first-pass for owner eyeball
+  hgt += (Math.sin(x * 0.06) * Math.cos(z * 0.05) * 1.6
+        + Math.sin(x * 0.13 + z * 0.07) * 0.7) * 0.25;
+  const dw = sampleField(FIELD.dune, x, z);
+  if (dw > 0.01) hgt += dw * duneHeight(x, z);  // desert + rocky-pass undulation
+  hgt -= basinFactor(x, z) * WATER.depth;       // carve the swamp pool
+  return hgt;
 }
 
 // Dune undulation for the desert zone: low-frequency layered sines so each dune
@@ -77,8 +162,16 @@ function duneHeight(x, z) {
 // Returns handles the rest of the game needs (ground mesh for collisions,
 // shadow generator, an update fn for the day/night cycle).
 
-export function buildWorld(scene) {
+export async function buildWorld(scene) {
   const B = window.BABYLON;
+
+  // The terrain is built FROM the design/ grid — the map files must be loaded
+  // and the height/mask fields rasterised before anything below samples them.
+  await initMap();
+  buildIslandField();
+  // Prop/wall geometry sheets derived from the grids (per-cell placements, the
+  // jungle visible shell, the faked interior cells and the mountain wall line).
+  const island = await loadIslandMap();
 
   // --- Sky / clear + fog ---------------------------------------------------
   // Richer, depth-graded exp2 fog in a desaturated sage-grey haze (ENV) so the
@@ -118,82 +211,68 @@ export function buildWorld(scene) {
   shadow.blurKernel = 32;
   shadow.darkness = 0.35;
 
-  // --- Ground (procedural rolling terrain) --------------------------------
+  // --- Ground (terrain from the island grid) -------------------------------
+  // Sized + centred on the FIELD (the grid plus its sea margin) at 2u vertex
+  // spacing — fine enough that the blurred coast/biome edges and the ~2.2u
+  // muddy path read through the per-vertex paint. First-pass for owner eyeball.
+  const groundCx = FIELD.x0 + FIELD.w / 2, groundCz = FIELD.z0 + FIELD.h / 2;
   const ground = B.MeshBuilder.CreateGround("ground", {
-    width: ARENA.groundSize, height: ARENA.groundSize,
-    subdivisions: 120, updatable: true,
+    width: FIELD.w, height: FIELD.h,
+    subdivisionsX: FIELD.w / 2, subdivisionsY: FIELD.h / 2, updatable: true,
   }, scene);
+  ground.position.set(groundCx, 0, groundCz);
 
-  // Gentle height noise via layered sines (deterministic, cheap). We also bake
-  // a per-vertex GRASS<->SOIL blend into vertex colours: lush desaturated grass
-  // on the flats, earthy soil on the steep rim slopes and the pond edge. The
-  // PBR material multiplies its real albedo by these so one tiled texture set
-  // reads as a varied natural ground (no flat colour, no neon green).
+  // Heights come from terrainHeight (the blurred grid field — the SAME function
+  // heightAt exposes, so render and collisions can't desync). Vertex COLOURS
+  // paint the ground per biome (MAP.tints): the savannah keeps the owner's
+  // grass↔soil mottle verbatim; other floors get their own tint + a luminance
+  // mottle so nothing reads as a flat fill. The alpha channel carries the SAND
+  // weight for the in-shader sand albedo replace (the approved desert system).
   const positions = ground.getVerticesData(B.VertexBuffer.PositionKind);
   const colors = new Float32Array((positions.length / 3) * 4);
-  const gT = ENV.grassTint, sT = ENV.soilTint;
+  const sT = ENV.soilTint, tintG = MAP.tints.G;
+  // Floors that take the grass↔soil mottle treatment (the green family).
+  const GREEN_FLOOR = { G: 1, C: 1, F: 1, S: 1, J: 1 };
+  // 3x3 biome supersample offsets (u) — feathers the paint across biome edges
+  // over ~2-3u so boundaries read organic, not rasterised. First-pass for owner eyeball.
+  const SS = [-1.1, 0, 1.1];
   for (let i = 0; i < positions.length; i += 3) {
-    const x = positions[i], z = positions[i + 2];
-    const d = Math.sqrt(x * x + z * z);
-    let h = Math.sin(x * 0.06) * Math.cos(z * 0.05) * 1.6
-          + Math.sin(x * 0.13 + z * 0.07) * 0.7;
-    // flatten the central play area, raise distant rim into hills
-    const rim = Math.max(0, d - ARENA.radius) * 0.12;
-    h = h * Math.min(1, d / ARENA.radius * 1.2) + rim;
-    h -= basinFactor(x, z) * WATER.depth; // carve the pond basin
-    // Desert dunes: rolling undulation, weighted by zone membership so the
-    // dunes only rise inside the dry zone and feather out at its edge. MUST
-    // mirror heightAt below (placement/collision desync otherwise).
-    const dzH = dryZoneFactor(x, z);
-    if (dzH > 0) h += dzH * duneHeight(x, z);
-    // OCEAN coast: blend the land height toward the beach/seabed profile on the
-    // eastern margin. MUST mirror heightAt below (placement/collision desync).
-    const oc = oceanProfile(x, z);
-    if (oc.w > 0) h = h * (1 - oc.w) + oc.h * oc.w;
+    const x = positions[i] + groundCx, z = positions[i + 2] + groundCz;
+    const h = terrainHeight(x, z);
     positions[i + 1] = h;
-    // Soil weight: high on the raised rim and right around the pond shoreline,
-    // plus a little procedural mottling so patches of bare earth show through.
-    const rimSoil = Math.min(1, Math.max(0, (d - ARENA.radius * 0.78) / (ARENA.radius * 0.4)));
+    // Biome paint: average the tints of the 3x3 1u-spaced samples around the
+    // vertex (soft edges), tracking how "green floor" the neighbourhood is.
+    let r = 0, g = 0, b = 0, green = 0;
+    for (const dx of SS) for (const dzz of SS) {
+      const t = MAP.tints[biomeAt(x + dx, z + dzz)] || tintG;
+      r += t[0]; g += t[1]; b += t[2];
+      if (GREEN_FLOOR[biomeAt(x + dx, z + dzz)]) green++;
+    }
+    r /= 9; g /= 9; b /= 9; green /= 9;
+    // Green floors: the owner-approved grass↔soil mottle, verbatim (plus the
+    // soil ring at the swamp-pool shoreline, as around the old pond).
     const pondSoil = basinFactor(x, z) > 0.02 ? 0.6 : 0;
     const mottle = 0.18 * (0.5 + 0.5 * Math.sin(x * 0.4 + 1.7) * Math.cos(z * 0.37));
-    const soil = Math.min(1, rimSoil + pondSoil + mottle);
-    let r = gT[0] * (1 - soil) + sT[0] * soil;
-    let g = gT[1] * (1 - soil) + sT[1] * soil;
-    let b = gT[2] * (1 - soil) + sT[2] * soil;
-    // Microclimates: blend toward the arid tint in the dry rocky corner and
-    // the deeper wet green in the jungle thicket.
-    const dz = dryZoneFactor(x, z);
-    if (dz > 0) {
-      const dGT = ENV.dryZone.groundTint;
-      r = r * (1 - dz) + dGT[0] * dz;
-      g = g * (1 - dz) + dGT[1] * dz;
-      b = b * (1 - dz) + dGT[2] * dz;
-    }
-    const jz = jungleZoneFactor(x, z);
-    if (jz > 0) {
-      const jGT = ENV.jungleZone.groundTint;
-      r = r * (1 - jz) + jGT[0] * jz;
-      g = g * (1 - jz) + jGT[1] * jz;
-      b = b * (1 - jz) + jGT[2] * jz;
-    }
-    // BEACH: paint the coastal band as SAND — dry dune sand on the upper beach,
-    // darker WET sand at/below the waterline — so the shore reads as a clear
-    // sand beach, not grass running into the sea. The sand weight ramps in fast
-    // (sqrt) across the dune line so the band is unambiguously sand, not a faint
-    // tint; only the outermost feather stays green to soften the inland edge.
-    if (oc.w > 0) {
-      const wet = h <= OCEAN.seaLevel + 0.2 ? 1 : 0;   // at/under the waterline = damp sand
-      const bc = wet ? OCEAN.wetSandColor : OCEAN.beachColor;
-      const bw = Math.min(1, Math.sqrt(oc.w) * 1.25);  // strong sand across the band
-      r = r * (1 - bw) + bc.r * bw;
-      g = g * (1 - bw) + bc.g * bw;
-      b = b * (1 - bw) + bc.b * bw;
+    const soil = Math.min(1, mottle + pondSoil) * green;
+    r = r * (1 - soil) + sT[0] * soil;
+    g = g * (1 - soil) + sT[1] * soil;
+    b = b * (1 - soil) + sT[2] * soil;
+    // Non-green floors (rock/sand/dirt/seabed): a gentle luminance mottle so
+    // they're never a flat tint either — first-pass for owner eyeball.
+    const lum = 1 + (1 - green) * 0.10 * Math.sin(x * 0.53 + 0.9) * Math.cos(z * 0.47 + 0.3);
+    r *= lum; g *= lum; b *= lum;
+    // Damp foreshore: at/under the waterline darken sandy ground toward wet
+    // sand (the in-shader sand REPLACE — driven by the mask texture in
+    // attachSandBlendPlugin — is attenuated there so this tint shows through).
+    const sandW = sampleField(FIELD.sand, x, z);
+    if (sandW > 0.03 && h <= OCEAN.seaLevel + 0.2) {
+      const wc = OCEAN.wetSandColor, ww = Math.min(1, sandW);
+      r = r * (1 - ww) + wc.r * ww;
+      g = g * (1 - ww) + wc.g * ww;
+      b = b * (1 - ww) + wc.b * ww;
     }
     const ci = (i / 3) * 4;
-    // Repurpose the vertex-colour ALPHA channel to carry the dry-zone weight so
-    // the ground material plugin can blend in the sand albedo + ripple normal
-    // per-vertex without a second full-ground mesh/draw.
-    colors[ci] = r; colors[ci + 1] = g; colors[ci + 2] = b; colors[ci + 3] = dz;
+    colors[ci] = r; colors[ci + 1] = g; colors[ci + 2] = b; colors[ci + 3] = 1;
   }
   ground.updateVerticesData(B.VertexBuffer.PositionKind, positions);
   ground.setVerticesData(B.VertexBuffer.ColorKind, colors);
@@ -217,22 +296,15 @@ export function buildWorld(scene) {
   ground.material = groundMat;
   ground.useVertexColors = true;
 
-  // sample terrain height for placement
-  const heightAt = (x, z) => {
-    const d = Math.sqrt(x * x + z * z);
-    let h = Math.sin(x * 0.06) * Math.cos(z * 0.05) * 1.6
-          + Math.sin(x * 0.13 + z * 0.07) * 0.7;
-    const rim = Math.max(0, d - ARENA.radius) * 0.12;
-    h = h * Math.min(1, d / ARENA.radius * 1.2) + rim - basinFactor(x, z) * WATER.depth;
-    // MIRROR of the dune term baked into the ground vertex loop above. Keep
-    // these two expressions identical or placement/collision desyncs.
-    const dz = dryZoneFactor(x, z);
-    if (dz > 0) h += dz * duneHeight(x, z);
-    // MIRROR of the ocean coast blend (vertex loop above) — same desync rule.
-    const oc = oceanProfile(x, z);
-    if (oc.w > 0) h = h * (1 - oc.w) + oc.h * oc.w;
-    return h;
-  };
+  // Terrain height for placement/collisions — the SAME function the vertex
+  // loop above baked, so nothing can float or sink against the render.
+  const heightAt = terrainHeight;
+
+  // Muddy-path ribbon: smoothed centreline (no folds), earthy mottled dirt
+  // texture, draped on the terrain, ending at the north tree line. The painted
+  // P cells alone read as a green gap, not a brown trail, so the ribbon carries
+  // the visible path.
+  buildMuddyPath(scene, heightAt);
 
   // --- Water pond ----------------------------------------------------------
   // A translucent surface disc sitting in the carved basin. The surface height
@@ -243,12 +315,15 @@ export function buildWorld(scene) {
   water.rotation.x = Math.PI / 2;
   water.position.set(WATER.centerX, waterY, WATER.centerZ);
   water.isPickable = false;
+  // MURKY SWAMP POOL (MAP_SPEC: the swamp is "murky"): the old pond's bright
+  // cyan-blue read as a tropical lake from the air (the stage-2 overhead
+  // artefact). Dark olive-brown, faint shine — first-pass for owner eyeball.
   const waterMat = new B.StandardMaterial("waterMat", scene);
-  waterMat.diffuseColor = new B.Color3(0.1, 0.32, 0.42);
-  waterMat.emissiveColor = new B.Color3(0.04, 0.12, 0.18);
-  waterMat.specularColor = new B.Color3(0.6, 0.8, 0.9);
-  waterMat.specularPower = 64;
-  waterMat.alpha = 0.72;
+  waterMat.diffuseColor = new B.Color3(0.16, 0.19, 0.11);
+  waterMat.emissiveColor = new B.Color3(0.05, 0.07, 0.03);
+  waterMat.specularColor = new B.Color3(0.25, 0.28, 0.22);
+  waterMat.specularPower = 48;
+  waterMat.alpha = 0.85;
   water.material = waterMat;
 
   // A faint ring of reeds around the shoreline for readability.
@@ -280,6 +355,13 @@ export function buildWorld(scene) {
 
   const foliage = scatterFoliage(scene, shadow, heightAt);
   const obstacles = foliage.obstacles;
+  // Grid-driven prop layer (one prop per cell from design/map.props.json):
+  // glb trees/shrubs/understory + the procedural rocks, the jungle tree-wall
+  // shell, the faked jungle interior canopy and the cliff.glb mountain walls.
+  // Blocking placements append AI obstacle footprints to the shared list.
+  const props = await scatterIslandProps(scene, heightAt, island, obstacles, foliage.rockShapes);
+  const cliffs = await buildMountainWalls(scene, heightAt, island, obstacles);
+  buildJungleCanopy(scene, heightAt, island);
   const atmosphere = buildAtmosphere(scene, heightAt);
 
   // --- Day/night cycle + run-scoped dusk arc -------------------------------
@@ -292,10 +374,11 @@ export function buildWorld(scene) {
   // stays bright on the title screen. Atmosphere + water still animate either way.
   const update = (dt, advanceDayClock = true) => {
     atmosphere.update(dt);
-    foliage.windUpdate(dt);   // subtle canopy + ground-cover sway
-    // subtle water shimmer
+    foliage.windUpdate(dt);   // subtle ground-cover sway
+    props.update(dt);         // throttled distance-cull of the prop-layer chunks
+    // subtle water shimmer (green channel — the pool stays murky, never cyan)
     t_water += dt;
-    waterMat.emissiveColor.b = 0.16 + 0.05 * Math.sin(t_water * 1.5);
+    waterMat.emissiveColor.g = 0.06 + 0.02 * Math.sin(t_water * 1.5);
     water.position.y = waterY + Math.sin(t_water * 0.8) * 0.03;
     ocean.update(dt);   // animate the sea swell + foam shimmer
     if (advanceDayClock) {
@@ -380,11 +463,13 @@ export function buildWorld(scene) {
   return {
     ground, shadow, heightAt, update, inWater, waterDepthAt, isDeepWater,
     waterCenter, waterSurfaceY: waterY,
-    // Ocean info for the minimap + the future marine reptile: the navigable open
-    // water lies east of the (mean) coastline at world X = OCEAN.shoreX.
+    // Ocean info for the minimap + the marine reptile. The sea now surrounds
+    // the island: a point is in the ocean iff its grid cell is sea. shoreX is
+    // retained only for legacy importers (see OCEAN in config.js).
     oceanShoreX: OCEAN.shoreX, oceanSeaLevel: OCEAN.seaLevel,
-    isInOcean: (x, z) => x > (OCEAN.shoreX + Math.sin(z * 0.045) * 6 + Math.cos(z * 0.017) * 4),
+    isInOcean: (x, z) => biomeAt(x, z) === "~",
     obstacles, resetDusk,
+    propStats: { ...props.stats, cliffs: cliffs.count },
     getDusk: () => duskFactor,
     updateThreats: (dt, player, onScreech, onHit) =>
       atmosphere.updateThreats(dt, player, onScreech, onHit),
@@ -392,22 +477,105 @@ export function buildWorld(scene) {
   };
 }
 
-// Builds the eastern OCEAN (task 2): a large open-water surface plane east of
-// the coastline (the beach/seabed are carved into the terrain by oceanProfile),
-// with a gentle vertical SWELL animated on the plane's own vertices, a brighter
-// SHALLOW band near the surf, a foam line at the waterline, and reflection-ish
-// specular in keeping with the inland pond's water material. Returns { update }.
+// Draws the muddy path as a thin ribbon draped over the terrain from the map's
+// waypoints. The walkable corridor (P cells) is wider than the ribbon; the
+// ribbon is inset 1u each side so it reads as a trodden trail centred in the
+// gap, never climbing the flanking jungle-wall cells. No collider (the path is
+// already passable; the jungle wall on either side does the blocking).
+function buildMuddyPath(scene, heightAt) {
+  const B = window.BABYLON;
+  const spec = getMuddyPath();
+  if (!spec || !spec.waypoints || spec.waypoints.length < 2) return null;
+  const wp = spec.waypoints;
+  const half = Math.max(0.5, (spec.halfWidthU || 2.4) - 1.0);  // inset 1u off each wall
+
+  // Resample the polyline at ~1u so the ribbon drapes over terrain undulation.
+  const pts = [];
+  for (let i = 0; i < wp.length - 1; i++) {
+    const a = wp[i], b = wp[i + 1];
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const steps = Math.max(1, Math.round(Math.hypot(dx, dz)));
+    for (let s = 0; s < steps; s++) pts.push({ x: a.x + dx * (s / steps), z: a.z + dz * (s / steps) });
+  }
+  pts.push({ x: wp[wp.length - 1].x, z: wp[wp.length - 1].z });
+
+  // Smooth the centreline: the waypoints are piecewise-linear, so each one is a
+  // CORNER where the perpendicular flips and the two rails cross — that fold is
+  // the vertical "slab" artefact. A couple of moving-average passes round the
+  // corners so the rails never cross.
+  let line = pts;
+  for (let pass = 0; pass < 3; pass++) {
+    line = line.map((p, i) => (i === 0 || i === line.length - 1) ? p : {
+      x: (line[i - 1].x + p.x + line[i + 1].x) / 3,
+      z: (line[i - 1].z + p.z + line[i + 1].z) / 3,
+    });
+  }
+
+  // Start at the JUNGLE EDGE (drop the leading clearing cells by the plane), and
+  // END at the north TREE LINE (drop trailing samples that have no jungle/forest
+  // flanking them — i.e. the trail has spilled into the open savannah).
+  const nearTrees = (x, z) => {
+    for (const [dx, dz] of [[5, 0], [-5, 0], [0, 5], [0, -5], [4, 4], [-4, -4]]) {
+      const b = biomeAt(x + dx, z + dz);
+      if (b === "J" || b === "F") return true;
+    }
+    return false;
+  };
+  let s0 = 0;
+  while (s0 < line.length - 2 && biomeAt(line[s0].x, line[s0].z) === "C") s0++;
+  let s1 = line.length;
+  while (s1 > s0 + 2 && !nearTrees(line[s1 - 1].x, line[s1 - 1].z)) s1--;
+  const route = line.slice(s0, s1);
+  if (route.length < 2) return null;
+
+  // Two rails, offset along the local perpendicular, each draped to ground.
+  const left = [], right = [];
+  for (let i = 0; i < route.length; i++) {
+    const prev = route[Math.max(0, i - 1)], next = route[Math.min(route.length - 1, i + 1)];
+    let tx = next.x - prev.x, tz = next.z - prev.z;
+    const L = Math.hypot(tx, tz) || 1; tx /= L; tz /= L;
+    const nx = -tz, nz = tx;
+    const lx = route[i].x + nx * half, lz = route[i].z + nz * half;
+    const rx = route[i].x - nx * half, rz = route[i].z - nz * half;
+    left.push(new B.Vector3(lx, heightAt(lx, lz) + 0.06, lz));
+    right.push(new B.Vector3(rx, heightAt(rx, rz) + 0.06, rz));
+  }
+
+  const ribbon = B.MeshBuilder.CreateRibbon("muddyPath", { pathArray: [left, right] }, scene);
+  ribbon.isPickable = false;
+  ribbon.checkCollisions = false;
+  ribbon.receiveShadows = true;
+  // PBR (not Standard) so the warm sun doesn't blow the tint out to orange. The
+  // dryground dirt albedo+normal give earthy grain; a neutral brown tint + larger
+  // tiling read as a mottled muddy track, not a flat sandy/orange strip.
+  const tp = ENV.texturePath;
+  const mkTex = (f) => { const tex = new B.Texture(tp + f, scene); tex.uScale = 2.5; tex.vScale = 14; tex.anisotropicFilteringLevel = 8; return tex; };
+  const mat = new B.PBRMaterial("muddyPathMat", scene);
+  mat.albedoTexture = mkTex("dryground_albedo.jpg");
+  mat.bumpTexture = mkTex("dryground_normal.jpg");
+  mat.albedoColor = new B.Color3(0.40, 0.32, 0.23).toLinearSpace();  // earthy brown mud (less orange)
+  mat.metallic = 0;
+  mat.roughness = 1;            // matte wet dirt, no specular sheen
+  mat.backFaceCulling = false;  // ribbon winding faces down on some segments
+  ribbon.material = mat;
+  return ribbon;
+}
+
+// Builds the surrounding OCEAN: a large open-water surface plane covering the
+// whole map (the island terrain rises through it; the seabed is carved by the
+// grid height field), with a gentle vertical SWELL animated on the plane's own
+// vertices, a brighter SHALLOW grade where the seabed nears the surface, and
+// reflection-ish specular in keeping with the pond's water material.
 function buildOcean(scene) {
   const B = window.BABYLON;
   // A big subdivided plane so the swell can ripple its vertices. It spans well
-  // past the play radius so the sea reads as open ocean to the horizon.
+  // past the island so the sea reads as open ocean to the horizon.
   const seg = 80;
   const sea = B.MeshBuilder.CreateGround("ocean", {
     width: OCEAN.planeSize, height: OCEAN.planeSize, subdivisions: seg, updatable: true,
   }, scene);
-  // Centre the plane east of the coast so its western edge sits roughly at the
-  // shore and the bulk extends out to sea.
-  sea.position.set(OCEAN.shoreX + OCEAN.planeSize * 0.5 - 40, OCEAN.seaLevel, 0);
+  // Centre the plane on the island grid; the sea surrounds the whole island.
+  sea.position.set(FIELD.x0 + FIELD.w / 2, OCEAN.seaLevel, FIELD.z0 + FIELD.h / 2);
   sea.isPickable = false;
 
   const seaMat = new B.StandardMaterial("oceanMat", scene);
@@ -418,22 +586,26 @@ function buildOcean(scene) {
   seaMat.alpha = 0.86;
   sea.material = seaMat;
 
-  // Shallow-water tint near the surf + a foam line at the waterline, baked into
-  // the plane's vertex colours by world X (distance seaward of the coast).
+  // Shallow-water tint + a foam-ish brightening near the waterline, baked into
+  // the plane's vertex colours from the WATER COLUMN DEPTH under each vertex
+  // (sea surface minus the grid seabed height) — so the grade follows the
+  // organic grid coast on every side of the island, not a straight line.
   const pos = sea.getVerticesData(B.VertexBuffer.PositionKind);
   const cols = new Float32Array((pos.length / 3) * 4);
-  const base = sea.position.x;
+  const baseX = sea.position.x, baseZ = sea.position.z;
   for (let i = 0; i < pos.length; i += 3) {
-    const wx = base + pos[i];                 // world X of this vertex
-    const seaward = wx - OCEAN.shoreX;         // metres east of the mean coast
-    // 0 at/inside the surf .. 1 well out to sea (deep)
-    const deep = Math.min(1, Math.max(0, seaward / 90));
+    const wx = baseX + pos[i], wz = baseZ + pos[i + 2];
+    const depth = OCEAN.seaLevel - sampleField(FIELD.height, wx, wz);
+    // 0 right at the waterline .. 1 over the deep seabed — first-pass for owner eyeball
+    const deep = Math.min(1, Math.max(0, depth / 6));
     const sh = OCEAN.shallowColor, dp = OCEAN.deepColor, fm = OCEAN.foamColor;
     let r = sh.r * (1 - deep) + dp.r * deep;
     let g = sh.g * (1 - deep) + dp.g * deep;
     let b = sh.b * (1 - deep) + dp.b * deep;
-    // foam line: a bright band right at the waterline (small |seaward|)
-    const foam = Math.max(0, 1 - Math.abs(seaward) / OCEAN.surfWidth);
+    // foam: a bright lift right where the seabed meets the surface. The plane's
+    // vertex spacing (~55u) is far coarser than the coast, so this reads as a
+    // soft surf glow, not a crisp line — a flagged polish follow-up.
+    const foam = Math.max(0, 1 - Math.abs(depth) / 1.5);
     const f = foam * foam * 0.8;
     r = r * (1 - f) + fm.r * f;
     g = g * (1 - f) + fm.g * f;
@@ -570,6 +742,29 @@ function attachSandBlendPlugin(mat, scene) {
   const B = window.BABYLON;
   const D = ENV.dryZone;
 
+  // The blend weights ride a small RG8 MASK TEXTURE rasterised from the grid's
+  // blurred fields, sampled in-shader by WORLD position. (The ground's
+  // vertex-colour alpha can't carry them: with an opaque material Babylon never
+  // defines VERTEXALPHA, so vColor.a is forced to 1.0 in the vertex shader.)
+  //   R: sand-albedo replace weight (desert D, beach B, seabed ~), with the
+  //      damp-foreshore attenuation baked in so the wet vertex tint shows;
+  //   G: "kill the green texture" weight (rocky R, mountain M, path P) — the
+  //      grass detail albedo is replaced by the painted vertex colour there.
+  const clamp255 = (v) => Math.max(0, Math.min(255, Math.round(v * 255)));
+  const maskData = new Uint8Array(FIELD.w * FIELD.h * 2);
+  for (let r = 0; r < FIELD.h; r++) {
+    for (let c = 0; c < FIELD.w; c++) {
+      const i = r * FIELD.w + c;
+      let wgt = FIELD.sand[i];
+      if (wgt > 0.03 && FIELD.height[i] <= OCEAN.seaLevel + 0.2) wgt *= 0.35; // wet sand — first-pass for owner eyeball
+      maskData[i * 2] = clamp255(wgt);
+      maskData[i * 2 + 1] = clamp255(FIELD.rock[i]);
+    }
+  }
+  const maskTex = new B.RawTexture(maskData, FIELD.w, FIELD.h,
+    B.Engine.TEXTUREFORMAT_RG, scene, false, false, B.Texture.BILINEAR_SAMPLINGMODE);
+  maskTex.wrapU = maskTex.wrapV = B.Texture.CLAMP_ADDRESSMODE;
+
   class SandBlendPlugin extends B.MaterialPluginBase {
     constructor(m) {
       super(m, "SandBlend", 280, { SANDBLEND: true });
@@ -583,27 +778,27 @@ function attachSandBlendPlugin(mat, scene) {
           { name: "sandColor", size: 3, type: "vec3" },     // warm tan base the albedo is REPLACED toward
           { name: "sandColorVar", size: 3, type: "vec3" },  // per-texel variation amplitude
           { name: "sandRoughness", size: 1, type: "float" },
-          { name: "dryCenter", size: 2, type: "vec2" },
-          { name: "dryRadii", size: 2, type: "vec2" },  // x: radius, y: radius+feather
+          { name: "sandMaskRect", size: 4, type: "vec4" },  // xy: field origin, zw: 1/size (world→uv)
         ],
         fragment: `#ifdef SANDBLEND
 uniform vec3 sandColor;
 uniform vec3 sandColorVar;
 uniform float sandRoughness;
-uniform vec2 dryCenter;
-uniform vec2 dryRadii;
-float dryZoneW(vec3 p) {
-  return 1.0 - smoothstep(dryRadii.x, dryRadii.y, distance(p.xz, dryCenter));
+uniform vec4 sandMaskRect;
+uniform sampler2D sandMaskSampler;
+vec2 groundMaskW(vec3 p) {
+  return texture2D(sandMaskSampler, (p.xz - sandMaskRect.xy) * sandMaskRect.zw).rg;
 }
 #endif`,
       };
     }
+    getSamplers(samplers) { samplers.push("sandMaskSampler"); }
     bindForSubMesh(ubo) {
       ubo.updateColor3("sandColor", new B.Color3(D.sandColor[0], D.sandColor[1], D.sandColor[2]));
       ubo.updateColor3("sandColorVar", new B.Color3(D.sandColorVar[0], D.sandColorVar[1], D.sandColorVar[2]));
       ubo.updateFloat("sandRoughness", D.sandRoughness);
-      ubo.updateFloat2("dryCenter", D.centerX, D.centerZ);
-      ubo.updateFloat2("dryRadii", D.radius, D.radius + D.edgeFeather);
+      ubo.updateFloat4("sandMaskRect", FIELD.x0, FIELD.z0, 1 / FIELD.w, 1 / FIELD.h);
+      ubo.setTexture("sandMaskSampler", maskTex);
     }
     getCustomCode(shaderType) {
       if (shaderType !== "fragment") return null;
@@ -625,17 +820,26 @@ float dryZoneW(vec3 p) {
         // sand by the dry-zone weight so the biome edge still feathers.
         CUSTOM_FRAGMENT_UPDATE_ALBEDO: `
 #ifdef SANDBLEND
-    float dryW = dryZoneW(vPositionW);
-    if (dryW > 0.001) {
-      // Subtle dune-grain variation from world XZ (procedural, no sampler — a
-      // texture2D inside this inlined block fails to compile in this build). Two
-      // octaves of value-noise via sines give light/dark sand patches so the floor
-      // isn't a flat fill, without ever introducing green.
-      vec2 wp = vPositionW.xz;
-      float grain = 0.6 * sin(wp.x * 0.9 + wp.y * 0.7)
-                  + 0.4 * sin(wp.x * 0.31 - wp.y * 0.43 + 1.7);
+    vec2 gmW = groundMaskW(vPositionW);
+    // Subtle grain variation from world XZ. Two octaves of value-noise via
+    // sines give light/dark patches so the replaced floors aren't a flat fill.
+    vec2 wp = vPositionW.xz;
+    float grain = 0.6 * sin(wp.x * 0.9 + wp.y * 0.7)
+                + 0.4 * sin(wp.x * 0.31 - wp.y * 0.43 + 1.7);
+    // Rock/dirt floors (mask G): REPLACE the green grass detail texture with
+    // the painted per-vertex biome colour (+ grain) so the rocky pass, the
+    // mountain mass and the muddy path read grey/brown, never grass-hued.
+#ifdef VERTEXCOLOR
+    if (gmW.g > 0.001) {
+      vec3 paintCol = clamp(vColor.rgb * (1.0 + 0.12 * grain), 0.0, 1.0);
+      surfaceAlbedo = mix(surfaceAlbedo, toLinearSpace(paintCol), gmW.g);
+    }
+#endif
+    // Desert/beach/seabed (mask R): REPLACE toward the warm sand albedo,
+    // hue-locked to sandColor with only luminance grain.
+    if (gmW.r > 0.001) {
       vec3 sandCol = clamp(sandColor + sandColorVar * grain, 0.0, 1.0);
-      surfaceAlbedo = mix(surfaceAlbedo, toLinearSpace(sandCol), dryW);
+      surfaceAlbedo = mix(surfaceAlbedo, toLinearSpace(sandCol), gmW.r);
     }
 #endif
 `,
@@ -644,7 +848,8 @@ float dryZoneW(vec3 p) {
         // to reflectivityOut, which the main scope consumes), unlike its albedo.
         CUSTOM_FRAGMENT_UPDATE_METALLICROUGHNESS: `
 #ifdef SANDBLEND
-    float dryWr = dryZoneW(vPositionW);
+    vec2 gmWr = groundMaskW(vPositionW);
+    float dryWr = max(gmWr.r, gmWr.g);   // sand AND rock/dirt floors go matte
     if (dryWr > 0.001) {
       metallicRoughness.g = mix(metallicRoughness.g, sandRoughness, dryWr);
     }
@@ -729,18 +934,27 @@ function buildAtmosphere(scene, heightAt) {
   cloudMat.diffuseColor = new B.Color3(1, 1, 1);
   cloudMat.emissiveColor = new B.Color3(0.85, 0.88, 0.95);
   cloudMat.specularColor = B.Color3.Black();
-  cloudMat.alpha = 0.55;
+  // Soft + high: at 0.55 alpha / 70u height the squashed spheres read as hard
+  // grey UFO discs from the ground and white blotches from overhead. Thinner
+  // alpha + a much flatter profile + the raised ATMOSPHERE.cloudHeight push
+  // them into the haze so they read as distant cloud. first-pass for owner eyeball
+  cloudMat.alpha = 0.25;
   cloudMat.disableLighting = true;
   const clouds = [];
   for (let i = 0; i < ATMOSPHERE.cloudCount; i++) {
     const c = B.MeshBuilder.CreateSphere("cloud" + i, { segments: 6, diameter: 1 }, scene);
     c.material = cloudMat;
     c.isPickable = false;
-    const s = 14 + Math.random() * 22;
-    c.scaling.set(s, s * 0.4, s * 0.7);
-    const a = Math.random() * Math.PI * 2;
-    const r = 30 + Math.random() * 120;
-    c.position.set(Math.cos(a) * r, ATMOSPHERE.cloudHeight + Math.random() * 25, Math.sin(a) * r);
+    const s = 22 + Math.random() * 30;            // first-pass for owner eyeball
+    c.scaling.set(s, s * 0.18, s * 0.7);
+    // Spread over the WHOLE island span (the old radial 30-150u ring clustered
+    // every cloud over the savannah centre — they read as white blotches on the
+    // grass in overhead shots). Bounds track the grid field.
+    c.position.set(
+      FIELD.x0 + 40 + Math.random() * (FIELD.w - 80),
+      ATMOSPHERE.cloudHeight + Math.random() * 25,
+      FIELD.z0 + 40 + Math.random() * (FIELD.h - 80),
+    );
     clouds.push({ mesh: c, drift: 0.4 + Math.random() * 0.6 });
   }
 
@@ -791,7 +1005,7 @@ function buildAtmosphere(scene, heightAt) {
       }
       for (const c of clouds) {
         c.mesh.position.x += c.drift * dt;
-        if (c.mesh.position.x > 150) c.mesh.position.x = -150;
+        if (c.mesh.position.x > FIELD.x0 + FIELD.w) c.mesh.position.x = FIELD.x0;
       }
     },
     // Pterosaur dive attack. Called from the game loop with the live player and
@@ -986,190 +1200,18 @@ function scatterFoliage(scene, shadow, heightAt) {
   // Solid obstacle footprints (centre + repulsion radius) the AI steers around.
   const obstacles = [];
   const inPond = (x, z) => Math.hypot(x - WATER.centerX, z - WATER.centerZ) < WATER.radius + 2;
-  // Keep foliage off the beach + out of the sea: nothing planted across most of
-  // the sand (from ~80% of the beach width inland of the coast), so the shore
-  // reads as a clean sand beach, not grass crowding the waterline.
-  const inOcean = (x, z) =>
-    x > (OCEAN.shoreX + Math.sin(z * 0.045) * 6 + Math.cos(z * 0.017) * 4) - OCEAN.beachWidth * 0.8;
-  const inArena = (x, z) => Math.sqrt(x * x + z * z) < ARENA.radius - 4 && !inPond(x, z) && !inOcean(x, z);
-  // Things that sway in the wind (cards tilt about Z).
-  const swayers = [];
-
-  // --- Trunks: real CC0 BARK PBR (albedo + normal + roughness) ------------
-  const trunk = B.MeshBuilder.CreateCylinder("trunkSrc", { height: 4, diameterTop: 0.42, diameterBottom: 0.95, tessellation: 8 }, scene);
-  const barkMat = new B.PBRMaterial("barkMat", scene);
-  barkMat.albedoTexture = tex(ENV.barkTextures.albedo, ENV.barkTiling);
-  barkMat.bumpTexture = tex(ENV.barkTextures.normal, ENV.barkTiling);
-  barkMat.metallic = 0; barkMat.roughness = 1;
-  barkMat.metallicTexture = tex(ENV.barkTextures.roughness, ENV.barkTiling);
-  barkMat.useRoughnessFromMetallicTextureGreen = true;
-  barkMat.useMetallnessFromMetallicTextureBlue = true;
-  barkMat.albedoColor = new B.Color3(ENV.trunkColor[0], ENV.trunkColor[1], ENV.trunkColor[2]);
-  barkMat.environmentIntensity = ENV.iblIntensity;
-  trunk.material = barkMat;
-  trunk.isVisible = false;
-
-  // Bleached/grey bark for dead + gnarled trees (same bark maps, drier tint).
-  const deadBarkMat = new B.PBRMaterial("deadBarkMat", scene);
-  deadBarkMat.albedoTexture = tex(ENV.barkTextures.albedo, ENV.barkTiling);
-  deadBarkMat.bumpTexture = tex(ENV.barkTextures.normal, ENV.barkTiling);
-  deadBarkMat.metallic = 0; deadBarkMat.roughness = 1;
-  deadBarkMat.albedoColor = new B.Color3(ENV.deadTrunkColor[0], ENV.deadTrunkColor[1], ENV.deadTrunkColor[2]);
-  deadBarkMat.environmentIntensity = ENV.iblIntensity;
-  // Dead trunk source (instances can't override their source's material, so
-  // gnarled trees need their own bleached-bark trunk source to instance from).
-  const deadTrunk = B.MeshBuilder.CreateCylinder("deadTrunkSrc", { height: 4, diameterTop: 0.30, diameterBottom: 0.85, tessellation: 7 }, scene);
-  deadTrunk.material = deadBarkMat; deadTrunk.isVisible = false;
-  // A bare branch-stub source (thin tapered bark cylinder) for gnarled/dead
-  // trees — instanced, angled per branch.
-  const branch = B.MeshBuilder.CreateCylinder("branchSrc", { height: 3, diameterTop: 0.08, diameterBottom: 0.3, tessellation: 5 }, scene);
-  branch.material = deadBarkMat; branch.isVisible = false;
-
-  // --- Canopy: textured alpha-cut LEAF cards (green leaf sprays) -----------
-  // One drooping-spray cluster source per palette green; each crops to one row
-  // of the leaf atlas (a single full branch spray) so cards read as foliage.
-  const leafRows = [[0.04, 0.30], [0.36, 0.62], [0.70, 0.97]]; // the 3 sprays in the atlas
-  const leafSources = [];
-  ENV.foliageGreens.forEach((tint, k) => {
-    const mat = makeCardMaterial(scene, "leafCardMat" + k, ENV.leafCardAlbedo, ENV.leafCardOpacity, tint);
-    const row = leafRows[k % leafRows.length];
-    leafSources.push(makeCardClusterSource(scene, "leafClu" + k, mat, 3, 5.5, 2.4, [0.02, 0.98], row, -0.45));
-  });
-  // Big upright frond cards for palms (steep pitch, large).
-  const frondSources = ENV.foliageGreens.map((tint, k) =>
-    makeCardClusterSource(scene, "frondClu" + k, makeCardMaterial(scene, "frondMat" + k, ENV.leafCardAlbedo, ENV.leafCardOpacity, tint),
-      2, 6.5, 3.0, [0.02, 0.98], leafRows[k % leafRows.length], -0.15));
-  // Deeper jungle-green sources for trees INSIDE the jungle thicket zone.
-  const jungleLeafSources = ENV.jungleZone.junglePalette.map((tint, k) =>
-    makeCardClusterSource(scene, "jLeafClu" + k, makeCardMaterial(scene, "jLeafMat" + k, ENV.leafCardAlbedo, ENV.leafCardOpacity, tint),
-      3, 5.5, 2.4, [0.02, 0.98], leafRows[k % leafRows.length], -0.45));
-  const jungleFrondSources = ENV.jungleZone.junglePalette.map((tint, k) =>
-    makeCardClusterSource(scene, "jFrondClu" + k, makeCardMaterial(scene, "jFrondMat" + k, ENV.leafCardAlbedo, ENV.leafCardOpacity, tint),
-      2, 6.5, 3.0, [0.02, 0.98], leafRows[k % leafRows.length], -0.15));
-  // The active palette swaps to the jungle set while building thicket trees.
-  let activePalette = { leaf: leafSources, frond: frondSources };
-  const pickGreen = (base) => activePalette.leaf[(base + (rng() < 0.4 ? 1 + (rng() < 0.5 ? 1 : 0) : 0)) % activePalette.leaf.length];
-
-  // Per-species crown builders. Each gets the trunk-top + scale and stacks
-  // textured cards (or bare branches) into a distinct silhouette.
-  function addCard(src, x, y, z, cs, ampMul, tag) {
-    const l = src.createInstance(tag);
-    l.position.set(x, y, z); l.scaling.setAll(cs); l.rotation.y = rng() * Math.PI * 2;
-    l.isPickable = false; shadow.addShadowCaster(l);
-    swayers.push({ mesh: l, base: 0, phase: rng() * Math.PI * 2, amp: ENV.windStrength * ampMul });
-    return l;
-  }
-  const SPECIES = {
-    // tall, narrow, multi-tier drooping crown
-    conifer(x, y, z, s, base, i) {
-      const top = y + 3.8 * s, H = 4.0 * s, R = 1.7 * s, n = ENV.cardsPerCanopy + 1;
-      for (let c = 0; c < n; c++) {
-        const tier = c / n, ring = R * (1 - tier * 0.85) * rand(0.4, 1.0), a = rng() * 6.283;
-        addCard(pickGreen(base), x + Math.cos(a) * ring, top + tier * H + rand(-0.2, 0.2) * s, z + Math.sin(a) * ring,
-          s * rand(0.7, 1.15) * (1 - tier * 0.35), rand(0.8, 1.4), "leaves" + i + "_" + c);
-      }
-    },
-    // shorter trunk, wide rounded low dome of cards
-    broadleaf(x, y, z, s, base, i) {
-      const top = y + 3.0 * s, H = 2.6 * s, R = 2.6 * s, n = ENV.cardsPerCanopy + 2;
-      for (let c = 0; c < n; c++) {
-        const tier = c / n, ring = R * (1 - tier * 0.55) * rand(0.5, 1.0), a = rng() * 6.283;
-        addCard(pickGreen(base), x + Math.cos(a) * ring, top + tier * H + rand(-0.2, 0.2) * s, z + Math.sin(a) * ring,
-          s * rand(0.85, 1.3) * (1 - tier * 0.2), rand(0.9, 1.5), "leaves" + i + "_" + c);
-      }
-    },
-    // bare gnarled/dead: a few splayed branch stubs, no foliage (or a wisp)
-    gnarled(x, y, z, s, base, i) {
-      const nB = 3 + Math.floor(rng() * 3);
-      for (let b = 0; b < nB; b++) {
-        const br = branch.createInstance("branch" + i + "_" + b);
-        const a = rng() * 6.283, lean = rand(0.5, 1.1);
-        br.position.set(x, y + (2.5 + rng() * 1.5) * s, z);
-        br.scaling.set(s * rand(0.6, 1.0), s * rand(0.7, 1.2), s * rand(0.6, 1.0));
-        br.rotation.set(Math.cos(a) * lean, rng() * 6.283, Math.sin(a) * lean);
-        br.isPickable = false; shadow.addShadowCaster(br);
-      }
-      // a sparse dead wisp at the top sometimes
-      if (rng() < 0.3) addCard(pickGreen(base), x, y + 4.5 * s, z, s * 0.7, 1.2, "leaves" + i + "_w");
-    },
-    // tall thin trunk, crown only at the very top: big fronds fanning up/out
-    palm(x, y, z, s, base, i) {
-      const top = y + 5.2 * s, n = 6;
-      for (let c = 0; c < n; c++) {
-        const a = (c / n) * 6.283 + rng() * 0.4;
-        const f = activePalette.frond[(base + c) % activePalette.frond.length].createInstance("leaves" + i + "_" + c);
-        f.position.set(x + Math.cos(a) * 1.1 * s, top + rand(-0.2, 0.3) * s, z + Math.sin(a) * 1.1 * s);
-        f.scaling.setAll(s * rand(0.85, 1.1));
-        f.rotation.y = a; f.rotation.x = -0.5 - rng() * 0.3; // arch outward+down
-        f.isPickable = false; shadow.addShadowCaster(f);
-        swayers.push({ mesh: f, base: f.rotation.z, phase: rng() * 6.283, amp: ENV.windStrength * 1.6 });
-      }
-    },
+  // Keep foliage on the island: nothing planted in the sea, on the beach sand
+  // or up the mountain mass (per-cell prop placement lands in the prop stage —
+  // this is just the grid-aware "don't plant in the water/sand" guard).
+  const inArena = (x, z) => {
+    const code = biomeAt(x, z);
+    return code !== "~" && code !== "B" && code !== "M" && !inPond(x, z);
   };
-  // weighted species roll (per-weight-table so each microclimate has its own mix)
-  const rollFrom = (weights) => {
-    const entries = Object.entries(weights);
-    const total = entries.reduce((a, [, w]) => a + w, 0);
-    let r = rng() * total;
-    for (const [k, w] of entries) { if ((r -= w) <= 0) return k; }
-    return entries[0][0];
-  };
-
-  // Plants one tree at (x,z): rolls a species from the local microclimate
-  // (dry corner → mostly gnarled/dead; jungle thicket → broadleaf/palm in the
-  // deeper jungle palette; open grassland → the baseline mix).
-  const buildTree = (x, z, i) => {
-    const y = heightAt(x, z);
-    const dz = dryZoneFactor(x, z);
-    const jz = jungleZoneFactor(x, z);
-    let species;
-    if (dz > 0.4 && rng() < ENV.dryZone.deadTreeBias) species = "gnarled";
-    else if (jz > 0.4) species = rollFrom(ENV.jungleZone.treeTypeWeights);
-    else species = rollFrom(ENV.treeTypeWeights);
-    const inJungle = jz > 0.4;
-    activePalette = inJungle
-      ? { leaf: jungleLeafSources, frond: jungleFrondSources }
-      : { leaf: leafSources, frond: frondSources };
-    // palms a touch taller/thinner; gnarled a touch shorter; others varied
-    const s = rand(0.7, 1.9) * (species === "palm" ? 1.15 : species === "gnarled" ? 0.9 : 1);
-    const t = (species === "gnarled" ? deadTrunk : trunk).createInstance("trunk" + i);
-    t.position.set(x, y + 2 * s, z);
-    const thin = species === "palm" ? 0.6 : species === "gnarled" ? 0.8 : 1;
-    t.scaling.set(s * rand(0.85, 1.15) * thin, s * rand(0.9, 1.3) * (species === "palm" ? 1.4 : 1), s * rand(0.85, 1.15) * thin);
-    t.checkCollisions = true;
-    shadow.addShadowCaster(t);
-    obstacles.push({ x, z, r: 1.1 * s });
-    SPECIES[species](x, y, z, s, i % activePalette.leaf.length, i);
-    activePalette = { leaf: leafSources, frond: frondSources };
-  };
-
-  // Base scatter across the arena.
-  for (let i = 0; i < ARENA.treeCount; i++) {
-    let x, z;
-    do { x = rand(-ARENA.radius, ARENA.radius); z = rand(-ARENA.radius, ARENA.radius); }
-    while (!inArena(x, z) || Math.sqrt(x * x + z * z) < 18);
-    buildTree(x, z, i);
-  }
-  // Jungle thicket densification: extra trees clustered inside the zone so the
-  // thicket reads as a genuinely denser canopy than the open grassland. Count
-  // derives from the zone's share of the arena area × (treeDensityMul − 1), so
-  // density inside the zone lands at ~treeDensityMul × the baseline.
-  const jzArea = (ENV.jungleZone.radius / ARENA.radius) ** 2;
-  const jzExtraTrees = Math.round(ARENA.treeCount * jzArea * (ENV.jungleZone.treeDensityMul - 1));
-  for (let i = 0; i < jzExtraTrees; i++) {
-    let x, z, tries = 0;
-    do {
-      const a = rng() * Math.PI * 2, rr = Math.sqrt(rng()) * ENV.jungleZone.radius;
-      x = ENV.jungleZone.centerX + Math.cos(a) * rr; z = ENV.jungleZone.centerZ + Math.sin(a) * rr;
-    } while ((!inArena(x, z) || Math.sqrt(x * x + z * z) < 18) && ++tries < 8);
-    if (inArena(x, z) && Math.sqrt(x * x + z * z) >= 18) buildTree(x, z, ARENA.treeCount + i);
-  }
-
-  // --- Rocks: real CC0 ROCK PBR on IRREGULAR displaced geometry ------------
-  // Smooth dodecahedra are gone. Each rock is a subdivided icosphere whose
-  // vertices are noise-displaced (jagged, no two alike), wearing a tiled rock
-  // albedo+normal+roughness PBR material. Rocks sit PARTIALLY BURIED (their
-  // centre dropped below ground) at varied sizes/orientations.
+  // --- Rock SOURCES: real CC0 ROCK PBR on IRREGULAR displaced geometry -----
+  // Each rock is a subdivided icosphere whose vertices are noise-displaced
+  // (jagged, no two alike), wearing a tiled rock albedo+normal+roughness PBR
+  // material. PLACEMENT moved to the grid prop layer (scatterIslandProps reads
+  // the `r` cells); only the shape/material sources are built here.
   const rockMat = new B.PBRMaterial("rockMat", scene);
   rockMat.albedoTexture = tex(ENV.rockTextures.albedo, ENV.rockTiling);
   rockMat.bumpTexture = tex(ENV.rockTextures.normal, ENV.rockTiling);
@@ -1199,34 +1241,6 @@ function scatterFoliage(scene, shadow, heightAt) {
     ico.isVisible = false;
     rockShapes.push(ico);
   }
-  const placeRock = (x, z, idx) => {
-    const s = rand(0.7, 2.6);
-    const r = rockShapes[idx % rockShapes.length].createInstance("rock" + idx);
-    // partially buried: drop the centre below the surface so it emerges from soil
-    r.position.set(x, heightAt(x, z) + s * 0.45 - s * 0.4, z);
-    r.scaling.set(s * rand(0.85, 1.2), s * rand(0.6, 1.0), s * rand(0.85, 1.2));
-    r.rotation.set(rand(0, 6), rand(0, 6), rand(0, 6));
-    r.checkCollisions = s > 1.3;
-    if (s > 1.3) obstacles.push({ x, z, r: s * 0.9 });
-    shadow.addShadowCaster(r);
-  };
-  // Base scatter across the arena.
-  for (let i = 0; i < ARENA.rockCount; i++) {
-    let x, z;
-    do { x = rand(-ARENA.radius, ARENA.radius); z = rand(-ARENA.radius, ARENA.radius); }
-    while (!inArena(x, z));
-    placeRock(x, z, i);
-  }
-  // Dry rocky biome: denser boulders clustered in the arid zone.
-  const dzExtra = Math.round(ARENA.rockCount * (ENV.dryZone.rockDensityMul - 1));
-  for (let i = 0; i < dzExtra; i++) {
-    let x, z, tries = 0;
-    do {
-      const a = rng() * Math.PI * 2, rr = Math.sqrt(rng()) * ENV.dryZone.radius;
-      x = ENV.dryZone.centerX + Math.cos(a) * rr; z = ENV.dryZone.centerZ + Math.sin(a) * rr;
-    } while (!inArena(x, z) && ++tries < 6);
-    if (inArena(x, z)) placeRock(x, z, ARENA.rockCount + i);
-  }
 
   // --- Grass: textured alpha-cut GRASS-BLADE cards ------------------------
   // Crossed-quad clumps of real cutout grass blades (Foliage001 atlas), tinted
@@ -1246,12 +1260,17 @@ function scatterFoliage(scene, shadow, heightAt) {
     grassSources.push(makeCardClusterSource(scene, "grassClu" + k, mat, 2, 1.6, 1.3, col, [0.0, 1.0], 0));
   });
   // Deeper jungle-green understorey sources for the thicket zone.
-  const jungleGrassSources = ENV.jungleZone.junglePalette.map((tint, k) =>
+  const jungleGrassSources = JUNGLE_ZONE.junglePalette.map((tint, k) =>
     makeCardClusterSource(scene, "jGrassClu" + k,
       makeCardMaterial(scene, "jGrassMat" + k, ENV.grassCardAlbedo, ENV.grassCardOpacity, tint, grassCardOpts),
       2, 1.6, 1.3, grassCols[k % grassCols.length], [0.0, 1.0], 0));
   const coverSwayers = [];
+  // Green blades belong only on the GREEN-floor biomes (savannah, clearing,
+  // forest, swamp, jungle). Never on rock/mountain/desert/beach/path/sea — the
+  // rocky pass in particular was growing floating green tufts on bare stone.
+  const GREEN_GRASS = { G: 1, C: 1, F: 1, S: 1, J: 1 };
   const placeGrassCard = (x, z, sMin, sMax, idx, tag) => {
+    if (!GREEN_GRASS[biomeAt(x, z)]) return null;
     // inside the jungle thicket the understorey uses the deeper jungle greens
     const pool = jungleZoneFactor(x, z) > 0.4 ? jungleGrassSources : grassSources;
     const src = pool[Math.floor(rng() * pool.length)];
@@ -1290,12 +1309,12 @@ function scatterFoliage(scene, shadow, heightAt) {
   // Jungle thicket understorey: extra ground cover clustered inside the zone
   // (count from the zone's area share × (grassDensityMul − 1), same derivation
   // as the thicket's extra trees) — the floor in there reads thick and humid.
-  const jzAreaG = (ENV.jungleZone.radius / ARENA.radius) ** 2;
-  const jzExtraGrass = Math.round(ENV.groundCoverCount * jzAreaG * (ENV.jungleZone.grassDensityMul - 1));
+  const jzAreaG = (JUNGLE_ZONE.radius / ARENA.radius) ** 2;
+  const jzExtraGrass = Math.round(ENV.groundCoverCount * jzAreaG * (JUNGLE_ZONE.grassDensityMul - 1));
   for (let i = 0; i < jzExtraGrass; i++) {
-    const a = rng() * Math.PI * 2, rr = Math.sqrt(rng()) * ENV.jungleZone.radius;
-    const x = ENV.jungleZone.centerX + Math.cos(a) * rr;
-    const z = ENV.jungleZone.centerZ + Math.sin(a) * rr;
+    const a = rng() * Math.PI * 2, rr = Math.sqrt(rng()) * JUNGLE_ZONE.radius;
+    const x = JUNGLE_ZONE.centerX + Math.cos(a) * rr;
+    const z = JUNGLE_ZONE.centerZ + Math.sin(a) * rr;
     if (!inArena(x, z)) continue;
     placeGrassCard(x, z, 0.6, 1.4, i, "jcover");
   }
@@ -1315,11 +1334,12 @@ function scatterFoliage(scene, shadow, heightAt) {
   let wt = 0;
   const windUpdate = (dt) => {
     wt += dt * ENV.windSpeed;
-    for (const sw of swayers) sw.mesh.rotation.z = sw.base + Math.sin(wt + sw.phase) * sw.amp;
     for (const sw of coverSwayers) sw.mesh.rotation.z = sw.base + Math.sin(wt + sw.phase) * sw.amp;
   };
 
-  return { obstacles, windUpdate };
+  // rockShapes: the grey procedural boulder sources, consumed by the prop
+  // layer's `r` cells (spec: the desert keeps THESE rocks, not the red glb pack).
+  return { obstacles, windUpdate, rockShapes };
 }
 
 // Builds the desert's hero set-dressing inside ENV.dryZone: banded reddish
@@ -1335,8 +1355,8 @@ function scatterDesertFeatures({ scene, shadow, rng, rand, heightAt, inArena, ob
   const tex = sandstoneTex;
   // disc sampler around the zone centre (sqrt for uniform area distribution)
   const sampleInZone = (rMul = 1) => {
-    const a = rng() * Math.PI * 2, rr = Math.sqrt(rng()) * D.radius * rMul;
-    return [D.centerX + Math.cos(a) * rr, D.centerZ + Math.sin(a) * rr];
+    const a = rng() * Math.PI * 2, rr = Math.sqrt(rng()) * DRY_ZONE_GEO.radius * rMul;
+    return [DRY_ZONE_GEO.centerX + Math.cos(a) * rr, DRY_ZONE_GEO.centerZ + Math.sin(a) * rr];
   };
 
   // --- Sandstone PBR: reuse the rock albedo/normal/roughness maps but tint warm
@@ -1452,8 +1472,8 @@ function scatterDesertFeatures({ scene, shadow, rng, rand, heightAt, inArena, ob
   for (let i = 0; i < D.mesaCount; i++) {
     let x, z, ok = false, tries = 0;
     while (!ok && tries++ < 40) {
-      const a = rng() * Math.PI * 2, rr = (0.35 + 0.65 * rng()) * D.radius;
-      x = D.centerX + Math.cos(a) * rr; z = D.centerZ + Math.sin(a) * rr;
+      const a = rng() * Math.PI * 2, rr = (0.35 + 0.65 * rng()) * DRY_ZONE_GEO.radius;
+      x = DRY_ZONE_GEO.centerX + Math.cos(a) * rr; z = DRY_ZONE_GEO.centerZ + Math.sin(a) * rr;
       if (!inArena(x, z)) continue;
       ok = mesaSpots.every((p) => Math.hypot(p.x - x, p.z - z) > minMesaGap);
     }
@@ -1619,6 +1639,390 @@ function scatterDesertFeatures({ scene, shadow, rng, rand, heightAt, inArena, ob
     do { [x, z] = sampleInZone(1.0); } while (!inArena(x, z) && ++tries < 6);
     if (inArena(x, z)) placeShrub(x, z);
   }
+}
+
+// ============================================================================
+// ISLAND PROP LAYER — grid-driven scatter (design/map.props.json via map.js).
+// Every placement comes from the per-cell prop grid; geometry is batched as
+// CHUNKED THIN INSTANCES: placements collect into MAP.scatterChunk-wide tiles,
+// one thin-instance clone per (tile, source mesh), each tile toggled by a
+// throttled per-prop distance cull. Matrices are baked once and frozen; no
+// scatter casts shadows (perf rules). Blocking placements append {x,z,r} AI
+// footprints to the shared obstacle list (the player is blocked by the same
+// cells via the grid test in player.js).
+// ============================================================================
+
+// Import a glb pack once.
+function importPack(scene, url) {
+  const B = window.BABYLON;
+  const slash = url.lastIndexOf("/") + 1;
+  return B.SceneLoader.ImportMeshAsync("", url.slice(0, slash), url.slice(slash), scene);
+}
+
+// Thin instances draw in source order with no per-instance depth sort, so any
+// alpha-BLENDED foliage material is coerced to alpha-TEST (sort-free, cheaper;
+// the cutout look matches the existing card foliage). Cutoff = Babylon default.
+function coerceAlphaTest(B, meshes) {
+  for (const m of meshes) {
+    const mat = m.material;
+    if (mat && mat.needAlphaBlending && mat.needAlphaBlending()) {
+      mat.transparencyMode = B.Material.MATERIAL_ALPHATEST;
+      mat.alphaCutOff = 0.4;
+    }
+  }
+}
+
+// Build instanceable SOURCES from an imported pack: per tree id, a list of
+// {mesh, local} parts where `local` maps the part into a NORMALISED frame —
+// the group's bbox bottom-centre at the origin and bbox height = targetHeight.
+// A placement matrix then just scales/yaws/translates that frame, and ground
+// clamping is exact: the frame's y=0 IS the group's lowest vertex.
+function buildPackSources(B, meshes, packDef, sources) {
+  const vertexMeshes = meshes.filter((m) => m.getTotalVertices && m.getTotalVertices() > 0);
+  meshes.forEach((m) => { m.isVisible = false; m.isPickable = false; });
+  const groups = packDef.kind === "whole"
+    ? [{ id: packDef.trees[0].id, meshes: vertexMeshes }]
+    : packDef.trees.map((t) => ({
+        id: t.id,
+        // prefix match: glb node names carry material/index suffixes
+        meshes: vertexMeshes.filter((m) => t.parts.some((p) => m.name.startsWith(p))),
+      }));
+  for (const g of groups) {
+    if (!g.meshes.length) {
+      console.warn("prop pack source has no meshes:", g.id);
+      continue;
+    }
+    // Drop baked ground-plane quads: some glbs (e.g. jungle_tree_lod2's
+    // Material.003) ship a flat horizontal slab at the trunk foot that, once
+    // normalised + scaled, reads as a dark ~11m square hovering above the grass.
+    // A genuine tree part always has real vertical thickness; a baked floor quad
+    // is zero-height. Drop any mesh whose y-extent is degenerate (<0.1% of its
+    // own footprint) so only true zero-thickness planes are culled, never bark.
+    g.meshes.forEach((m) => m.computeWorldMatrix(true));
+    g.meshes = g.meshes.filter((m) => {
+      const bb = m.getBoundingInfo().boundingBox;
+      const yExt = bb.maximumWorld.y - bb.minimumWorld.y;
+      const foot = Math.max(
+        bb.maximumWorld.x - bb.minimumWorld.x,
+        bb.maximumWorld.z - bb.minimumWorld.z,
+      );
+      return yExt > 0.001 * foot;
+    });
+    if (!g.meshes.length) {
+      console.warn("prop pack source was all ground-plane quads:", g.id);
+      continue;
+    }
+    let min = new B.Vector3(Infinity, Infinity, Infinity);
+    let max = new B.Vector3(-Infinity, -Infinity, -Infinity);
+    for (const m of g.meshes) {
+      const bb = m.getBoundingInfo().boundingBox;
+      min = B.Vector3.Minimize(min, bb.minimumWorld);
+      max = B.Vector3.Maximize(max, bb.maximumWorld);
+    }
+    const k = packDef.targetHeight / Math.max(0.0001, max.y - min.y);
+    const frame = B.Matrix.Translation(-(min.x + max.x) / 2, -min.y, -(min.z + max.z) / 2)
+      .multiply(B.Matrix.Scaling(k, k, k));
+    sources[g.id] = g.meshes.map((m) => ({ mesh: m, local: m.getWorldMatrix().multiply(frame) }));
+  }
+}
+
+// Bare thin-instance host: a clone of the source mesh (shared geometry +
+// material, identity transform, not pickable, no shadows). The caller owns
+// the matrix buffer. NOTE a mesh's thin-instance world0-3 buffers live on its
+// GEOMETRY, which clones share — so each source part mesh may host exactly
+// ONE thin-instance clone (two clones of the same part would overwrite each
+// other's matrices and only the last one would ever draw).
+function makeThinClone(B, mesh, name, mirrored) {
+  const clone = mesh.clone(name, null, true);
+  clone.parent = null;
+  clone.position.setAll(0);
+  clone.rotationQuaternion = null;
+  clone.rotation.set(0, 0, 0);
+  clone.scaling.setAll(1);
+  clone.isVisible = true;
+  clone.isPickable = false;
+  clone.receiveShadows = false;
+  // glTF imports carry a NEGATIVE-determinant root transform (RH->LH mirror).
+  // Babylon flips face orientation off the mesh's WORLD matrix determinant —
+  // but that mirror is now baked into the thin-instance MATRICES while the
+  // clone's own world matrix is identity, so without this override every glb
+  // face renders inside-out (black trees/cliffs). Batches share one handedness
+  // (same source pipeline), so the first matrix's determinant decides; the
+  // procedural rocks/canopy bake positive-determinant matrices and keep theirs.
+  if (mirrored) {
+    const baseSide = mesh.overrideMaterialSideOrientation
+      ?? (mesh.material && mesh.material.sideOrientation)
+      ?? B.Material.CounterClockWiseSideOrientation;
+    clone.overrideMaterialSideOrientation = baseSide === B.Material.ClockWiseSideOrientation
+      ? B.Material.CounterClockWiseSideOrientation
+      : B.Material.ClockWiseSideOrientation;
+  }
+  return clone;
+}
+
+// One-shot batch: realise a full matrix list on a part's single clone (for
+// builders that never re-pack, e.g. the mountain cliffs).
+function makeStaticThinClone(B, mesh, mats, name) {
+  const clone = makeThinClone(B, mesh, name, mats[0].determinant() < 0);
+  const buf = new Float32Array(mats.length * 16);
+  mats.forEach((m, i) => m.copyToArray(buf, i * 16));
+  clone.thinInstanceSetBuffer("matrix", buf, 16, true);
+  clone.thinInstanceRefreshBoundingInfo();
+  clone.freezeWorldMatrix();
+  return clone;
+}
+
+// The per-cell prop scatter itself. Returns { update, stats }: update runs the
+// throttled chunk cull; stats reports placement counts for verification.
+async function scatterIslandProps(scene, heightAt, island, obstacles, rockShapes) {
+  const B = window.BABYLON;
+  const rng = mulberry32(20260613);
+  const rand = (a, b) => a + rng() * (b - a);
+
+  // --- load every referenced pack once, build normalised sources -----------
+  const sources = {};
+  const packKeys = ["jungle", "forest", "locust", "realistic", "deadTree", "desertOldTree", "shrubs"];
+  await Promise.all(packKeys.map(async (key) => {
+    const def = TREE_PACKS[key];
+    const res = await importPack(scene, def.url);
+    coerceAlphaTest(B, res.meshes);
+    buildPackSources(B, res.meshes, def, sources);
+  }));
+  // understory variants: one whole-glb source per url (ids f0, f1, g0, ...)
+  const understoryIds = {};
+  await Promise.all(Object.keys(UNDERSTORY).filter((k) => UNDERSTORY[k].urls).map(async (code) => {
+    const cfg = UNDERSTORY[code];
+    understoryIds[code] = cfg.urls.map((_, i) => code + i);
+    await Promise.all(cfg.urls.map(async (url, i) => {
+      const res = await importPack(scene, url);
+      coerceAlphaTest(B, res.meshes);
+      buildPackSources(B, res.meshes,
+        { kind: "whole", targetHeight: cfg.targetHeight, trees: [{ id: code + i }] }, sources);
+    }));
+  }));
+
+  // --- collect placements into chunk batches --------------------------------
+  const CHUNK = MAP.scatterChunk;
+  const chunkMap = new Map();   // "code:cx,cz" -> { x, z, cullR, batches }
+  const addPlacement = (code, cullR, parts, world) => {
+    const x = world.m[12], z = world.m[14];
+    const key = code + ":" + Math.floor(x / CHUNK) + "," + Math.floor(z / CHUNK);
+    let chunk = chunkMap.get(key);
+    if (!chunk) {
+      chunkMap.set(key, chunk = {
+        x: (Math.floor(x / CHUNK) + 0.5) * CHUNK,
+        z: (Math.floor(z / CHUNK) + 0.5) * CHUNK,
+        cullR, batches: new Map(),
+      });
+    }
+    for (const part of parts) {
+      let arr = chunk.batches.get(part.mesh);
+      if (!arr) chunk.batches.set(part.mesh, arr = []);
+      arr.push(part.local.multiply(world));
+    }
+  };
+  const yawScaleAt = (x, y, z, yaw, s) =>
+    B.Matrix.Scaling(s, s, s).multiply(B.Matrix.RotationY(yaw)).multiply(B.Matrix.Translation(x, y, z));
+
+  const stats = { trees: {}, understory: {}, rocks: 0 };
+
+  // Trees + shrubs (codes T t a d s): variant uniformly off the code's mix
+  // list (the savannah list is 3 locust : 2 realistic — the spec's mix).
+  for (const code of ["T", "t", "a", "d", "s"]) {
+    const cfg = PROPS[code];
+    let n = 0;
+    for (const p of island.placements[code]) {
+      const parts = sources[cfg.trees[(rng() * cfg.trees.length) | 0]];
+      if (!parts) continue;
+      const s = rand(cfg.minScale, cfg.maxScale);
+      addPlacement(code, cfg.cullRadius, parts,
+        yawScaleAt(p.x, heightAt(p.x, p.z) - (cfg.sink ?? PROPS.treeSink), p.z, rng() * Math.PI * 2, s));
+      if (cfg.blocking) obstacles.push({ x: p.x, z: p.z, r: 1.1 * s });
+      n++;
+    }
+    stats.trees[code] = n;
+  }
+
+  // Walk-through understory (codes f g m L) — never blocks, hard 68u cull.
+  for (const code of ["f", "g", "m", "L"]) {
+    const cfg = UNDERSTORY[code];
+    const ids = understoryIds[code] || [];
+    let n = 0;
+    for (const p of island.placements[code]) {
+      const parts = sources[ids[(rng() * ids.length) | 0]];
+      if (!parts) continue;
+      addPlacement(code, UNDERSTORY.cullRadius, parts,
+        yawScaleAt(p.x, heightAt(p.x, p.z) - 0.05, p.z, rng() * Math.PI * 2, rand(cfg.minScale, cfg.maxScale)));
+      n++;
+    }
+    stats.understory[code] = n;
+  }
+
+  // Procedural grey rocks (code r — the existing boulder sources, partially
+  // buried + fully random orientation exactly like the old placeRock).
+  const rockParts = rockShapes.map((m) => ({ mesh: m, local: B.Matrix.Identity() }));
+  for (const p of island.placements.r) {
+    const s = p.biome === "M"
+      ? rand(PROPS.mountainRockScaleMin, PROPS.mountainRockScaleMax)
+      : rand(PROPS.rockScaleMin, PROPS.rockScaleMax);
+    // Bed the foot into the ground, scaled by rock size: a big boulder on a dune
+    // slope lifts ~0.5u on its downhill edge, so sink the centre ~¼ of its scale
+    // (was +0.05·s, which LIFTED rocks and left slope-side ones floating).
+    const world = B.Matrix.Scaling(s * rand(0.85, 1.2), s * rand(0.6, 1.0), s * rand(0.85, 1.2))
+      .multiply(B.Matrix.RotationYawPitchRoll(rand(0, 6), rand(0, 6), rand(0, 6)))
+      .multiply(B.Matrix.Translation(p.x, heightAt(p.x, p.z) - s * 0.25, p.z));
+    addPlacement("r", PROPS.rockCullRadius, [rockParts[(rng() * rockParts.length) | 0]], world);
+    obstacles.push({ x: p.x, z: p.z, r: s * 0.9 });
+    stats.rocks++;
+  }
+
+  // --- realise chunks + the distance cull -----------------------------------
+  // A part mesh can host only ONE thin-instance clone (see makeThinClone), so
+  // chunks can't each own a clone. Instead: one full-capacity clone per part;
+  // each chunk holds per-part matrix BLOCKS, and the cull re-packs the
+  // in-range blocks into the part's buffer + adjusts thinInstanceCount.
+  const chunks = [];
+  const stores = new Map();   // source part mesh -> { clone, buf, blocks }
+  for (const chunk of chunkMap.values()) {
+    const parts = [];
+    for (const [mesh, mats] of chunk.batches) {
+      let store = stores.get(mesh);
+      if (!store) stores.set(mesh, store = { mesh, mirrored: mats[0].determinant() < 0, blocks: [] });
+      const data = new Float32Array(mats.length * 16);
+      mats.forEach((m, i) => m.copyToArray(data, i * 16));
+      const block = { data, on: false };
+      store.blocks.push(block);
+      parts.push({ store, block });
+    }
+    // half-diagonal slack so a tile only vanishes once ALL of it is out of range
+    chunks.push({ x: chunk.x, z: chunk.z, r: chunk.cullR + CHUNK * 0.71, parts, enabled: false });
+  }
+  let cloneId = 0;
+  for (const store of stores.values()) {
+    store.clone = makeThinClone(B, store.mesh, "prop_ti_" + cloneId++, store.mirrored);
+    store.buf = new Float32Array(store.blocks.reduce((n, b) => n + b.data.length, 0));
+    store.clone.thinInstanceSetBuffer("matrix", store.buf, 16, false);
+    store.clone.freezeWorldMatrix();
+    store.clone.setEnabled(false);
+  }
+  const repack = (store) => {
+    let off = 0;
+    for (const b of store.blocks) {
+      if (!b.on) continue;
+      store.buf.set(b.data, off);
+      off += b.data.length;
+    }
+    if (off === 0) { store.clone.setEnabled(false); return; }
+    store.clone.thinInstanceCount = off / 16;
+    store.clone.thinInstanceBufferUpdated("matrix");
+    store.clone.thinInstanceRefreshBoundingInfo();
+    store.clone.setEnabled(true);
+  };
+  const applyCull = (cx, cz) => {
+    const dirty = new Set();
+    for (const ch of chunks) {
+      const want = (ch.x - cx) ** 2 + (ch.z - cz) ** 2 < ch.r * ch.r;
+      if (want === ch.enabled) continue;
+      ch.enabled = want;
+      for (const p of ch.parts) { p.block.on = want; dirty.add(p.store); }
+    }
+    for (const store of dirty) repack(store);
+  };
+  // seat the initial enabled set around the spawn (no camera exists yet)
+  applyCull(SPAWN.x, SPAWN.z);
+
+  let cullTimer = 0;
+  const update = (dt) => {
+    cullTimer -= dt;
+    if (cullTimer > 0) return;
+    cullTimer = UNDERSTORY.cullInterval;
+    const cam = scene.activeCamera;
+    if (cam) applyCull(cam.globalPosition.x, cam.globalPosition.z);
+  };
+
+  return { update, stats };
+}
+
+// MOUNTAIN WALLS — cliff.glb pieces dressing every M-region edge that faces a
+// playable cell (map.js mountainEdges, with the outward normal). Greedy
+// min-spacing walk along the edge line; varied yaw/scale; ground-clamped and
+// sunk into the rising mountain terrain. Always enabled (the wall IS the
+// landmark that funnels the player into the rocky pass) — ~30-50 pieces of a
+// 5.7k-tri mesh is cheap. Each piece registers an AI obstacle footprint.
+async function buildMountainWalls(scene, heightAt, island, obstacles) {
+  const B = window.BABYLON;
+  const cfg = MAP.cliff;
+  const rng = mulberry32(31415);
+  const res = await importPack(scene, cfg.url);
+  const sources = {};
+  buildPackSources(B, res.meshes,
+    { kind: "whole", targetHeight: cfg.targetHeight, trees: [{ id: "cliff" }] }, sources);
+  const parts = sources.cliff;
+
+  const placed = [];
+  const perMesh = new Map();
+  for (const e of island.mountainEdges) {
+    let clear = true;
+    for (const q of placed) {
+      if ((q.x - e.x) ** 2 + (q.z - e.z) ** 2 < cfg.spacing * cfg.spacing) { clear = false; break; }
+    }
+    if (!clear) continue;
+    placed.push(e);
+    const yaw = Math.atan2(e.nx, e.nz) + (rng() - 0.5) * 0.6;  // face outward, jittered — first-pass for owner eyeball
+    const s = 0.8 + rng() * 0.5;                                // varied piece size — first-pass for owner eyeball
+    // Seat the base just below the M-cell ground. (An earlier attempt to bed it
+    // on the LOWER valley-facing ground dropped the throat cliffs down into the
+    // rock-pass ENTRANCE and sealed it — the gap the player walks through relies
+    // on the wall pieces sitting up on the mountain shoulder, not in the floor.)
+    const world = B.Matrix.Scaling(s, s, s)
+      .multiply(B.Matrix.RotationY(yaw))
+      .multiply(B.Matrix.Translation(e.x, heightAt(e.x, e.z) - cfg.sink, e.z));
+    for (const part of parts) {
+      let arr = perMesh.get(part.mesh);
+      if (!arr) perMesh.set(part.mesh, arr = []);
+      arr.push(part.local.multiply(world));
+    }
+    obstacles.push({ x: e.x, z: e.z, r: cfg.obstacleRadius * s });
+  }
+  let i = 0;
+  for (const [mesh, mats] of perMesh) makeStaticThinClone(B, mesh, mats, "cliff_ti_" + i++);
+  return { count: placed.length };
+}
+
+// FAKED JUNGLE INTERIOR — the spec's cheap canopy mass over the ~7k unseen
+// interior tree cells: one squashed dark unlit blob per cellStride² block,
+// sized to overlap its neighbours so the wall reads deep behind the real
+// shell trees without geometry. One mesh + thin instances, never culled.
+function buildJungleCanopy(scene, heightAt, island) {
+  const B = window.BABYLON;
+  const C = MAP.canopy;
+  const rng = mulberry32(99);
+  const src = B.MeshBuilder.CreateSphere("jungleCanopySrc", { segments: 6, diameter: 1 }, scene);
+  const mat = new B.StandardMaterial("jungleCanopyMat", scene);
+  mat.diffuseColor = B.Color3.Black();
+  mat.specularColor = B.Color3.Black();
+  mat.emissiveColor = new B.Color3(C.color[0], C.color[1], C.color[2]);
+  mat.disableLighting = true;
+  src.material = mat;
+  src.isPickable = false;
+  src.receiveShadows = false;
+  const seen = new Set();
+  const mats = [];
+  for (const cell of island.jungleInterior) {
+    const key = Math.floor(cell.x / C.cellStride) + "," + Math.floor(cell.z / C.cellStride);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const d = C.cellStride * (1.6 + rng() * 0.8);   // blob diameter overlaps neighbours — first-pass for owner eyeball
+    mats.push(B.Matrix.Scaling(d, d * 0.45, d)
+      .multiply(B.Matrix.RotationY(rng() * Math.PI))
+      .multiply(B.Matrix.Translation(cell.x, heightAt(cell.x, cell.z) + C.height, cell.z)));
+  }
+  const buf = new Float32Array(mats.length * 16);
+  mats.forEach((m, i) => m.copyToArray(buf, i * 16));
+  src.thinInstanceSetBuffer("matrix", buf, 16, true);
+  src.thinInstanceRefreshBoundingInfo();
+  src.freezeWorldMatrix();
+  return { count: mats.length };
 }
 
 // small deterministic PRNG

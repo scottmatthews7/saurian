@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Saurian UI screens — click-through preview</title>
+  <!-- Stub config.js so the HUD renders even while the game modules are mid-rewrite. -->
+  <script type="importmap">
+    { "imports": { "/src/config.js": "data:text/javascript,export const JUICE = { lowHealthThreshold: 0.35 };" } }
+  </script>
+  <style>
+    #previewBar { position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+      z-index: 99999; display: flex; gap: 8px; background: rgba(10, 14, 12, 0.9);
+      padding: 8px 10px; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; }
+    #previewBar button { font: 600 13px/1 sans-serif; letter-spacing: 0.08em; color: #ddd;
+      background: #1d2420; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 4px;
+      padding: 7px 12px; cursor: pointer; text-transform: uppercase; }
+    #previewBar button:hover { background: #2a342e; color: #fff; }
+  </style>
+</head>
+<body>
+  <div id="previewBar">
+    <button data-s="loading">Loading</button>
+    <button data-s="start">Start</button>
+    <button data-s="win">Win</button>
+    <button data-s="death">Death</button>
+    <button data-s="pause">Pause</button>
+  </div>
+  <script type="module">
+    const html = await (await fetch("/index.html")).text();
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    doc.querySelectorAll("script").forEach((s) => s.remove());   // no game boot
+    document.head.append(...[...doc.head.children].filter((n) => n.tagName === "STYLE"));
+    document.body.append(...doc.body.children);
+    const { createHUD } = await import("/src/hud.js");
+    const hud = createHUD();
+    const loading = document.getElementById("loading");
+    const banner = document.getElementById("banner");
+    const show = {
+      loading: () => { loading.style.display = ""; hud.setLoad && hud.setLoad("Waking the T-Rex…"); },
+      start: () => hud.showTitle("Best: 2:31"),
+      win: () => hud.showBanner("ESCAPED", "You survived 4:12 · score 3,860 (best!). Press R to run it again.", "win"),
+      death: () => hud.showBanner("DEVOURED", "You survived 2:07 · score 1,240. Best: 2:31. Press R to retry.", "lose"),
+      pause: () => hud.showBanner("PAUSED", "Press P to resume.", "start"),
+    };
+    document.getElementById("previewBar").addEventListener("click", (e) => {
+      const s = e.target.dataset && e.target.dataset.s;
+      if (!s) return;
+      loading.style.display = "none";
+      banner.className = ""; banner.innerHTML = "";
+      show[s]();
+    });
+    // open on the loading screen
+  </script>
+</body>
+</html>

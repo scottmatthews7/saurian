@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Saurian UI screens harness</title>
+  <!-- Stub config.js so the HUD can be driven even while the game modules are
+       mid-rewrite. hud.js only reads JUICE.lowHealthThreshold. -->
+  <script type="importmap">
+    { "imports": { "/src/config.js": "data:text/javascript,export const JUICE = { lowHealthThreshold: 0.35 };" } }
+  </script>
+</head>
+<body>
+  <script type="module">
+    const html = await (await fetch("/index.html")).text();
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    doc.querySelectorAll("script").forEach((s) => s.remove()); // no game boot here
+    document.head.append(...[...doc.head.children].filter((n) => n.tagName === "STYLE"));
+    document.body.replaceChildren(...doc.body.children);
+    const { createHUD } = await import("/src/hud.js");
+    window.__hud = createHUD();
+    window.__ready = true;
+  </script>
+</body>
+</html>

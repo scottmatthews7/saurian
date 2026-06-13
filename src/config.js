@@ -2,38 +2,206 @@
 // stylised arcade chase game — not derived from any external benchmark.
 // Adjust here only; nothing below should hardcode gameplay numbers.
 
-// WORLD overhaul: the arena is DOUBLED from radius 90 -> 180 (owner: "expand the
-// map by double the size"). Everything that derives from the radius — terrain
-// generation, heightAt, biome zone placement, dino/egg/prop spawn ranges, the
-// minimap, AI wander/return bounds — reads ARENA.radius, so they all scale. The
-// scatter COUNTS are raised ~4x (area scales with radius^2) so the bigger map
-// doesn't read empty; all instanced, so the draw cost stays flat.
+// SIGNED-OFF ISLAND MAP (design/MAP_SPEC.md, 2026-06-12). The authoritative
+// geometry is the 1u biome GRID in design/map.grid.json + the per-cell prop
+// layer in design/map.props.json + the placed assets/territories/spawn in
+// design/map.json. src/map.js loads them at boot; world.js builds the terrain,
+// ground paint, props and walls from them. ARENA.radius remains only a big
+// failsafe disc clamp (the grid's impassable cells are the real boundary).
 export const ARENA = {
-  radius: 180,         // playable circle radius (world units) — DOUBLED from 90
-  groundSize: 440,     // ground plane edge length (= 2 × the old 220, tracks the radius)
+  radius: 700,         // failsafe bounding-disc clamp — encloses the whole grid (492x972 cells)
+  groundSize: 1400,    // legacy size driver for the sky dome / pollen box (the terrain itself is sized from the grid)
   fogDensity: 0.012,   // exponential fog
-  treeCount: 260,      // scattered trees (~4× the old 70 — area grew 4× with the doubled radius; instanced)
-  rockCount: 130,      // scattered rocks (~4× the old 36; instanced)
-  grassPatches: 1200,  // mid-field grass cards (~4× the old 320; instanced)
+  // Grass cards SWAY every frame near the camera (windUpdate) — see ENV.
+  grassPatches: 2000,  // mid-field grass cards over the savannah/clearing (instanced) — first-pass for owner eyeball
+};
+
+// MAP — how the design/ grid becomes terrain + ground paint + walls. All values
+// first-pass for owner eyeball unless annotated otherwise.
+export const MAP = {
+  gridUrl: "design/map.grid.json",
+  propsUrl: "design/map.props.json",
+  // Per-cell base terrain height (metres) by biome code, BEFORE smoothing.
+  // Forest/savannah/jungle/swamp floors are FLAT (spec); desert + rocky add the
+  // dune undulation on top (dune weight mask); mountains rise into a wall the
+  // cliff glbs dress; sea drops to a seabed (OCEAN.seaLevel is -1.4).
+  cellHeights: {
+    "~": -8.5,   // seabed (~7 m of water off the coast) — first-pass for owner eyeball
+    B: 0.1,      // beach: low sand berm just above the waterline
+    D: 2.0, R: 2.4, G: 2.0, F: 2.0, J: 2.0, C: 2.0, P: 2.0,
+    S: 0.6,      // swamp sits low + wet (the murky pool is carved deeper by WATER)
+    M: 26,       // mountain mass height — first-pass for owner eyeball (cliff glbs face the walls)
+  },
+  heightBlurPasses: 3, heightBlurRadius: 3,  // box-blur smoothing of the cell heights (organic coast/feet slopes) — first-pass
+  maskBlurPasses: 2, maskBlurRadius: 4,      // smoothing for the dune/desert-air weight masks — first-pass
+  // GROUND PAINT: per-biome albedo tint multiplied onto the tiled grass detail
+  // texture (exactly how the old grassTint vertex colour worked — the savannah
+  // entry IS ENV.grassTint so the approved grassland look carries over verbatim).
+  // sandWeights drive the in-shader sand REPLACE (the approved desert system).
+  // All non-savannah tints are first-pass for owner eyeball.
+  tints: {
+    G: [0.66, 0.72, 0.52],   // savannah = ENV.grassTint (owner-approved, verbatim)
+    C: [0.68, 0.72, 0.50],   // clearing: same grass, a touch dustier/trodden
+    F: [0.42, 0.54, 0.36],   // forest floor: deeper green
+    J: [0.26, 0.38, 0.26],   // thick jungle: dark humid floor
+    S: [0.38, 0.40, 0.28],   // swamp: murky olive-brown
+    P: [0.36, 0.27, 0.17],   // muddy path: wet brown dirt (distinct from grass)
+    R: [0.62, 0.60, 0.55],   // rocky pass: grey stone rubble
+    M: [0.52, 0.50, 0.46],   // mountain: bare grey
+    D: [0.92, 0.80, 0.58],   // desert (under the sand replace — ENV.dryZone tint)
+    B: [0.95, 0.88, 0.68],   // beach (under the sand replace)
+    "~": [0.55, 0.50, 0.42], // seabed: wet sand
+  },
+  sandWeights: { D: 1, B: 1, "~": 0.6 },   // where the in-shader SAND albedo replaces the grass detail
+  jungleShellDepth: 4,        // J tree cells within this many cells of a non-J cell get REAL trees (1,009 measured — spec budget 1,000-1,500); the interior is faked
+  mountainRockShellDepth: 4,  // mountain prop-rocks render only this close to the visible face
+  // Faked jungle interior: a dark canopy mass of unlit blobs over the interior
+  // tree cells (the player can never enter — only the shell is seen up close).
+  canopy: {
+    cellStride: 6,             // one canopy blob per ~6x6 interior cells — first-pass
+    height: 11,                // blob centre height above ground (≈ jungle tree canopy line)
+    color: [0.10, 0.17, 0.10], // near-black jungle green
+  },
+  // Mountain walls from cliff.glb (design/map.json wallAssets).
+  cliff: {
+    url: "assets/models/cliff.glb",
+    targetHeight: 26,        // metres tall per cliff piece — first-pass for owner eyeball
+    spacing: 26,             // min gap (u) between placed cliff pieces along the wall
+    sink: 2.5,               // metres bedded into the rising mountain terrain
+    obstacleRadius: 9,       // AI-avoidance footprint radius (u) per piece — first-pass for owner eyeball
+  },
+  // Chunked thin-instance scatter: placements batch into square tiles this wide;
+  // a whole tile toggles with the per-prop distance cull. First-pass for owner eyeball.
+  scatterChunk: 48,
+};
+
+// SPAWN — the player's crash-land point inside the jungle CLEARING (design/
+// map.json spawn). The plane + pilot/GPS/health vignette sit RELATIVE to this.
+export const SPAWN = { x: 0, z: -250 };
+
+// BOAT — THE GOAL. Floats IN THE SEA just off the north beach tip (design/
+// map.json). Reaching within winRadius of it from the waterline = WIN (game.js).
+// Pure scenery otherwise (no AI/physics; a shadow caster). The source glb is
+// normalised by its OWN longest axis to targetLength — never a hardcoded scale.
+// LICENCE: Sketchfab model, licence UNKNOWN — MUST be licence-checked + credited
+// before any public ship (flagged in the report; do not publish until verified).
+export const BOAT = {
+  url: "assets/models/fishing_boat.glb",
+  position: { x: 0, z: 582 },   // design/map.json — in the sea off the beach tip
+  targetLength: 14,       // metres along the longest axis — a small fishing boat (~12-15 m)
+  // Owner: STERN points out to sea (away from the beach — i.e. roughly north,
+  // the sea is past the north beach tip on this map) with ~10° off that axis so
+  // it doesn't look mechanically aligned. The model's bow points along its
+  // local -X after import; yaw -90°+10° points the bow south at the beach, so
+  // the stern faces the open sea (re-verified by screenshot on the new map —
+  // the old +90° value pointed the bow seaward).
+  yaw: -Math.PI / 2 + (10 * Math.PI) / 180,
+  // Riding draft (owner: it sat too deep). Only a shallow fraction of the hull
+  // beds below the waterline so it reads as floating, not half-sunk.
+  waterlineFraction: 0.12, // first-pass for owner eyeball
+  // Gentle at-anchor motion: slow vertical bob + a slight pitch/roll sway
+  // (subtler + slower than the GPS hover treatment). First-pass for owner eyeball.
+  bobAmplitude: 0.12,     // metres of vertical travel
+  bobSpeed: 0.5,          // radians/sec of the bob sine (slow swell)
+  swayAmplitude: 0.02,    // radians of pitch/roll sway
+  swaySpeed: 0.35,        // radians/sec of the sway sines
+  winRadius: 16,          // reaching within this many world units of the boat centre = WIN (spec)
 };
 
 // CRASHED PLANE — static set-dressing at the player spawn (the jungle-clearing
 // wreck the survivor wakes beside). Pure visual: no physics, no AI, no collider.
 // The source glb's bbox is tiny (~0.6u), so the loader normalises by the model's
-// own longest axis to targetLength — never a hardcoded scale.
+// own longest axis to targetLength — never a hardcoded scale. Position = SPAWN +
+// offset (the wreck lies BESIDE the survivor's crash point on the south lobe).
 export const CRASHED_PLANE = {
   url: "assets/models/crashed_plane.glb",
-  targetLength: 9,        // metres along the longest axis — a small light aircraft (Cessna 172 ≈ 8.3 m); task brief "~8-10 m"
-  // Offset from the player spawn (world origin). The plane is ~9 m long (half ≈
-  // 4.5 m); player collider radius is PLAYER.radius (1.1). 7 m clears the fuselage
-  // half-extent + the collider + a margin so the survivor wakes BESIDE the wreck,
-  // not inside it.
-  offset: { x: 6, z: -4 },
+  // Owner: "too small — at least 2× the size". DOUBLED from 9 → 18 m along the
+  // longest axis (a bigger downed aircraft wreck, beyond a Cessna 172's ~8.3 m).
+  // The loader re-beds it on terrain and rebuilds its box collider + AI obstacle
+  // footprint from the SCALED bbox, so doubling this propagates automatically.
+  targetLength: 18,       // metres along the longest axis — DOUBLED from 9 (owner: ≥2×)
+  // Offset from SPAWN realising the design/map.json placement (plane at 8,-244).
+  offset: { x: 8, z: 6 },
   yaw: 2.3,               // radians — heading (arbitrary); the wreck just lies flat on the ground
   // Owner: lay it FLAT on the ground — no pitch, no roll.
   pitch: 0,               // radians (flat)
   roll: 0,                // radians (flat)
   sink: 0.3,              // metres pushed below ground so the belly/wing beds into the soil, not floating
+};
+
+// SPAWN SET-DRESSING — the canonical map's "dead body with GPS, marked X, just NW
+// of the plane" (USER_WISHLIST.md CANONICAL MAP), plus a medkit beside the wreck.
+// All three sit RELATIVE to the placed plane: the loaders take the plane's final
+// world position and add these offsets, so moving the plane carries them along.
+// Offsets are in world units in the ground plane; the loaders bed each prop on
+// the terrain via heightAt and normalise it by its OWN longest axis (the source
+// bboxes are arbitrary units) — never a hardcoded scale.
+
+// DEAD PILOT — a tactical-soldier model laid PRONE (on its back) on the ground
+// just NW of the plane. The source glb imports STANDING with its head-to-foot
+// length along Y (≈1.9 native units = its longest axis); the loader normalises
+// that longest axis to bodyLength metres, then rotates it -90° about X so the
+// upright figure tips onto its back and the body lies flat along the ground.
+export const DEAD_PILOT = {
+  url: "assets/models/dead_pilot.glb",
+  // design/map.json puts the pilot at (-20,-262), but that cell is J (the
+  // impassable jungle tree-wall, with a tree ON the cell) — the body would be
+  // swallowed by trees the player can never reach, and MAP_SPEC says the pilot
+  // vignette is IN the clearing. Nudged to the nearest clearing cells, world
+  // (-8,-256), still SW of the plane + apart from the wreck — first-pass for owner eyeball.
+  offset: { x: -16, z: -12 },
+  // The player/human model is 2.0 u ≈ 1.8 m tall (PLAYER.height), so ~1.1 u/metre.
+  // A prone adult body is ~1.8 m head-to-foot ⇒ ~2 u long lying down. Normalising
+  // the model's longest (standing-height) axis to 2 u gives a human-scale corpse.
+  bodyLength: 2.0,        // metres along the body's longest (head-to-foot) axis
+  prone: -Math.PI / 2,    // radians about X — tips the standing figure onto its back
+  yaw: 1.2,               // radians heading so it doesn't lie axis-aligned (sprawled)
+  sink: 0.1,              // metres pressed into the soil so the back beds, not floating
+};
+
+// GPS DEVICE — a small handheld unit HOVERING above the dead pilot: the objective
+// the player loots (canonical map: "GPS unlocks radar"). It gently bobs up/down
+// and slowly spins like a collectible, and glows so it reads as the objective.
+// The bob/spin run on scene.onBeforeRenderObservable inside the loader (no
+// game-loop wiring) and are framerate-independent (scaled by engine deltaTime).
+export const GPS_DEVICE = {
+  url: "assets/models/gps_device.glb",
+  // Sits directly over the pilot: same offset as DEAD_PILOT, lifted in the air.
+  offset: { x: -16, z: -12 },
+  // Owner: at least 50% BIGGER (~0.6 → ~0.95 u) so it reads as a clear device.
+  size: 0.95,             // metres along the longest axis — a clearly visible handheld unit
+  // Owner: stand it UPRIGHT (screen facing out), not lying flat. A -90° tilt about
+  // X stands the (flat-imported) unit on end; the spin then rotates it about its
+  // own vertical while staying upright. (Applied in loadGPS.)
+  uprightTilt: -Math.PI / 2, // radians about X — stand the unit on end
+  hoverHeight: 1.6,       // metres the unit floats above the body
+  bobAmplitude: 0.18,     // metres of vertical bob travel (gentle collectible float)
+  bobSpeed: 1.6,          // radians/sec of the bob sine (a slow, calm pulse)
+  spinSpeed: 0.9,         // radians/sec the unit rotates about its vertical axis (slow spin)
+  // Owner: the bright green-cyan emissive made a glowing-blob HALO. Toned right
+  // down to a faint near-neutral warm glow — reads as a device catching light,
+  // not a neon orb.
+  emissive: { r: 0.10, g: 0.11, b: 0.10 },  // very subtle near-neutral self-illumination
+};
+
+// HEALTH PACK — a small medkit beside the plane, on the terrain (canonical map:
+// "health pack in the wreck → into the pack"). VISUAL-ONLY set-dressing for now
+// (not wired as a functional heal — flagged as a follow-up); a slight emissive so
+// it's noticeable beside the wreck.
+export const HEALTH_PACK = {
+  url: "assets/models/health_pack.glb",
+  // design/map.json puts the medkit at (26,-262) — a J (impassable jungle-wall)
+  // cell the player can never reach. Nudged inside the clearing to world
+  // (2,-250), beside the wreck clear of the wing line — first-pass for owner eyeball.
+  offset: { x: -6, z: -6 },
+  // Owner: cardboard-box sized + FLOAT + slow spin (collectible style), like the
+  // GPS — prioritise visibility over realism.
+  size: 0.6,              // metres along the longest axis — clearly visible collectible
+  hoverHeight: 1.5,       // metres it floats above the ground (collectible float)
+  bobAmplitude: 0.18,     // metres of vertical bob travel
+  bobSpeed: 1.6,          // radians/sec of the bob sine
+  spinSpeed: 1.0,         // radians/sec it rotates about its vertical axis
+  emissive: { r: 0.55, g: 0.08, b: 0.08 },  // red self-illumination so the medkit reads as an objective
 };
 
 // DESERT SET-DRESSING — a small fossil vignette in the dry zone (ENV.dryZone,
@@ -51,7 +219,7 @@ export const CRASHED_PLANE = {
 // fraction of its (rolled) height shows above the sand — a part-excavated dig.
 export const STEGO_SKELETON = {
   url: "assets/models/stego_skeleton.glb",
-  position: { x: -70, z: -118 },  // desert core (ENV.dryZone centre -70,-120), inside arena radius 180
+  position: { x: -26, z: 452 },  // desert sand near the desert centre (~0,432), west of the direct route (grid code D) — first-pass for owner eyeball
   targetLength: 8,        // metres along the longest axis — a real Stegosaurus is ~7-9 m nose-to-tail
   // Fallen-on-its-side attitude. Roll ~86° lays it on a flank; a small pitch +
   // off-axis yaw stop it looking deliberately placed (it slumped and sank).
@@ -64,15 +232,26 @@ export const STEGO_SKELETON = {
   buriedFraction: 0.55,   // 0..1 of the rolled bbox height pushed under the sand surface
 };
 
-// OLD DEAD TREE — a bare, sun-bleached tree standing UPRIGHT on the sand a few
-// metres from the fossil. The source glb's tallest axis ≈ 1.9 native units;
-// normalised to targetHeight metres. Slight yaw so it isn't axis-aligned.
+// OLD DEAD TREE — the desert vignette partner to the skeleton (restored: the
+// island remap dropped this block but setdressing.js/game.js still load it).
+// Re-aimed at the skeleton's NEW desert spot (grid code D) — first-pass for owner eyeball.
 export const OLD_TREE = {
   url: "assets/models/old_tree.glb",
-  position: { x: -66, z: -122 },  // ~4.5 m from the skeleton — a desert vignette pairing
+  position: { x: -22, z: 448 },  // ~5 m from the relocated skeleton — the same vignette pairing
   targetHeight: 8,        // metres tall — a real mature tree is ~6-10 m
   yaw: 2.1,               // radians — arbitrary heading so it doesn't face the axes
   sink: 0.2,              // metres pushed below ground so the trunk base beds into the sand, not floating
+};
+
+// RAPTOR NEST — in the thick-jungle tree-wall just off the clearing (design/
+// map.json). Static scenery the player glimpses through the treeline; the
+// raptor territory is anchored nearby. Normalised by its own longest axis.
+export const RAPTOR_NEST = {
+  url: "assets/models/raptor_nest.glb",
+  position: { x: -40, z: -283 },  // design/map.json — inside the jungle wall, off the clearing
+  targetLength: 2.6,      // metres across — a large raptor nest (first-pass for owner eyeball)
+  yaw: 0.8,               // radians — arbitrary heading so it doesn't face the axes
+  sink: 0.08,             // metres bedded into the jungle floor
 };
 
 export const PLAYER = {
@@ -89,6 +268,10 @@ export const PLAYER = {
   jumpSpeed: 9,
   gravity: -22,
   radius: 1.1,         // collision ellipsoid
+  // Island grid walls (impassable J/M biomes + blocking-prop cells): how far
+  // ahead of the player's centre the cell test probes. Small so the ~2.2u muddy
+  // path stays comfortably walkable — first-pass for owner eyeball.
+  wallFeather: 0.35,
   height: 2.0,
   maxHealth: 100,
   attackRange: 4.5,
@@ -335,6 +518,12 @@ export const DINO_VARIANTS = {
     emissive: { r: 0.04, g: 0.05, b: 0.06 },
     diet: "herbivore",
     healthMul: 1.4,
+    // DISABLED: the sauropod slot (kind "apatosaurus") now loads the hi-poly
+    // textured brachiosaurus_hi_anim.glb directly (MODELS.apatosaurus), so this
+    // tint+stretch variant on the low-poly rig would spawn a redundant, distorted
+    // second long-neck painted over the same model. Retired into the one hi-poly
+    // brachiosaurus. (Owner: "replace the slot".)
+    disabled: true,
   },
   // Compsognathus — tiny fast scavenger; reuse the raptor rig, much smaller, a
   // greenish-yellow. Skittish herbivore that darts about (no charge — it bolts).
@@ -349,54 +538,25 @@ export const DINO_VARIANTS = {
   },
 };
 
-// PER-SPECIES TERRITORIES (owner: "restricting dinosaurs to operate in certain
-// areas so they're not running around in random areas"). Each species has a
-// home REGION on the doubled map: a centre (world x,z) + radius, plus the BIOME
-// it belongs to (for the PRD geography sections). The AI enforces this as a SOFT
-// boundary (ai.js, applyTerritory): a dino wandering/chasing past its territory
-// edge feels an inward pull and loses interest in chasing prey beyond it, so it
-// turns back rather than roaming the whole map — but territories are LARGE (not
-// cages) so the predator hunt stays fun. Centres/radii track the biome layout
-// set above (pond W, desert SW, jungle N, ocean E, open plains centre).
-//
-//   biome   — the zone this species operates in (matches the PRD geography text)
-//   centerX/centerZ/radius — the home region on the radius-180 map
-//   edgeSoftness — world units before the edge where the inward pull ramps in
-//                  (the soft band; bigger = gentler turn-back)
-//   leashHard — absolute outer limit: a dino is never pulled hard until this far
-//               past its radius (so a committed chase can briefly overrun the
-//               soft edge before being reined in — keeps hunts from feeling
-//               like a wall). A multiple of the soft band.
+// PER-SPECIES TERRITORIES — design/map.json (SIGNED OFF). Each dino gets a
+// centre + radius + a BIOME MASK (`biomes`: the grid cell codes it may enter).
+// The MASK is the real constraint (M1: "a dino may ONLY enter cells whose code
+// is in its biomes list") — ai.js enforces it as a hard movement bound; the
+// radius is just a loose cap with the existing soft-pull behaviour.
+//   edgeSoftness — world units before the radius edge where the soft inward
+//                  pull ramps in (first-pass for owner eyeball, ~20% of radius).
 export const TERRITORY = {
-  // T-Rex — dry/rocky + open plains. A LARGE central+south-west range so the
-  // apex hunt roams the open valley and the desert margin, but not the far
-  // northern jungle or the eastern coast.
-  trex: { biome: "dry rocky margin & open plains", centerX: -40, centerZ: -40, radius: 130, edgeSoftness: 24 },
-  // Raptors — the jungle thicket & its edges (north). Fast flankers that stalk
-  // out of the treeline; their range hugs the northern jungle.
-  raptor: { biome: "jungle thicket & its edges", centerX: 10, centerZ: 110, radius: 95, edgeSoftness: 22 },
-  // Sauropods — open plains (the central valley). Big placid grazers stay in
-  // the open middle ground.
-  apatosaurus: { biome: "open plains", centerX: 0, centerZ: 0, radius: 120, edgeSoftness: 24 },
-  brachiosaurus: { biome: "open plains", centerX: 0, centerZ: 0, radius: 120, edgeSoftness: 24 },
-  // Stegosaurus / Triceratops — plains & the forest edge (north-of-centre,
-  // overlapping the jungle fringe where they browse).
-  stegosaurus: { biome: "open plains & forest edge", centerX: 5, centerZ: 55, radius: 110, edgeSoftness: 22 },
-  triceratops: { biome: "open plains & forest edge", centerX: 5, centerZ: 55, radius: 110, edgeSoftness: 22 },
-  // Parasaurolophus — plains/forest edge, like the other crested browsers.
-  parasaur: { biome: "open plains & forest edge", centerX: 5, centerZ: 45, radius: 110, edgeSoftness: 22 },
-  // --- Variant herbivores -------------------------------------------------
-  // Ankylosaurus — armoured plains grazer (open valley, south-of-centre).
-  ankylosaurus: { biome: "open plains", centerX: -10, centerZ: -20, radius: 100, edgeSoftness: 22 },
-  // Pachycephalosaurus — dry scrub at the desert edge (south-west fringe).
-  pachycephalosaurus: { biome: "dry scrub & plains margin", centerX: -45, centerZ: -75, radius: 90, edgeSoftness: 22 },
-  // Compsognathus — skittish little scavengers around the jungle edge.
-  compsognathus: { biome: "jungle edge & plains", centerX: 15, centerZ: 80, radius: 100, edgeSoftness: 22 },
-  // Spinosaurus — WETLAND/swamp (the western pond), for when it returns (it is
-  // currently disabled from spawning; see DINO_VARIANTS.spinosaurus).
-  spinosaurus: { biome: "wetland & swamp (western pond)", centerX: -78, centerZ: 56, radius: 70, edgeSoftness: 20 },
-  // Plesiosaur (marine) — the eastern OCEAN, for the future marine reptile.
-  plesiosaur: { biome: "the eastern ocean", centerX: 150, centerZ: 0, radius: 90, edgeSoftness: 20 },
+  // M1 roster ONLY (9 entries, design/map.json). Centres validated against the
+  // grid by tools/map_check.mjs.
+  raptor: { biomes: ["J", "C", "P", "D", "R"], centerX: 0, centerZ: -230, radius: 800, edgeSoftness: 60 },
+  compsognathus: { biomes: ["G"], centerX: 40, centerZ: -120, radius: 90, edgeSoftness: 25 },
+  parasaur: { biomes: ["G"], centerX: -30, centerZ: -60, radius: 95, edgeSoftness: 25 },
+  stegosaurus: { biomes: ["F"], centerX: -112, centerZ: 70, radius: 72, edgeSoftness: 20 },
+  trex: { biomes: ["G"], centerX: 0, centerZ: 35, radius: 185, edgeSoftness: 40 },
+  apatosaurus: { biomes: ["G"], centerX: 5, centerZ: 90, radius: 150, edgeSoftness: 35 },
+  triceratops: { biomes: ["G"], centerX: -20, centerZ: 0, radius: 120, edgeSoftness: 30 },
+  ankylosaurus: { biomes: ["S"], centerX: 125, centerZ: 95, radius: 50, edgeSoftness: 15 },
+  pachycephalosaurus: { biomes: ["D"], centerX: 0, centerZ: 432, radius: 70, edgeSoftness: 20 },
   // Multiplier on edgeSoftness giving the hard outer leash (how far a committed
   // chase may overrun the soft edge before a firm inward pull). Shared by all.
   leashHardMul: 2.0,
@@ -535,25 +695,20 @@ export const TOOLS = {
 // raptor and ticks gentle damage — a terrain hazard to route around (or risk
 // crossing as a shortcut). The T-Rex and herd avoid it. Design choice.
 export const WATER = {
-  // INLAND pond/wetland — distinct from the new eastern OCEAN (see OCEAN below).
-  // On the doubled map (radius 180) it sits in the WEST half so it doesn't crowd
-  // the spawn or the ocean; scaled up to read on the bigger valley.
-  centerX: -78,         // pond centre (world units), west of the nest
-  centerZ: 56,
-  radius: 26,           // surface radius (up from 17 to suit the doubled map)
-  depth: 1.6,           // how far below local ground the basin sinks
-  slowFactor: 0.45,     // player speed multiplier while WADING (shallow edge)
-  damagePerSec: 4,      // health drained per second while shallow-wading
-  level: 0.2,           // water surface height above the pond-rim ground
-  // DEEP water: past this fraction of the radius (toward the centre) the basin
-  // is deep enough to swim rather than wade. The basin profile is a smoothstep
-  // bowl WATER.depth deep at the centre, easing to 0 at the rim, so the inner
-  // disc is where the human's feet leave the bottom. Design choice tuned so the
-  // shallow wading ring (where the old slow+drain hazard still applies) stays a
-  // readable band around a genuine swimmable middle.
-  deepFraction: 0.6,    // 0..1 of the radius inside which water counts as deep (swim)
-  swimSlowFactor: 0.55, // player speed multiplier while SWIMMING (slower than land, a touch quicker than the wade crawl)
-  swimSurfaceOffset: -0.45, // how far the swimming human's root sits below the water surface (head/shoulders out)
+  // SWAMP POOL — the murky water at the heart of the spec's swamp (`S` cells,
+  // centroid ~125,98, ~50 m across). The existing pond system carries over as
+  // the swamp's wading hazard: slow + a gentle health drain, reeds at the rim.
+  centerX: 125,         // swamp centroid (grid S region)
+  centerZ: 98,
+  radius: 22,           // murky pool within the ~60u-wide swamp — first-pass for owner eyeball
+  depth: 1.2,           // basin carve below the (already low) swamp floor
+  slowFactor: 0.45,     // player speed multiplier while WADING
+  damagePerSec: 4,      // health drained per second while wading the murk
+  level: 0.2,           // water surface height above the pool-rim ground
+  // Wade-only murk: no deep-swim core (the swamp is a hazard, not a lake).
+  deepFraction: 0,      // 0 = nowhere counts as deep water (swim system dormant)
+  swimSlowFactor: 0.55, // (retained for the player's dormant swim branch)
+  swimSurfaceOffset: -0.45,
 };
 
 // OCEAN / SEA on the EAST edge of the doubled map (owner: "adding an ocean").
@@ -568,14 +723,22 @@ export const WATER = {
 // and the sea surface sits at seaLevel. All values are art-direction choices for
 // the doubled arena (radius 180), eyeballed against the existing pond water.
 export const OCEAN = {
-  shoreX: 120,            // world X of the mean coastline (east of this = sea); inside the radius-180 disc so beach+water are reachable
-  beachWidth: 40,         // world units of sloping SAND from the dry dune line down to the waterline (a clearly visible beach)
-  seaLevel: -1.4,         // sea surface height (below the inland flats so the coast reads as a descent to the sea)
-  seabedDepth: 4.0,       // how far below seaLevel the seabed drops past the surf (deep, navigable open water for the future plesiosaur)
-  surfWidth: 10,          // width of the wet foreshore/surf band just seaward of the waterline (darker damp sand + foam line)
-  // The visible sea plane extends well past the play radius so the horizon reads
-  // as open ocean, not a pond with an edge. It is unlit + fogged like the sky.
-  planeSize: 900,         // edge length of the sea surface plane (>> arena so no visible far edge)
+  // P2.1: the SEA now surrounds the whole island (see world.js landFactor); it is
+  // no longer an eastern-only coast. `shoreX` is RETAINED only because eggs.js /
+  // tools.js / minimap.js / aquatic.js (off-limits to the island remap) still
+  // import it. It now means the EAST coast of the main body (x > shoreX = open
+  // sea): it keeps the plesiosaur patrolling the eastern sea, and eggs/tools off
+  // the east water. (Eggs/tools still scatter on a legacy radial disc, so some
+  // land in the surrounding sea — a flagged follow-up; the eggs objective is the
+  // deprecated interim survival mode, superseded by the boat-escape win.)
+  shoreX: 200,            // east coast of the main body (x > this = open sea, for the legacy importers) — scaled
+  beachWidth: 40,         // (legacy, retained for imports)
+  seaLevel: -1.4,         // sea surface height (the island's coast descends to this)
+  seabedDepth: 4.0,       // (legacy; ISLAND.seabedDepth drives the new seabed)
+  surfWidth: 10,          // (legacy)
+  // The visible sea plane spans the whole bounding disc so the horizon reads as
+  // open ocean surrounding the island.
+  planeSize: 4400,        // edge length of the sea surface plane (>> the island so no visible far edge)
   waveAmp: 0.18,          // metres of gentle vertical swell on the sea surface
   waveLength: 22,         // world units between wave crests (long ocean swell)
   waveSpeed: 0.6,         // crests/sec drift speed of the swell
@@ -611,10 +774,10 @@ export const AQUATIC = {
   // --- Lurk / surface geometry (world units, sea-scaled) -------------------
   submergedDepth: 2.2,    // how far the root sinks below the sea surface when lurking
   surfacedRise: 0.6,      // how far the body rises above the sea surface when breached
-  // --- Patrol region (OCEAN) ----------------------------------------------
-  patrolCenterX: 150,     // matches the plesiosaur biome centre (config DINO biomes)
-  patrolCenterZ: 0,
-  patrolRadius: 30,       // radius of the open-water roam disc east of the shore
+  // --- Patrol region (the EAST/NORTH SEA, off the beach toward the boat) ----
+  patrolCenterX: 280,     // seaward of the east coast (shoreX 200), open water (scaled)
+  patrolCenterZ: 700,     // toward the north end, off the beach below the boat (canonical: Plesiosaur offshore)
+  patrolRadius: 110,      // radius of the open-water roam disc
   // --- AI state machine ----------------------------------------------------
   // submerged patrol -> (player near coast/in sea) surface + lunge -> bite ->
   // submerge -> cooldown. It stays seaward of the shoreline (it's a sea creature).
@@ -652,11 +815,12 @@ export const ENV = {
   },
   groundTiling: 18,        // UV repeats across the ground plane (close-up detail without obvious tiling)
   groundNormalStrength: 0.9, // 0..1+ scale on the normal map's perturbation
-  // Desaturated natural ground tints multiplied onto the albedo to push the
-  // palette toward olive/sage/moss + earthy brown (kills the cartoon-bright
-  // green of the old material). <1 darkens/desaturates the photo albedo.
-  grassTint: [0.66, 0.72, 0.52],  // olive-sage
-  soilTint: [0.60, 0.52, 0.42],   // warm earthy brown
+  // GROUND grass tint — RESTORED to the owner's ORIGINAL initial-commit (HEAD)
+  // olive-sage (owner was happy with this colour at HEAD; the goal is "looks like
+  // before"). The matte material (high roughness, zero specular — see
+  // makeGroundPBR) keeps it from going glossy/wet.
+  grassTint: [0.66, 0.72, 0.52],  // olive-sage (HEAD)
+  soilTint: [0.60, 0.52, 0.42],   // warm earthy brown (HEAD)
 
   // --- HDRI environment (CC0, Poly Haven — see CREDITS.md) ---------------
   hdriPath: "assets/env/sky.hdr",
@@ -671,7 +835,7 @@ export const ENV = {
 
   // --- Fog (richer, depth-graded) ----------------------------------------
   fogDensity: 0.0085,      // exp2 fog — softer/further than the old 0.012 so distance reads with depth, not a wall
-  fogColor: [0.70, 0.74, 0.72],  // desaturated sage-grey haze (matches the palette)
+  fogColor: [0.70, 0.74, 0.72],  // desaturated sage-grey haze (HEAD — restored)
 
   // --- Post-processing pipeline ------------------------------------------
   // ACES tonemap + a gentle filmic colour grade, SSAO for contact shadowing,
@@ -745,9 +909,15 @@ export const ENV = {
   cardsPerCanopy: 5,       // textured leaf cards crossed per tree (irregular, broken-up crown)
   windStrength: 0.06,      // radians of canopy/grass sway amplitude
   windSpeed: 1.3,          // sway frequency (rad/sec)
-  groundCoverCount: 3200,  // grass-card clump instances (~3× for the doubled map; instanced — cheap)
-  groundCoverFadeStart: 70, // world units from centre where ground cover starts thinning
-  groundCoverFadeEnd: 150,  // fully faded beyond this (keeps far ground uncluttered + fast)
+  // Grass sway is the dominant per-frame CPU cost, so only cards WITHIN this
+  // radius of the camera are swayed each frame (distant grass holds its tilt —
+  // imperceptible at distance/through fog). Lets us keep dense grass cheap.
+  grassSwayRadius: 55,     // world units around the camera within which grass sways
+  // Ground cover is dense now (the sway is radius-limited + the cards are matrix-
+  // free only near the camera), so the count can be generous again.
+  groundCoverCount: 2600,  // dense near-ground grass clump instances
+  groundCoverFadeStart: 70, // (legacy — origin-distance fade removed for the long island; frustum culling handles far cover)
+  groundCoverFadeEnd: 150,  // (legacy)
   // Per-instance desaturated green tints multiplied onto the leaf/grass cards
   // so no two plants share an exact colour — sage/moss/olive, never neon.
   foliageGreens: [
@@ -764,6 +934,9 @@ export const ENV = {
   // ground's brightness band (centred on grassTint, varied around it) so the
   // blades read as grass, not dark spikes. Chosen empirically against the
   // ground in headless eye-level shots (tools/grass_probe.mjs).
+  // Retuned WARM + DRY to match the new grassTint (owner: no moist/sickly green).
+  // R ≈ G, low blue — sun-dried meadow blades, varied light↔deeper, never neon.
+  // RESTORED to HEAD (owner's original grass-blade greens).
   grassGreens: [
     [0.66, 0.72, 0.50],   // matches the ground grass tint
     [0.58, 0.68, 0.44],   // a touch deeper
@@ -788,12 +961,9 @@ export const ENV = {
   // albedo TINTS multiplied onto the textures, so they read a touch lighter than
   // the raw hex once lit). Each numeric is annotated with its source.
   dryZone: {
-    // Re-placed for the DOUBLED map: pushed out into the SOUTH-WEST quadrant,
-    // clear of the eastern ocean and the western pond, and grown so it reads as
-    // a real desert region on the big valley rather than a small patch.
-    centerX: -70, centerZ: -120, // south-west arid region
-    radius: 60,                  // world units of the arid region (up from 34 for the doubled map)
-    edgeFeather: 20,             // soft blend band so the biome edge isn't a hard ring
+    // The DESERT is now the grid's `D` cells (design/map.grid.json) — no radial
+    // zone. This block keeps the owner-approved desert LOOK (sand, dunes, bones,
+    // dry palette, warm air) consumed by world.js against the grid masks.
 
     // --- Ground: warm NATURAL sand --------------------------------------
     // OWNER FIX ("too yellow ... away from the neon saturated gold to a
@@ -824,37 +994,27 @@ export const ENV = {
     duneFreqA: 0.05,            // primary dune wavelength (~126u) — broad swells
     duneFreqB: 0.11,            // secondary cross-ripple wavelength (~57u) — breaks up the swells
 
-    // --- Sandstone mesas/buttes (the bold orange-red silhouettes) --------
-    // OWNER FIX ("huge weird towers in there ... reshape into believable
-    // buttes/mesas — broader bases, layered horizontal strata, wind-eroded
-    // tapered tops, VARIED heights/widths, not uniform tall cylinders"). The old
-    // mesas were tall + thin (h 12-22 vs r 3.5-8 → up to a ~6:1 tower) which read
-    // as pillars. Retuned to believable Monument-Valley proportions: BROAD bases,
-    // MODEST heights (height ≈ 0.6-1.4× the radius, so they're wider than tall or
-    // roughly square — buttes, not towers), and a much WIDER spread of sizes so
-    // no two match. Count kept low so they punctuate the skyline, not dominate.
-    rockDensityMul: 2.6,        // small sandstone boulders this much denser than baseline
-    sandstoneColor: [0.78, 0.50, 0.34],     // #C8805A sunlit warm terracotta sandstone (softened from the old neon orange)
-    sandstoneBandColor: [0.64, 0.34, 0.22], // #A45638 iron-rich red strata band
-    mesaCount: 0,               // mesas/buttes REMOVED per owner (still read as "huge towers"); desert is now dunes + boulders + scrub + bones only
-    mesaMinHeight: 7, mesaMaxHeight: 16,  // metres — varied, modest (no more 22m towers)
-    mesaMinRadius: 7, mesaMaxRadius: 18,  // metres — BROAD bases (so the silhouette is a butte/mesa, not a pillar)
-    mesaStrataBands: 4,         // horizontal sedimentary strata layers stacked up each mesa (the layered-rock read)
-
     // --- Drought vegetation (sparse, bleached — never emerald) -----------
-    grassDensityMul: 0.25,      // green ground cover thins to this fraction (arid) — kills lush green (unchanged)
-    deadTreeBias: 0.95,         // nearly every in-zone tree is gnarled/dead deadwood (was 0.85)
-    // Straw/ochre/sage tints for the dry tussocks + dead shrubs (research veg palette).
+    // Straw/ochre/sage tints for the dry tussocks (research veg palette).
     dryPalette: [
       [0.76, 0.66, 0.36],   // #C2A85C dry straw tussock
       [0.85, 0.78, 0.56],   // #D8C68E bleached dead grass
       [0.54, 0.55, 0.42],   // #8A8C6A dusty sage / saxaul
       [0.55, 0.51, 0.46],   // #8C8175 dead grey wood / skeletal shrub
     ],
-    tuftCount: 220,             // dry-grass tussocks scattered in-zone (scaled up for the bigger radius-60 zone)
-    shrubCount: 55,             // dead skeletal shrubs in-zone (scaled up)
+    tuftCount: 260,             // dry-grass tussocks scattered over the D cells — first-pass for owner eyeball
+    shrubCount: 55,             // dead skeletal shrubs in-zone
     boneColor: [0.90, 0.87, 0.79],  // #E6DECB sun-bleached bone white (hero-prop pop)
     boneClusterCount: 9,        // half-buried bleached skeletons (ribcage arc + skull + vertebrae) for character
+
+    // --- Sandstone mesas (pre-remap values, restored verbatim — world.js
+    // scatterDesertFeatures still consumes them; mesaCount stays 0 per owner) --
+    sandstoneColor: [0.78, 0.50, 0.34],     // #C8805A sunlit warm terracotta sandstone (softened from the old neon orange)
+    sandstoneBandColor: [0.64, 0.34, 0.22], // #A45638 iron-rich red strata band
+    mesaCount: 0,               // mesas/buttes REMOVED per owner (still read as "huge towers"); desert is dunes + boulders + scrub + bones only
+    mesaMinHeight: 7, mesaMaxHeight: 16,  // metres — varied, modest (no more 22m towers)
+    mesaMinRadius: 7, mesaMaxRadius: 18,  // metres — BROAD bases (so the silhouette is a butte/mesa, not a pillar)
+    mesaStrataBands: 4,         // horizontal sedimentary strata layers stacked up each mesa (the layered-rock read)
 
     // --- Warm desert air: fog + light tint, blended by camera proximity --
     // Softened from the old hot-ochre [0.95,0.74,0.52]: a dustier, less saturated
@@ -868,28 +1028,121 @@ export const ENV = {
                                     // bigger radius-60 zone and read as a yellow wash)
   },
 
-  // --- JUNGLE THICKET MICROCLIMATE (USER request: microclimates WITHIN the
-  // one world, not separate worlds). A second zone beside the dry rocky patch:
-  // a dense, humid pocket of the valley — deeper lush ground tint, thick
-  // broadleaf/palm canopy, heavy understorey. With the dry zone (arid corner)
-  // and the pond + reed ring (wetland), the single map now reads as three
-  // distinct microclimates inside one grassland valley. Layout/gameplay
-  // untouched. All values are art-direction choices mirroring dryZone's knobs.
-  jungleZone: {
-    // Re-placed for the DOUBLED map: NORTH region, clear of the SW desert, the
-    // W pond and the E ocean. Grown to suit the big valley.
-    centerX: 10, centerZ: 120,  // north thicket
-    radius: 52,                 // world units of the thicket (up from 30 for the doubled map)
-    edgeFeather: 18,            // soft blend into the grassland
-    groundTint: [0.42, 0.56, 0.36],  // deeper, wetter green blended into the ground here
-    treeDensityMul: 2.2,        // extra trees clustered inside the thicket
-    grassDensityMul: 2.0,       // understorey thickens (extra ground-cover cards)
-    junglePalette: [            // deeper jungle greens for trees/grass INSIDE the zone
-      [0.36, 0.56, 0.32], [0.30, 0.48, 0.28], [0.44, 0.62, 0.36], [0.26, 0.42, 0.26],
+};
+
+// TREE PACKS — a registry of downloaded tree glbs (all optimised: simplify +
+// webp). world.js (scatterTrees) loads each referenced pack ONCE, builds one
+// hidden instanceable SOURCE per `tree` id, and thin-instances them per biome
+// (BIOME_TREES). Two source kinds:
+//   kind "parts": the tree is built from named meshes (trunk + branches) that
+//     have mismatched vertex attributes (can't merge) — instanced as a group.
+//   kind "whole": the whole glb's vertex meshes ARE one tree — instanced together.
+// `targetHeight` normalises each source by its own bbox height.
+// LICENCE: all download/Sketchfab sources — MUST be licence-checked + credited
+// before any public ship (flagged in the report).
+export const TREE_PACKS = {
+  forest: {
+    url: "assets/models/forest_trees.glb", kind: "parts", targetHeight: 11,
+    trees: [
+      { id: "forest0", parts: ["Tree_Trunk_01", "Tree_Branches_01"] },
+      { id: "forest1", parts: ["Tree_Trunk_02", "Tree_Branches_02"] },
     ],
-    // species mix inside the thicket: broadleaf + palm dominate, no dead trees
-    treeTypeWeights: { conifer: 0.5, broadleaf: 5, gnarled: 0, palm: 3 },
   },
+  // The big realistic banyan/jungle tree (358MB→17MB→93k tris _lod bake). The
+  // 93k bake still cost ~28M tris/frame at the clearing (~400 thin instances ×
+  // 71k-tri bark mesh — 23-27fps headless). _lod2 is a HYBRID rebake to ~13.5k
+  // tris/tree (clearing 60fps): split by material alphaMode, bark (OPAQUE)
+  // gltfpack -si 0.05 -se 0.3 (the seam-heavy bark only collapses with a
+  // generous error bound), foliage (MASK) only -si 0.5 -se 0.05 so the leaf
+  // mass that sells the wall survives, then recombined (single scene/buffer).
+  // A/B'd against the 93k bake at the clearing framings — visually matching.
+  // Originals kept (jungle_tree.glb, jungle_tree_lod.glb).
+  jungle: {
+    url: "assets/models/jungle_tree_lod2.glb", kind: "whole", targetHeight: 16,
+    trees: [{ id: "jungleTree" }],
+  },
+  // SAVANNAH trees — MIX of the locust pack (3 trees) + the realistic pack (2
+  // trees), per the spec. Parts grouped per tree from the glb node hierarchy.
+  locust: {
+    url: "assets/models/locust_tree_pack.glb", kind: "parts", targetHeight: 12,
+    trees: [
+      { id: "locust0", parts: ["Object_4", "Object_6"] },
+      { id: "locust1", parts: ["Object_8", "Object_10"] },
+      { id: "locust2", parts: ["Object_12", "Object_14"] },
+    ],
+  },
+  // The source pack is ~430k tris PER TREE (vertex-split chunks, not LODs) —
+  // unusable scattered; the _lod bake (meshopt simplify, ~41k/tree) ships instead.
+  realistic: {
+    url: "assets/models/realistic_trees_pack_of_2_free_lod.glb", kind: "parts", targetHeight: 13,
+    trees: [
+      { id: "real0", parts: ["Object_4", "Object_5", "Object_6", "Object_7", "Object_13", "Object_14", "Object_15"] },
+      { id: "real1", parts: ["Object_9", "Object_10", "Object_11", "Object_17", "Object_18", "Object_19"] },
+    ],
+  },
+  // Monstera (climbing aroid) — a low broad-leaved JUNGLE understory plant.
+  monstera: {
+    url: "assets/models/monstera.glb", kind: "whole", targetHeight: 2.4,
+    trees: [{ id: "monstera" }],
+  },
+  // DESERT trees (spec: desert_old_tree + dead_tree). Bare, sun-bleached.
+  deadTree: {
+    url: "assets/models/dead_tree.glb", kind: "whole", targetHeight: 7,
+    trees: [{ id: "deadTree" }],
+  },
+  desertOldTree: {
+    url: "assets/models/desert_old_tree.glb", kind: "whole", targetHeight: 8,
+    trees: [{ id: "desertOldTree" }],
+  },
+  // DESERT shrubs (walk-through, prop code `s`) — separate species meshes in
+  // one glb, each its own variant source.
+  shrubs: {
+    url: "assets/models/desert_shrubs.glb", kind: "parts", targetHeight: 1.3,
+    trees: [
+      { id: "shrubAgave", parts: ["agave_2"] },
+      { id: "shrubYucca", parts: ["yacca leaf 01_3"] },
+      { id: "shrubCreosote", parts: ["creosote branch 02_7"] },
+      { id: "shrubCholla", parts: ["cholla 01_9"] },
+      { id: "shrubOcotillo", parts: ["ocotillo branch 01_5"] },
+    ],
+  },
+};
+
+// PROP LAYER SCATTER (design/map.props.json — one prop code per cell). Each
+// code maps to its source ids (TREE_PACKS / understory glbs / procedural
+// rocks), a per-instance scale range and a distance-cull radius. Blocking codes
+// register obstacle footprints for the AI AND keep mesh collision for the
+// player. Scale ranges + cull radii are first-pass for owner eyeball.
+export const PROPS = {
+  // Jungle wall (shell only). Scale trimmed 0.8-1.3 → 0.6-0.95: at the old range the
+  // banyan canopies (spread ≈ height) roofed the whole r12 clearing — no sky, the
+  // spawn read as under-canopy instead of a walled opening. first-pass for owner eyeball
+  T: { trees: ["jungleTree", "jungleTree", "forest0", "forest1"], minScale: 0.6, maxScale: 0.95, cullRadius: 90, blocking: true },
+  t: { trees: ["forest0", "forest1"], minScale: 0.8, maxScale: 1.6, cullRadius: 120, blocking: true, sink: 2.8 },                    // forest — extra sink: these glbs have prominent exposed roots
+  a: { trees: ["locust0", "locust1", "locust2", "real0", "real1"], minScale: 0.8, maxScale: 1.4, cullRadius: 170, blocking: true, sink: 2.8 }, // savannah mix — same root-burying sink
+  d: { trees: ["deadTree", "desertOldTree"], minScale: 0.8, maxScale: 1.3, cullRadius: 170, blocking: true },                       // desert dead trees
+  s: { trees: ["shrubAgave", "shrubYucca", "shrubCreosote", "shrubCholla", "shrubOcotillo"], minScale: 0.7, maxScale: 1.4, cullRadius: 110, blocking: false }, // desert shrubs
+  // r = procedural grey rocks (world.js boulder system — spec: NOT the red glb pack)
+  rockScaleMin: 0.9, rockScaleMax: 2.4,
+  rockCullRadius: 170,    // rocks draw within this radius of the camera — first-pass for owner eyeball
+  mountainRockScaleMin: 1.8, mountainRockScaleMax: 4.2,  // bigger debris on the mountain faces
+  jitter: 0.35,           // cell-centre jitter (u) so placements don't read as a grid
+  treeSink: 1.5,          // metres trees bed below the surface (owner: bury the glb root flares)
+};
+
+// UNDERSTORY foliage (walk-through plants, prop codes m/f/g/L). HIGH-POLY +
+// multi-part, so instanced AND DISTANCE-CULLED to a radius around the camera
+// (only nearby ones drawn) + matrix-frozen. Placement comes from the prop grid
+// (jungle f/m cells render only on the visible shell — the interior is unseen).
+export const UNDERSTORY = {
+  f: { urls: ["assets/models/fern.glb", "assets/models/fern2.glb"], targetHeight: 1.3, minScale: 0.9, maxScale: 2.0 },
+  g: { urls: ["assets/models/geranium.glb", "assets/models/geranium2.glb"], targetHeight: 1.1, minScale: 0.9, maxScale: 1.8 },
+  m: { urls: ["assets/models/monstera.glb"], targetHeight: 2.2, minScale: 0.8, maxScale: 1.6 },
+  L: { urls: ["assets/models/lupine.glb"], targetHeight: 1.0, minScale: 0.8, maxScale: 1.5 },
+  // Only instances within this radius of the camera are enabled (drawn) each
+  // frame — high-poly plants never all draw at once. Re-evaluated on a throttle.
+  cullRadius: 68,         // world units around the camera within which understory is visible
+  cullInterval: 0.2,      // sec between cull re-evaluations (throttle)
 };
 
 export const CAMERA = {
@@ -902,6 +1155,14 @@ export const CAMERA = {
   // important in a chase. Gentler than the position lerp so it never fights you.
   autoFollowLerp: 0.035,    // per-frame easing of the orbit angle toward behind-heading
   manualHoldSeconds: 1.6,   // suspend auto-follow this long after a manual camera drag
+  // First-person on the muddy path: while the player stands on a P (path) cell
+  // the camera drops to eye level looking down the trail, restoring the orbit on
+  // leaving. Owner-requested. Eye ≈1.7m of the 2.0u-tall human; tiny radius so
+  // the view sits at the head; beta just under the 1.45 limit (near-horizontal).
+  fpvEyeHeight: 1.7,        // u above the player's feet for the first-person eye
+  fpvRadius: 0.4,           // orbit radius in first-person (camera at the head)
+  fpvBeta: 1.45,            // near-horizontal pitch — look along the trail, not down
+  modeLerp: 0.1,            // per-frame ease of radius/beta between the two modes
 };
 
 export const DAYNIGHT = {
@@ -949,7 +1210,7 @@ export const ATMOSPHERE = {
   birdRadius: 60,        // orbit radius around the arena centre
   birdSpeed: 0.12,       // radians/sec around the orbit
   cloudCount: 14,        // more clouds for the bigger sky
-  cloudHeight: 70,
+  cloudHeight: 150,      // raised from 70 — at 70u they hung in the eyeline and read as UFO discs; first-pass for owner eyeball
   birdOrbitMul: 0.55,    // bird orbit radius = ARENA.radius × this (tracks the doubled map; was a fixed 60)
 };
 
@@ -1036,7 +1297,7 @@ export const AUDIO = {
   vocalIntervalMin: 3.5,        // sec — shortest gap between ambient calls (far/calm)
   vocalIntervalMax: 7.0,        // sec — longest gap between ambient calls
   vocalNearInterval: 1.6,       // sec — call gap when a predator is right on you
-  vocalFalloffRange: 90,        // u — beyond this an off-screen call is inaudible
+  vocalFalloffRange: 6,         // u — only audible when CLOSE (owner: "~5 metres"; 5m≈5.5u at 2u≈1.8m). Was 90 (whole arena → constant roars everywhere).
   vocalMinGain: 0.12,           // floor so a distant call is faint but present
   // Smoothing time-constant (sec) for distance-attenuated roar/call gain ramps —
   // setTargetAtTime time constant so a call swells in / fades out, never pops.
@@ -1103,7 +1364,7 @@ export const AUDIO = {
   // hypothesis, Julia Clarke et al.) rather than a Hollywood roar.
   trexRumbleRate: 0.85,
   bigStepInterval: 1.2,   // sec between sauropod footfall thuds (amble cadence)
-  bigStepRange: 50,       // thuds audible within this many world units
+  bigStepRange: 6,        // thuds audible only when CLOSE (owner: ~5 metres). Was 50.
 };
 
 // On-screen touch controls (phones/tablets). The joystick maps to WASD so all

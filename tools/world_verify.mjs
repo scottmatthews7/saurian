@@ -131,9 +131,14 @@ await sleep(1500);
 // expression returns a string for logging. ARENA radius is 180.
 const V = "window.__verify";
 
-// 1. doubled map — high overhead establishing shot of the whole arena
-await evalJson(`${V}.lookAt(0, 320, -0.1, 0, 0, 0); 'overhead'`);
+// 1. doubled map — high overhead establishing shot of the whole arena.
+// The exp2 fog (ENV.fogDensity 0.0085) fully obscures the ground from any
+// camera a few hundred units up — an overhead at height is inside the fog by
+// design. Disable fog for THIS shot only (fogEnabled isn't touched by the
+// daynight loop, so it toggles cleanly).
+await evalJson(`(()=>{window.__game.scene.fogEnabled = false; ${V}.lookAt(0, 320, -0.1, 0, 0, 0); return 'overhead';})()`);
 await sleep(400); await cap("01_overhead_doubled_map");
+await evalJson(`(()=>{window.__game.scene.fogEnabled = true; return 'fog restored';})()`);
 
 // 2. ocean + shoreline — stand on the east coast looking out to sea
 await evalJson(`(()=>{const h=${V}.heightAt; const cx=120, cz=0; ${V}.lookAt(cx-40, h(cx-40,cz)+10, cz, cx+60, ${V}.B ? 0 : 0, cz); return 'ocean';})()`);

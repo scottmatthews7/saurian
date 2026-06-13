@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Saurian — Dino Survival</title>
-  <meta name="description" content="Stranded on a primeval island of dinosaurs. Outrun a stalking T-Rex, scavenge to survive, and escape. Free browser game." />
+  <title>Saurian: escape the island</title>
+  <meta name="description" content="Plane down on a dinosaur island. One boat on the north shore. Get to it. Free browser game." />
   <!-- Social / WhatsApp preview card (Open Graph). Absolute URL = the GitHub Pages link. -->
-  <meta property="og:title" content="Saurian — outrun the dinosaurs" />
-  <meta property="og:description" content="Stranded on a dinosaur island. Outrun the T-Rex, scavenge, survive, escape. Play free in your browser." />
+  <meta property="og:title" content="Saurian: escape the island" />
+  <meta property="og:description" content="Plane down on a dinosaur island. One boat on the north shore. Get to it. Play free in your browser." />
   <meta property="og:image" content="https://scottmatthews7.github.io/saurian/share-card.jpg" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://scottmatthews7.github.io/saurian/" />
@@ -32,13 +32,13 @@
     .bar { height: 14px; border-radius: 7px; background: rgba(255,255,255,0.12);
       overflow: hidden; margin-bottom: 10px; }
     .barFill { height: 100%; width: 100%; transition: width 0.15s ease; border-radius: 7px; }
-    #healthFill { background: linear-gradient(90deg, #e8533f, #ff8a5b); }
-    #trexFill { background: linear-gradient(90deg, #8e44ad, #c0392b); }
-    #staminaFill { background: linear-gradient(90deg, #2e86de, #54e0c7); }
+    #healthFill { background: linear-gradient(90deg, #b3271e, #ff6a4d); }
+    #trexFill { background: linear-gradient(90deg, #8a8378, #ded7c6); }
+    #staminaFill { background: linear-gradient(90deg, #4f7e34, #a4d65e); }
     #staminaFill.exhausted { background: linear-gradient(90deg, #7a7a7a, #aa4040); }
     #dashFill { background: linear-gradient(90deg, #2b9bd9, #7af0ff); }
     /* Daylight remaining: full bright at run start, depletes toward dusk. */
-    #duskFill { background: linear-gradient(90deg, #c0451f, #ffd27a, #fff2c4); }
+    #duskFill { background: linear-gradient(90deg, #8c3415, #e0853c, #ffd27a); }
     #duskLabel.dusk { color: #ff9a5b; }
     .readyTag { font-size: 10px; color: #ffd27a; opacity: 0; margin-left: 6px; letter-spacing: 1px; }
     .readyTag.on { opacity: 1; animation: readyPulse 1.2s ease-in-out infinite; }
@@ -63,24 +63,112 @@
 
     #objective { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
       font-size: 15px; background: rgba(8,18,22,0.5); padding: 8px 16px; border-radius: 20px;
-      border: 1px solid rgba(255,255,255,0.12); }
+      border: 1px solid rgba(255,255,255,0.12); display: flex; align-items: center; gap: 10px; }
+    /* Vintage compass: a brass bezel with a red-north / pale-south needle that
+       rotates toward the boat's screen-space bearing. */
+    .vcompass { position: relative; display: inline-block; width: 30px; height: 30px;
+      border-radius: 50%; flex: 0 0 auto;
+      background: radial-gradient(circle at 38% 32%, #6b5326, #2c2009 78%);
+      border: 2px solid #b8923f; box-shadow: inset 0 0 4px rgba(0,0,0,0.7), 0 0 2px rgba(0,0,0,0.5); }
+    .vcNeedle { position: absolute; left: 50%; top: 50%; width: 3px; height: 22px;
+      margin: -11px 0 0 -1.5px; transform-origin: 50% 50%;
+      /* north half red, south half off-white — the classic compass needle */
+      background: linear-gradient(to top, #e8e2cf 0%, #e8e2cf 50%, #c0392b 50%, #c0392b 100%);
+      border-radius: 2px; }
+    .vcPin { position: absolute; left: 50%; top: 50%; width: 5px; height: 5px;
+      margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: #d9b65a; }
+    .vcText { white-space: nowrap; }
 
+    /* Full-screen narrative overlays: start / pause / victory / death. The
+       backdrop scrim changes per screen; copy sits straight on it, no boxes. */
     #banner { position: absolute; inset: 0; display: none; flex-direction: column;
       align-items: center; justify-content: center; text-align: center;
-      background: radial-gradient(circle at center, rgba(0,0,0,0.35), rgba(0,0,0,0.78));
+      background: radial-gradient(circle at 50% 42%, rgba(4,9,11,0.5), rgba(3,7,9,0.88));
       pointer-events: none; }
-    .bannerTitle { font-size: 64px; font-weight: 800; letter-spacing: 3px;
-      text-shadow: 0 4px 24px rgba(0,0,0,0.6); }
+    #banner.lose { background:
+      radial-gradient(110% 80% at 50% 112%, rgba(96,12,6,0.6), rgba(0,0,0,0) 55%),
+      radial-gradient(circle at 50% 42%, rgba(14,3,2,0.5), rgba(8,2,2,0.9)); }
+    #banner.win { background:
+      radial-gradient(110% 80% at 50% 112%, rgba(20,78,92,0.5), rgba(0,0,0,0) 55%),
+      radial-gradient(circle at 50% 42%, rgba(3,9,11,0.45), rgba(2,7,9,0.88)); }
+    .bannerTitle { font-size: clamp(56px, 9vw, 88px); font-weight: 800; line-height: 1;
+      letter-spacing: 0.08em; text-indent: 0.08em;
+      text-shadow: 0 3px 0 rgba(0,0,0,0.45), 0 14px 34px rgba(0,0,0,0.7); }
     .bannerTitle.start { color: var(--accent); }
-    .bannerTitle.win { color: var(--good); }
+    .bannerTitle.win { color: #cfeadd; }
     .bannerTitle.lose { color: var(--danger); }
-    .bannerSub { font-size: 18px; max-width: 640px; margin-top: 14px; opacity: 0.9;
-      line-height: 1.5; }
+
+    .titleBig { font-size: clamp(64px, 11vw, 112px); font-weight: 800; line-height: 0.95;
+      letter-spacing: 0.12em; text-indent: 0.12em; color: var(--accent);
+      text-shadow: 0 1px 0 #6b4a0c, 0 2px 0 #553a08, 0 3px 0 #402b05,
+        0 16px 36px rgba(0,0,0,0.75); }
+    .titleStrap { margin-top: 12px; font-size: 14px; font-weight: 600;
+      letter-spacing: 0.58em; text-indent: 0.58em; text-transform: uppercase;
+      color: rgba(255,255,255,0.62); }
+    @keyframes pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 0.2; } }
+    .introCard { position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 26px; padding: 0 8vw; text-align: center; }
+    .introCard .cardText { font-size: clamp(22px, 3.2vw, 34px); font-weight: 700; line-height: 1.45;
+      max-width: 30ch; color: #e8e4da; text-wrap: balance; }
+    .introCard .cardFinal { font-size: clamp(40px, 6vw, 72px); letter-spacing: 0.14em;
+      color: var(--accent, #f0b23c); }
+    .introCard .cardHint { font-size: 12px; letter-spacing: 0.3em; text-indent: 0.3em;
+      text-transform: uppercase; opacity: 0.55; animation: pulse 2.2s ease-in-out infinite; }
+    .scrKicker { font-size: 12px; letter-spacing: 0.42em; text-indent: 0.42em;
+      text-transform: uppercase; color: var(--accent); opacity: 0.85; margin-bottom: 20px; }
+    #banner.lose .scrKicker { color: #ff8d70; }
+    #banner.win .scrKicker { color: #8fd4cf; }
+    .scrHook { font-size: 16px; line-height: 1.65; max-width: 66ch; margin: 22px auto 0;
+      color: rgba(255,255,255,0.88); text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
+    .route { margin-top: 28px; font-size: 12px; letter-spacing: 0.22em;
+      text-transform: uppercase; color: rgba(255,255,255,0.55); }
+    .route i { font-style: normal; color: var(--accent); opacity: 0.8; margin: 0 10px; }
+    .scrBest { margin-top: 20px; font-size: 13px; letter-spacing: 0.08em; color: #9fdc8f; }
+    .scrStats { display: inline-block; margin-top: 28px; padding-top: 14px;
+      border-top: 1px solid rgba(255,255,255,0.16); font-size: 15px;
+      letter-spacing: 0.04em; color: rgba(255,255,255,0.92); }
+    .scrPrompt { margin-top: 36px; font-size: 13px; letter-spacing: 0.3em;
+      text-indent: 0.3em; text-transform: uppercase; color: var(--accent); }
+
+    /* Bottom controls band on the start screen (hidden on touch: the joystick
+       and buttons are the controls there). */
+    .ctrlStrip { position: absolute; left: 0; right: 0; bottom: 46px; margin: 0 auto;
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 24px;
+      width: min(860px, 92vw); padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.14);
+      animation: rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.5s backwards; }
+    @media (pointer: coarse) { .ctrlStrip { display: none; } }
+    .ctrlRow { display: flex; align-items: center; gap: 9px; font-size: 13px;
+      color: rgba(255,255,255,0.85); }
+    .key { display: inline-block; text-align: center; font-size: 11px;
+      font-weight: 700; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 4px;
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.22); }
+
+    /* One staggered entrance per screen; transform/opacity only. */
+    .reveal > * { animation: rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+    .reveal > *:nth-child(2) { animation-delay: 0.07s; }
+    .reveal > *:nth-child(3) { animation-delay: 0.14s; }
+    .reveal > *:nth-child(4) { animation-delay: 0.21s; }
+    .reveal > *:nth-child(5) { animation-delay: 0.28s; }
+    .reveal > *:nth-child(6) { animation-delay: 0.35s; }
+    .reveal > *:nth-child(7) { animation-delay: 0.42s; }
+    .reveal > .scrPrompt { animation:
+      rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.42s backwards,
+      promptBlink 1.6s ease-in-out 1.3s infinite; }
+    @keyframes rise { from { opacity: 0; transform: translateY(14px); }
+      to { opacity: 1; transform: none; } }
+    @keyframes promptBlink { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
 
     #minimapWrap { position: absolute; bottom: 16px; right: 16px;
       background: rgba(8,18,22,0.55); border: 1px solid rgba(255,255,255,0.12);
       border-radius: 12px; padding: 6px; backdrop-filter: blur(4px); }
     #minimap { display: block; border-radius: 8px; }
+    /* Stowed health-pack indicator (top-left, under the bars). */
+    #medkit { position: absolute; top: 132px; left: 16px; display: none;
+      font-size: 14px; color: #ffd7d7; background: rgba(90,12,12,0.45);
+      padding: 4px 10px; border-radius: 14px; border: 1px solid rgba(255,120,120,0.3); }
+    #medkit .mkIcon { color: #ff6b6b; font-weight: 700; }
+    #medkit .mkHint { opacity: 0.6; font-size: 11px; letter-spacing: 0.08em; }
     #minimapWrap .label { margin-bottom: 4px; text-align: center; }
 
     /* Backpack hotbar (item 6) — centred above the objective pill. */
@@ -106,44 +194,6 @@
       border-radius: 20px; padding: 6px 14px; user-select: none; }
     #muteBtn:hover { opacity: 1; }
 
-    /* Title screen card */
-    .titleCard { display: flex; flex-direction: column; align-items: center;
-      gap: 6px; padding: 8px 24px; }
-    .titleBig { font-size: 72px; animation: titlePulse 3s ease-in-out infinite; }
-    @keyframes titlePulse { 0%,100% { text-shadow: 0 4px 24px rgba(0,0,0,0.6); }
-      50% { text-shadow: 0 4px 40px rgba(255,205,88,0.55); } }
-    .titleTag { font-size: 22px; letter-spacing: 14px; color: #fff; opacity: 0.75;
-      margin: -6px 0 14px 12px; font-weight: 600; }
-    .titleObjective { font-size: 16px; line-height: 1.6; opacity: 0.9;
-      max-width: 540px; text-align: center; margin-bottom: 18px; }
-    .titleObjective b { color: var(--accent); }
-    .titleMore { max-width: 560px; text-align: center; margin-bottom: 16px; opacity: 0.82; }
-    .titleMore > summary { font-size: 13px; letter-spacing: 0.5px; cursor: pointer;
-      list-style: none; color: rgba(255,255,255,0.6); padding: 4px 12px;
-      border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; user-select: none;
-      pointer-events: auto; }
-    .titleMore > summary::-webkit-details-marker { display: none; }
-    .titleMore > summary:hover { color: rgba(255,255,255,0.85); }
-    .titleMore[open] > summary { margin-bottom: 8px; }
-    .titleMore > span:first-of-type { margin-top: 0 !important; }
-    .titleDusk { display: inline-block; margin-top: 8px; font-size: 13px; color: #ff9a5b; opacity: 0.95; }
-    .titleDusk b { color: #ffb877; }
-    .titleGold { display: inline-block; margin-top: 6px; font-size: 13px; color: #ffd24a; opacity: 0.95; }
-    .titleGold b { color: #ffe28a; }
-    .titleFeed { display: inline-block; margin-top: 6px; font-size: 13px; color: #8fd97f; opacity: 0.95; }
-    .titleFeed b { color: #b6f0a8; }
-    .controls { display: grid; grid-template-columns: repeat(3, auto); gap: 8px 26px;
-      margin-bottom: 16px; }
-    .ctrlRow { display: flex; align-items: center; gap: 10px; font-size: 14px; opacity: 0.92; }
-    .key { display: inline-block; min-width: 54px; text-align: center; font-size: 12px;
-      font-weight: 700; letter-spacing: 1px; padding: 4px 8px; border-radius: 6px;
-      background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); }
-    .titleBest { font-size: 14px; color: var(--good); opacity: 0.9; margin-bottom: 10px;
-      letter-spacing: 1px; }
-    .titlePrompt { font-size: 16px; color: var(--accent); margin-top: 6px;
-      animation: promptBlink 1.4s ease-in-out infinite; }
-    @keyframes promptBlink { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
-
     /* Low-health red vignette, opacity driven from JS. */
     #vignette { position: absolute; inset: 0; pointer-events: none; opacity: 0;
       transition: opacity 0.3s ease; box-shadow: inset 0 0 200px 60px rgba(170,10,10,0.85);
@@ -159,6 +209,11 @@
       background: radial-gradient(circle at center, rgba(220,20,20,0) 30%, rgba(200,0,0,0.55) 100%); }
     #hitFlash.fire { animation: hitPulse 0.32s ease-out; }
     @keyframes hitPulse { 0% { opacity: 0.9; } 100% { opacity: 0; } }
+    /* Threat edge glow: soft red inset light that throbs (opacity driven from
+       JS) while a predator is actively hunting the player. */
+    #threatGlow { position: absolute; inset: 0; pointer-events: none; opacity: 0;
+      box-shadow: inset 0 0 90px 18px rgba(200,30,20,0.7);
+      transition: opacity 0.1s linear; }
 
     /* Touch controls — injected only on touch devices by touch.js */
     #touchControls { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
@@ -183,15 +238,25 @@
       background: rgba(232,83,63,0.4); }
     .touchBtn.pressed { transform: scale(0.92); filter: brightness(1.3); }
 
+    /* Loading: the crash setup, then a sweeping search bar while assets build.
+       Same scrim language as the overlays: copy straight on the dark, no box. */
     #loading { position: absolute; inset: 0; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; background: #0b1418; z-index: 10; }
-    #loading .title { font-size: 44px; font-weight: 800; color: var(--accent);
-      letter-spacing: 2px; }
-    #loading .loadMsg { margin-top: 16px; opacity: 0.8; }
-    .spinner { width: 40px; height: 40px; margin-top: 24px; border-radius: 50%;
-      border: 4px solid rgba(255,255,255,0.15); border-top-color: var(--accent);
-      animation: spin 0.9s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+      align-items: center; justify-content: center; text-align: center; z-index: 10;
+      background:
+        radial-gradient(110% 70% at 50% 115%, rgba(70,42,10,0.45), rgba(0,0,0,0) 55%),
+        radial-gradient(130% 90% at 50% -25%, #10242c, rgba(0,0,0,0) 65%), #060d10; }
+    .loadHook { font-size: 15px; line-height: 1.7; max-width: 66ch; margin: 26px auto 0;
+      color: rgba(255,255,255,0.82); text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
+    .loadBar { position: relative; width: 240px; height: 2px; margin-top: 46px;
+      background: rgba(255,255,255,0.12); overflow: hidden; }
+    .loadBar span { position: absolute; top: 0; left: 0; width: 38%; height: 100%;
+      background: var(--accent); animation: sweep 1.5s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+    @keyframes sweep { from { transform: translateX(-120%); } to { transform: translateX(380%); } }
+    #loading .loadMsg { margin-top: 14px; font-size: 11px; letter-spacing: 0.24em;
+      text-transform: uppercase; color: rgba(255,255,255,0.55); }
+    #loading.err .loadMsg { color: var(--danger); text-transform: none;
+      letter-spacing: 0.04em; font-size: 13px; }
+    #loading.err .loadBar span { animation-play-state: paused; }
   </style>
 </head>
 <body>
@@ -203,37 +268,44 @@
       <div class="bar"><div id="healthFill" class="barFill"></div></div>
       <div class="label">Stamina</div>
       <div class="bar"><div id="staminaFill" class="barFill"></div></div>
-      <div class="label">T-Rex Health</div>
-      <div class="bar"><div id="trexFill" class="barFill"></div></div>
+      <!-- Threat + Daylight bars CUT (owner) — elements kept hidden so hud.js
+           setters keep working; dusk is carried by the sky + DUSK FALLS popup -->
+      <div class="label" hidden>Threat</div>
+      <div class="bar" hidden><div id="trexFill" class="barFill"></div></div>
       <div class="label">Dash <span id="dashReady" class="readyTag">READY</span></div>
       <div class="bar"><div id="dashFill" class="barFill"></div></div>
-      <div class="label"><span id="duskIcon">☀️</span> <span id="duskLabel">Daylight</span></div>
-      <div class="bar"><div id="duskFill" class="barFill"></div></div>
+      <div class="label" hidden><span id="duskLabel">Daylight</span></div>
+      <div class="bar" hidden><div id="duskFill" class="barFill"></div></div>
     </div>
     <div id="topRight" class="panel">
-      <div class="label">Time Survived</div>
+      <div class="label">Time on Island</div>
       <div id="survTime">0s</div>
       <div class="label" style="margin-top: 8px;">Score</div>
       <div id="score">0</div>
       <div id="popups"></div>
     </div>
     <div id="minimapWrap">
-      <div class="label">Radar</div>
+      <div class="label">Pilot's GPS</div>
       <canvas id="minimap"></canvas>
     </div>
-    <div id="muteBtn" title="Toggle sound (M)">🔊 Sound</div>
+    <div id="medkit"></div>
+    <div id="muteBtn" title="Toggle sound (M)">Sound on</div>
     <div id="hotbar"></div>
     <div id="objective"></div>
     <div id="duskTint"></div>
+    <div id="threatGlow"></div>
     <div id="vignette"></div>
     <div id="hitFlash"></div>
     <div id="banner"></div>
   </div>
 
-  <div id="loading">
-    <div class="title">SAURIAN</div>
+  <div id="loading" class="reveal">
+    <div class="scrKicker">Somewhere in the southern ocean</div>
+    <div class="title titleBig">SAURIAN</div>
+    <div class="titleStrap">Escape the island</div>
+    <p class="loadHook">Plane down. One way home.</p>
+    <div class="loadBar"><span></span></div>
     <div class="loadMsg">Loading…</div>
-    <div class="spinner"></div>
   </div>
 
   <script src="lib/babylon.js"></script>
@@ -243,7 +315,7 @@
     startGame().catch((err) => {
       console.error(err);
       const l = document.getElementById("loading");
-      if (l) l.querySelector(".loadMsg").textContent = "Error: " + err.message;
+      if (l) { l.classList.add("err"); l.querySelector(".loadMsg").textContent = "Error: " + err.message; }
     });
   </script>
 </body>
